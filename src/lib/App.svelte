@@ -13,6 +13,7 @@
   import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
+  import QuickNav from '$lib/components/QuickNav.svelte';
   import Properties from '$lib/components/Properties.svelte';
   import Backlinks from '$lib/components/Backlinks.svelte';
   import TagBrowser from '$lib/components/TagBrowser.svelte';
@@ -21,6 +22,18 @@
   let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
+
+  // Quick-nav palette (Ctrl+K). `quickNavOpen` toggles the overlay; the Concept
+  // path list is refreshed from the index whenever it changes so newly-created
+  // Concepts are matchable immediately.
+  let quickNavOpen = $state(false);
+  let conceptPaths = $state<string[]>([]);
+  $effect(() => {
+    void indexStore.version;
+    void backend.listConceptPaths().then((p) => {
+      conceptPaths = p;
+    });
+  });
 
   // Existing Bundle `type` values, for the Properties panel's `type`
   // autocomplete. Refreshed whenever the index changes (file-changed bumps
@@ -97,8 +110,16 @@
       void indexStore.refresh();
     });
 
-    // Browser-style history shortcuts: Alt+Left = Back, Alt+Right = Forward.
+    // Quick-nav palette: Ctrl+K (Cmd+K on macOS) toggles it. Checked before the
+    // Alt-only history shortcuts below so it doesn't collide with them.
     const onKeydown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        quickNavOpen = !quickNavOpen;
+        return;
+      }
+
+      // Browser-style history shortcuts: Alt+Left = Back, Alt+Right = Forward.
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -108,11 +129,13 @@
         void editor.forward();
       }
     };
-    window.addEventListener('keydown', onKeydown);
+    // Capture phase so the palette shortcut wins even when focus is inside the
+    // CodeMirror editor (whose keymap would otherwise swallow the event).
+    window.addEventListener('keydown', onKeydown, true);
 
     return () => {
       unsubscribe();
-      window.removeEventListener('keydown', onKeydown);
+      window.removeEventListener('keydown', onKeydown, true);
       stopTheme();
       view?.destroy();
       view = null;
@@ -134,7 +157,13 @@
   // link, back/forward all funnel through `editor.path`).
   $effect(() => {
     const path = editor.path;
-    if (session.restored) session.setLastOpenConcept(path);
+    if (session.restored) {
+      session.setLastOpenConcept(path);
+      // Record every opened Concept in the per-Bundle recent-files list (used by
+      // the quick-nav palette). Back/forward also funnel through `editor.path`,
+      // so revisiting bumps a Concept back to the front (dedup in the store).
+      if (path !== null) session.pushRecentFile(path);
+    }
   });
 
   // Build / update the CodeMirror view whenever the open Concept content changes.
@@ -464,6 +493,14 @@
     <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
     <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
   </aside>
+
+  <QuickNav
+    open={quickNavOpen}
+    paths={conceptPaths}
+    recent={session.recentFiles}
+    onopen={openConcept}
+    onclose={() => (quickNavOpen = false)}
+  />
 
   {#if menu}
     <ContextMenu

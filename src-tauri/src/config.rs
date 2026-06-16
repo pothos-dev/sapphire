@@ -38,7 +38,10 @@ pub struct BundleState {
     /// before the first save. Window handling lives in Rust (`lib.rs` setup +
     /// the window event handler) so the frontend never imports window APIs.
     pub window: Option<WindowState>,
-    // slice 13 will add: pub recent_files: Vec<String>,
+    /// Bundle-relative paths of recently-opened Concepts, most-recent first.
+    /// Deduped and capped by the frontend; round-tripped here so the quick-nav
+    /// palette's recent-files list survives a relaunch.
+    pub recent_files: Vec<String>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets
@@ -166,6 +169,7 @@ mod tests {
         assert!(s.last_open_concept.is_none());
         assert!(s.expanded_folders.is_empty());
         assert!(s.window.is_none());
+        assert!(s.recent_files.is_empty());
     }
 
     #[test]
@@ -182,17 +186,20 @@ mod tests {
                     x: Some(10),
                     y: Some(20),
                 }),
+                recent_files: vec!["a/b.md".to_string(), "a/c.md".to_string()],
             },
         );
         let json = serde_json::to_string(&store).unwrap();
         // camelCase keys cross the seam to match the TS types.
         assert!(json.contains("lastOpenConcept"));
         assert!(json.contains("expandedFolders"));
+        assert!(json.contains("recentFiles"));
         let back: Store = serde_json::from_str(&json).unwrap();
         let st = back.bundles.get("/abs/bundle").unwrap();
         assert_eq!(st.last_open_concept.as_deref(), Some("a/b.md"));
         assert_eq!(st.expanded_folders.len(), 2);
         assert_eq!(st.window.unwrap().width, 800);
+        assert_eq!(st.recent_files, vec!["a/b.md", "a/c.md"]);
     }
 
     #[test]

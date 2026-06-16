@@ -65,7 +65,12 @@ export type BundleState = {
   expandedFolders: string[];
   /** window geometry, owned by Rust; opaque to the frontend (pass-through) */
   window?: unknown;
-  // slice 13: recentFiles: string[];
+  /**
+   * Bundle-relative paths of recently-opened Concepts, most-recent first.
+   * Deduped and capped; used by the quick-nav palette's empty-input view.
+   * Persisted per-Bundle in the OS config folder, never in the Bundle.
+   */
+  recentFiles?: string[];
 };
 
 /**

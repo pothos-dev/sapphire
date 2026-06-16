@@ -1,0 +1,247 @@
+<script lang="ts">
+  /**
+   * Quick-nav palette (slice: quick-nav-palette).
+   *
+   * A centered command palette bound to Ctrl+K (the parent owns the keybinding
+   * and toggles `open`). Typing fuzzy-matches bundle-relative Concept paths;
+   * with empty input it shows the per-Bundle recent files (most-recent first).
+   * ↑/↓ move the selection, Enter opens the highlighted Concept THROUGH the
+   * navigation/history path (so back/forward keeps working), Escape closes.
+   */
+  import { fuzzyRank, type FuzzyMatch } from '$lib/fuzzy';
+  import { isReservedFile } from '$lib/reserved';
+
+  interface Props {
+    /** Whether the palette is open. */
+    open: boolean;
+    /** All bundle-relative Concept paths to match against. */
+    paths: string[];
+    /** Recent files (most-recent first), shown when the input is empty. */
+    recent: string[];
+    /** Open the chosen Concept (routes through editor navigation/history). */
+    onopen: (path: string) => void;
+    /** Close the palette. */
+    onclose: () => void;
+  }
+
+  let { open, paths, recent, onopen, onclose }: Props = $props();
+
+  let query = $state('');
+  let selected = $state(0);
+  let input = $state<HTMLInputElement | null>(null);
+
+  // Results: ranked fuzzy matches while typing, else the recent-files list (kept
+  // only to existing Concept paths so a deleted file never lingers in the list).
+  type Result = { path: string; positions: number[] };
+  const results = $derived.by<Result[]>(() => {
+    const q = query.trim();
+    if (q === '') {
+      const known = new Set(paths);
+      return recent.filter((p) => known.has(p)).map((p) => ({ path: p, positions: [] }));
+    }
+    return fuzzyRank(q, paths).map((m: FuzzyMatch) => ({
+      path: m.target,
+      positions: m.positions,
+    }));
+  });
+
+  // The effective selection, clamped to the current result set without writing
+  // back to state (avoids an effect-update loop). `selected` is the user's
+  // intent; this derived value is what the UI highlights / Enter opens.
+  const activeIndex = $derived(
+    results.length === 0 ? 0 : Math.min(selected, results.length - 1),
+  );
+
+  // Reset + focus each time the palette transitions to open. Tracks `open` only
+  // (NOT query/selected) so it doesn't re-run on every keystroke.
+  let wasOpen = false;
+  $effect(() => {
+    if (open && !wasOpen) {
+      wasOpen = true;
+      query = '';
+      selected = 0;
+      queueMicrotask(() => input?.focus());
+    } else if (!open) {
+      wasOpen = false;
+    }
+  });
+
+  /** Split a path into [prefix, basename] for display. */
+  function splitPath(path: string): { dir: string; base: string } {
+    const slash = path.lastIndexOf('/');
+    if (slash === -1) return { dir: '', base: path };
+    return { dir: path.slice(0, slash + 1), base: path.slice(slash + 1) };
+  }
+
+  function choose(path: string) {
+    onopen(path);
+    onclose();
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (results.length > 0) selected = (activeIndex + 1) % results.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (results.length > 0) selected = (activeIndex - 1 + results.length) % results.length;
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const r = results[activeIndex];
+      if (r) choose(r.path);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onclose();
+    }
+  }
+</script>
+
+{#if open}
+  <!-- Backdrop: an outside click closes the palette. -->
+  <div class="qn-backdrop" role="presentation" onclick={onclose}></div>
+
+  <div class="qn-panel" role="dialog" aria-modal="true" data-testid="quick-nav">
+    <!-- svelte-ignore a11y_autofocus -->
+    <input
+      bind:this={input}
+      bind:value={query}
+      class="qn-input"
+      type="text"
+      placeholder="Jump to a Concept…"
+      aria-label="Quick navigation"
+      data-testid="quick-nav-input"
+      autocomplete="off"
+      autofocus
+      onkeydown={onKeydown}
+    />
+
+    {#if query.trim() === ''}
+      <p class="qn-hint" data-testid="quick-nav-hint">Recent files</p>
+    {/if}
+
+    <ul class="qn-results" role="listbox" data-testid="quick-nav-results">
+      {#each results as r, i (r.path)}
+        {@const sp = splitPath(r.path)}
+        <li role="option" aria-selected={i === activeIndex}>
+          <button
+            type="button"
+            class="qn-item"
+            class:selected={i === activeIndex}
+            data-path={r.path}
+            data-testid="quick-nav-item"
+            onmousemove={() => (selected = i)}
+            onclick={() => choose(r.path)}
+          >
+            <span class="qn-base">{sp.base}</span>
+            {#if sp.dir}<span class="qn-dir">{sp.dir}</span>{/if}
+            {#if isReservedFile(r.path)}<span class="qn-badge">reserved</span>{/if}
+          </button>
+        </li>
+      {:else}
+        <li class="qn-empty" data-testid="quick-nav-empty">No matches</li>
+      {/each}
+    </ul>
+  </div>
+{/if}
+
+<style>
+  .qn-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .qn-panel {
+    position: fixed;
+    z-index: 1201;
+    top: 18%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(560px, 90vw);
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    padding: 0.5rem;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #0f0f0f;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
+  }
+
+  :global(.app[data-theme='dark']) .qn-panel {
+    background: #2a2a2a;
+    color: #e6e6e6;
+  }
+
+  .qn-input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid rgba(127, 127, 127, 0.4);
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 1rem;
+  }
+
+  .qn-hint {
+    margin: 0.5rem 0.2rem 0.1rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+  }
+
+  .qn-results {
+    list-style: none;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    overflow: auto;
+  }
+
+  .qn-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.4rem 0.55rem;
+    border: none;
+    border-radius: 5px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .qn-item:hover,
+  .qn-item.selected {
+    background: rgba(80, 140, 255, 0.22);
+  }
+
+  .qn-base {
+    font-weight: 500;
+  }
+
+  .qn-dir {
+    font-size: 0.78rem;
+    color: #888;
+  }
+
+  .qn-badge {
+    margin-left: auto;
+    font-size: 0.68rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 4px;
+    background: rgba(127, 127, 127, 0.25);
+    color: inherit;
+  }
+
+  .qn-empty {
+    padding: 0.5rem 0.55rem;
+    color: #888;
+    font-size: 0.85rem;
+  }
+</style>

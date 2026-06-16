@@ -22,11 +22,19 @@ import type { BundleState } from '$lib/types';
 
 const SAVE_DEBOUNCE_MS = 250;
 
+/** Max number of recent files retained (most-recent first). */
+const RECENT_FILES_CAP = 15;
+
 class SessionStore {
   /** bundle-relative path of the last-open Concept, or null. Restored on launch. */
   lastOpenConcept = $state<string | null>(null);
   /** bundle-relative folder paths currently expanded in the tree. */
   expandedFolders = $state<Set<string>>(new Set());
+  /**
+   * Bundle-relative paths of recently-opened Concepts, most-recent first.
+   * Deduped and capped (~15). Powers the quick-nav palette's empty-input view.
+   */
+  recentFiles = $state<string[]>([]);
   /** True once `load()` has resolved (data available to render the tree). */
   loaded = $state<boolean>(false);
   /**
@@ -49,6 +57,7 @@ class SessionStore {
       const state = await backend.loadBundleState();
       this.lastOpenConcept = state.lastOpenConcept ?? null;
       this.expandedFolders = new Set(state.expandedFolders ?? []);
+      this.recentFiles = state.recentFiles ?? [];
       this.#window = state.window;
     } catch {
       // Best-effort: a failed load just means no session to restore.
@@ -88,11 +97,29 @@ class SessionStore {
     this.#scheduleSave();
   }
 
+  /**
+   * Push an opened Concept to the front of the recent-files list (deduped,
+   * capped at `RECENT_FILES_CAP`) and schedule a persist. Called whenever a
+   * Concept is opened so the quick-nav palette's empty-input view stays current.
+   */
+  pushRecentFile(path: string): void {
+    // Idempotent when `path` is already most-recent: this is called from a
+    // reactive `$effect` tracking `editor.path`, so writing a fresh array on
+    // every run (even an unchanged one) would re-trigger the effect — an update
+    // loop. The early return keeps a no-op re-run a no-op.
+    if (this.recentFiles[0] === path) return;
+    const next = [path, ...this.recentFiles.filter((p) => p !== path)];
+    if (next.length > RECENT_FILES_CAP) next.length = RECENT_FILES_CAP;
+    this.recentFiles = next;
+    this.#scheduleSave();
+  }
+
   /** Current state as a plain `BundleState` for persistence. */
   #snapshot(): BundleState {
     return {
       lastOpenConcept: this.lastOpenConcept,
       expandedFolders: [...this.expandedFolders],
+      recentFiles: [...this.recentFiles],
       window: this.#window,
     };
   }

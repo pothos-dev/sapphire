@@ -620,7 +620,7 @@ const BUNDLE_STATE_KEY = `emerald:bundleState:${FAKE_BUNDLE_ROOT}`;
 
 /** Default per-Bundle state (mirrors the Rust `BundleState::default`). */
 function defaultBundleState(): BundleState {
-  return { lastOpenConcept: null, expandedFolders: [] };
+  return { lastOpenConcept: null, expandedFolders: [], recentFiles: [] };
 }
 
 /** Read the fake Bundle state from localStorage; corrupt/missing -> defaults. */
@@ -633,6 +633,7 @@ function loadFakeBundleState(): BundleState {
     return {
       lastOpenConcept: parsed.lastOpenConcept ?? null,
       expandedFolders: Array.isArray(parsed.expandedFolders) ? parsed.expandedFolders : [],
+      recentFiles: Array.isArray(parsed.recentFiles) ? parsed.recentFiles : [],
       window: parsed.window,
     };
   } catch {
