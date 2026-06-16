@@ -29,8 +29,8 @@
 
   let { content, onchange }: Props = $props();
 
-  const props = $derived<Property[]>(parseProperties(content));
-  const typeMissing = $derived(isTypeMissing(props));
+  const properties = $derived<Property[]>(parseProperties(content));
+  const typeMissing = $derived(isTypeMissing(properties));
 
   // Draft text for the per-list "add chip" inputs, keyed by property key.
   let chipDrafts = $state<Record<string, string>>({});
@@ -61,11 +61,11 @@
 </script>
 
 <section class="properties" aria-label="Properties" data-testid="properties">
-  {#if props.length === 0}
+  {#if properties.length === 0}
     <p class="empty" data-testid="properties-empty">No frontmatter.</p>
   {/if}
 
-  {#each props as prop (prop.key)}
+  {#each properties as prop (prop.key)}
     {@const isType = prop.key === 'type'}
     <div class="row" class:flagged={isType && typeMissing} data-key={prop.key}>
       <label class="key" for={`prop-${prop.key}`}>

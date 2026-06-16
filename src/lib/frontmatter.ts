@@ -13,7 +13,7 @@
 // Kept dependency-free of the IPC seam: operates purely on raw markdown strings.
 // The index slice can reuse `parseConcept` / `splitFrontmatter`.
 
-import { parseDocument, isScalar, isSeq, isMap, Scalar, type Document } from 'yaml';
+import { parseDocument, isScalar, isSeq, isMap, isNode, Scalar, type Document } from 'yaml';
 
 /** Classification of a top-level frontmatter value (ADR 0002). */
 export type PropertyKind = 'scalar' | 'list' | 'complex';
@@ -118,9 +118,8 @@ export function parseProperties(content: string): Property[] {
 
   const props: Property[] = [];
   for (const item of doc.contents.items) {
-    const keyNode = item.key;
-    if (!isScalar(keyNode) && typeof keyNode !== 'object') continue;
-    const key = isScalar(keyNode) ? String(keyNode.value) : String((keyNode as Scalar).value);
+    const key = scalarKeyString(item.key);
+    if (key === null) continue;
     const value = item.value;
     props.push(classify(key, value, yaml));
   }
@@ -186,6 +185,15 @@ function classify(key: string, value: unknown, yamlSrc: string): Property {
   return { key, kind: 'complex', raw };
 }
 
+/**
+ * The string form of a mapping key, or `null` for non-scalar keys (which a flat
+ * frontmatter model never has at top level). Narrows via the `yaml` type guard
+ * so we only read `.value` from an actual Scalar.
+ */
+function scalarKeyString(keyNode: unknown): string | null {
+  return isScalar(keyNode) ? String(keyNode.value) : null;
+}
+
 /** Extract the verbatim source text covered by a node's range. */
 function rangeText(node: unknown, yamlSrc: string): string {
   const range = (node as { range?: [number, number, number] }).range;
@@ -241,13 +249,13 @@ function spliceValue(
 
   for (const item of doc.contents.items) {
     const keyNode = item.key;
-    const k = isScalar(keyNode) ? String(keyNode.value) : String((keyNode as Scalar).value);
-    if (k !== key) continue;
+    const k = scalarKeyString(keyNode);
+    if (k === null || k !== key) continue;
 
     const prop = classify(key, item.value, split.yaml);
     const replacement = makeValue(prop);
 
-    const keyRange = (keyNode as { range?: [number, number, number] }).range;
+    const keyRange = isNode(keyNode) ? keyNode.range : undefined;
     if (!keyRange) return content;
     const entryStart = keyRange[0];
 
