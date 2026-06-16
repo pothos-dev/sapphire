@@ -1,0 +1,82 @@
+import { test, expect } from '@playwright/test';
+
+/**
+ * Slice: live-preview (ADR 0001).
+ *
+ * Drives the atomic-editor hybrid live preview against the fake backend on a
+ * Concept with rich markdown (heading, bold, task list, fenced code block,
+ * GFM table, inline image). Asserts:
+ *  - inactive lines render styled (heading element styled, strong styled),
+ *  - a fenced code block is syntax-highlighted (tokens get highlight classes),
+ *  - a GFM table renders as the interactive table widget,
+ *  - an inline image widget renders,
+ *  - placing the cursor on a styled line reveals its raw markdown markup,
+ * and saves a screenshot showing rendered markdown.
+ */
+test('live preview: rich markdown renders, cursor line shows raw markup', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+
+  // Open the rich Concept.
+  await tree.locator('[data-path="concepts/editor/live-preview.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('Obsidian-style hybrid editing');
+
+  // --- Inactive lines render styled ---------------------------------------
+  // Heading rendered with the atomic-editor heading class (sized via theme).
+  const h1 = editor.locator('.cm-atomic-h1').first();
+  await expect(h1).toBeVisible();
+  await expect(h1).toContainText('Live Preview');
+
+  // Bold text rendered styled.
+  await expect(editor.locator('.cm-atomic-strong').first()).toBeVisible();
+
+  // Task checkbox rendered (GFM task list — requires the markdownLanguage base).
+  await expect(editor.locator('.cm-atomic-task-checkbox').first()).toBeVisible();
+
+  // --- Fenced code block syntax-highlighted -------------------------------
+  // The ts grammar loads lazily; once it does, tokens get highlight classes.
+  await expect(editor.locator('.cm-atomic-fenced-code').first()).toBeVisible();
+  await expect
+    .poll(async () => editor.locator('.cm-line .ͼ1, .cm-line [class*="ͼ"]').count())
+    .toBeGreaterThan(0);
+
+  // --- GFM table renders as the interactive widget ------------------------
+  const table = editor.locator('.cm-atomic-table table').first();
+  await expect(table).toBeVisible();
+  await expect(table).toContainText('Status');
+
+  // --- Inline image widget renders (data URI -> fully renders) ------------
+  // (.cm-widgetBuffer is a CM6 internal zero-size img; match the real widget
+  // by its src instead.) The relative `./assets/diagram.png` image also
+  // renders its widget but 404s — there is no static file server under the
+  // fake backend; that is expected and noted in the slice report.
+  const img = editor.locator('.cm-content img[src^="data:image"]').first();
+  await expect(img).toBeVisible();
+
+  // --- Cursor line reveals raw markdown markup ----------------------------
+  // On an inactive heading line the leading `#` is hidden by the live preview.
+  // Click the heading to move the cursor onto it; the raw `# Live Preview`
+  // markup must then be visible, and the layout must not jump (heading stays).
+  const before = await h1.boundingBox();
+  await h1.click();
+  // The active line now contains the raw markup including the `#` marker.
+  const activeLine = editor.locator('.cm-activeLine').first();
+  await expect(activeLine).toContainText('# Live Preview');
+  const after = await editor.locator('.cm-atomic-h1, .cm-activeLine').first().boundingBox();
+  // No vertical layout jump: the heading line stays at the same top position.
+  if (before && after) {
+    expect(Math.abs(after.y - before.y)).toBeLessThan(4);
+  }
+
+  await page.screenshot({
+    path: 'tests/screenshots/live-preview.png',
+    fullPage: true,
+  });
+});

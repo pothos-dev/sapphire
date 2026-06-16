@@ -21,7 +21,9 @@ test('editing + autosave: typing persists via the backend', async ({ page }) => 
 
   const editor = page.getByTestId('editor');
   await expect(editor).toBeVisible();
-  await expect(editor).toContainText('A **Bundle** is the root folder');
+  // Live preview hides the `**` markers on inactive lines, so assert on the
+  // rendered text (the on-disk source still has the markers — see autosave).
+  await expect(editor).toContainText('A Bundle is the root folder');
 
   // Editor is now EDITABLE (slice 1 had this false).
   const content = editor.locator('.cm-content');
@@ -68,7 +70,9 @@ test('watcher: external change reloads the open Concept', async ({ page }) => {
   await tree.locator('[data-path="concepts/bundle.md"]').click();
 
   const editor = page.getByTestId('editor');
-  await expect(editor).toContainText('A **Bundle** is the root folder');
+  // Live preview hides the `**` markers on inactive lines, so assert on the
+  // rendered text (the on-disk source still has the markers — see autosave).
+  await expect(editor).toContainText('A Bundle is the root folder');
 
   // Simulate an EXTERNAL edit (as if another tool wrote the file). The fake
   // watcher notifies subscribers, the open Concept should reload.

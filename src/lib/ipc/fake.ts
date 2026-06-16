@@ -100,7 +100,39 @@ tags: [editor, codemirror]
 # Live Preview
 
 Obsidian-style hybrid editing: the markdown source is the source of truth, but
-inactive lines render styled while the cursor line shows raw markup.
+inactive lines render styled while the cursor line shows raw markup. Text can be
+**bold**, *italic*, or \`inline code\`.
+
+## Features
+
+- [x] Inactive lines render styled
+- [ ] Cursor line reveals raw markup
+- Lazy-loaded fenced-code grammars
+
+A fenced code block, syntax-highlighted via a lazy-loaded grammar:
+
+\`\`\`ts
+export function greet(name: string): string {
+  return \`Hello, \${name}!\`;
+}
+\`\`\`
+
+A GFM table renders as an interactive widget:
+
+| Feature      | Status |
+| ------------ | ------ |
+| Headings     | done   |
+| Code blocks  | done   |
+| Tables       | done   |
+
+Inline image (data URI — renders fully under the fake backend):
+
+![green dot](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMjgiIGZpbGw9IiMyZWNjNzEiLz48L3N2Zz4=)
+
+Local image (resolved relative to the Concept; the widget renders even if the
+src 404s under the fake backend — there is no static file server here):
+
+![diagram](./assets/diagram.png)
 
 Built on [CodeMirror](../codemirror.md).
 `,
