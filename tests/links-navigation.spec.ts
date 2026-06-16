@@ -68,7 +68,9 @@ test('OKF link navigation + back/forward history', async ({ page }) => {
   await expect(editor).toContainText('A Bundle is the root folder');
   await clickLink(page, 'Knowledge Base');
   await expect(editor).toContainText('reserved');
-  await expect(page.locator('[data-path="index.md"]')).toHaveClass(/selected/);
+  // index.md is a reserved file: it's surfaced as a root affordance (not an
+  // ordinary leaf), which reflects selection when it's the open Concept.
+  await expect(page.locator('[data-reserved-path="index.md"]')).toHaveClass(/selected/);
   // Forward history was truncated by this new navigation.
   await expect(forward).toBeDisabled();
 

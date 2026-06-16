@@ -334,3 +334,27 @@ function serializeList(items: string[]): string {
   if (items.length === 0) return '[]';
   return '[' + items.map((it) => serializeScalar(it, false)).join(', ') + ']';
 }
+
+/**
+ * Humanize a `.md` filename into a `title` (slice: new-concept-scaffolding).
+ * Strips the extension, replaces `-`/`_` separators with spaces, collapses
+ * whitespace, and sentence-cases the result (e.g. `my-note.md` → "My note").
+ */
+export function titleFromFilename(filename: string): string {
+  const slash = filename.lastIndexOf('/');
+  const base = slash === -1 ? filename : filename.slice(slash + 1);
+  const stem = base.replace(/\.md$/i, '');
+  const words = stem.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (words === '') return '';
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Compose a spec-valid frontmatter STUB for a brand-new Concept: an empty
+ * required `type` field (where the user lands first) and a `title` derived from
+ * the filename. The file is immediately OKF-valid once `type` is filled.
+ */
+export function scaffoldConcept(filename: string): string {
+  const title = titleFromFilename(filename);
+  return `---\ntype:\ntitle: ${serializeScalar(title, false)}\n---\n\n`;
+}

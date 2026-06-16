@@ -7,8 +7,10 @@ test('walking skeleton: tree renders and a Concept opens', async ({ page }) => {
   const tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
 
-  // A known fixture file is present in the tree.
-  await expect(tree.getByText('index.md', { exact: true }).first()).toBeVisible();
+  // A known fixture entry is present in the tree. (Reserved files like index.md
+  // are surfaced as folder affordances, not ordinary leaves — see the
+  // reserved-files slice — so assert on an ordinary Concept here.)
+  await expect(tree.locator('[data-path="concepts/codemirror.md"]')).toBeVisible();
 
   // Open a Concept by clicking its tree entry.
   await tree.locator('[data-path="concepts/codemirror.md"]').click();

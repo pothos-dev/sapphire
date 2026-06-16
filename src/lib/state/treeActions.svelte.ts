@@ -3,6 +3,8 @@ import { bundle } from '$lib/state/bundle.svelte';
 import { editor } from '$lib/state/editor.svelte';
 import { indexStore } from '$lib/state/index.svelte';
 import { session } from '$lib/state/session.svelte';
+import { isReservedFile, reservedStub, type ReservedKind } from '$lib/reserved';
+import { scaffoldConcept } from '$lib/frontmatter';
 
 /**
  * Orchestrates the document-tree CRUD operations (slice: tree-crud).
@@ -41,11 +43,40 @@ class TreeActionsStore {
   }
 
   /**
-   * Create a new, empty Concept at `path` and open it. The minimal stub is an
-   * empty file (rich scaffold is a later slice).
+   * Create a new Concept at `path` and open it.
+   *
+   * Ordinary Concepts open with a spec-valid frontmatter STUB (slice:
+   * new-concept-scaffolding): an empty required `type` (the user lands there via
+   * the Properties panel) and a `title` humanized from the filename. We compose
+   * the stub on the frontend — where the filename is known — and write it via
+   * `writeConcept` immediately after the empty file is created, so the backend
+   * `createConcept` stays a thin "make an empty .md" op.
+   *
+   * Reserved files (`index.md`/`log.md`) are EXEMPT from the `type` requirement,
+   * so they are NOT given a frontmatter stub — see `createReservedFile`.
    */
   async createConcept(path: string): Promise<boolean> {
-    const ok = await this.#run(() => backend.createConcept(path));
+    const ok = await this.#run(async () => {
+      await backend.createConcept(path);
+      if (!isReservedFile(path)) {
+        await backend.writeConcept(path, scaffoldConcept(path));
+      }
+    });
+    if (ok) await editor.open(path);
+    return ok;
+  }
+
+  /**
+   * Create a reserved file (`index.md`/`log.md`) in `dir` and open it. Reserved
+   * files are created MINIMALLY (a top heading, no `type` stub) since they are
+   * exempt from the required-`type` rule. `path` is the full bundle-relative
+   * path; `dir`/`kind` derive the heading.
+   */
+  async createReservedFile(dir: string, kind: ReservedKind, path: string): Promise<boolean> {
+    const ok = await this.#run(async () => {
+      await backend.createConcept(path);
+      await backend.writeConcept(path, reservedStub(dir, kind));
+    });
     if (ok) await editor.open(path);
     return ok;
   }

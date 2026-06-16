@@ -10,6 +10,7 @@
   import type { TreeNode } from '$lib/types';
   import { buildEditor, setEditorDoc, refreshBrokenLinkDecorations } from '$lib/editor/cm';
   import { resolveLink } from '$lib/links';
+  import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import Properties from '$lib/components/Properties.svelte';
@@ -20,6 +21,26 @@
   let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
+
+  // Existing Bundle `type` values, for the Properties panel's `type`
+  // autocomplete. Refreshed whenever the index changes (file-changed bumps
+  // `indexStore.version`), so newly-introduced types appear in suggestions.
+  let bundleTypes = $state<string[]>([]);
+  $effect(() => {
+    void indexStore.version;
+    void backend.allTypes().then((t) => {
+      bundleTypes = t;
+    });
+  });
+
+  // When a NEW Concept is created from the tree it opens focused on the `type`
+  // field (the one the user must fill for OKF validity). This holds the path we
+  // want focused; the Properties panel focuses `type` while it matches the open
+  // Concept, then we clear it so ordinary navigation doesn't steal focus.
+  let focusTypeForPath = $state<string | null>(null);
+  const focusTypeNow = $derived(
+    focusTypeForPath !== null && focusTypeForPath === editor.path,
+  );
 
   /** Collect bundle-relative paths of all directories at depth < `maxDepth`. */
   function defaultOpenFolders(node: TreeNode, depth: number, maxDepth: number, out: string[]) {
@@ -151,6 +172,8 @@
   });
 
   function openConcept(path: string) {
+    // Plain navigation cancels any pending "focus type" request from a create.
+    focusTypeForPath = null;
     void editor.open(path);
   }
 
@@ -221,20 +244,82 @@
     menu = { node, x, y };
   }
 
-  const MENU_ITEMS = [
-    { id: 'newConcept', label: 'New Concept' },
-    { id: 'newFolder', label: 'New Folder' },
-    { id: 'rename', label: 'Rename', separated: true },
-    { id: 'move', label: 'Move…' },
-    { id: 'delete', label: 'Delete', separated: true, danger: true },
-  ];
+  /** Whether `dir` (a folder node) already contains the reserved file `kind`. */
+  function folderHasReserved(dir: TreeNode, kind: ReservedKind): boolean {
+    const target = reservedPath(dir.path, kind);
+    return (dir.children ?? []).some((c) => !c.isDir && c.path === target);
+  }
+
+  /**
+   * Context-menu items for `node`. A FOLDER additionally offers to create
+   * whichever reserved file (`index.md`/`log.md`) it is missing (slice:
+   * reserved-files). The Bundle root counts as a folder here too.
+   */
+  function menuItemsFor(node: TreeNode) {
+    const items: {
+      id: string;
+      label: string;
+      separated?: boolean;
+      danger?: boolean;
+    }[] = [
+      { id: 'newConcept', label: 'New Concept' },
+      { id: 'newFolder', label: 'New Folder' },
+    ];
+    if (node.isDir) {
+      const kinds: ReservedKind[] = ['index', 'log'];
+      let first = true;
+      for (const kind of kinds) {
+        if (folderHasReserved(node, kind)) continue;
+        items.push({
+          id: `createReserved:${kind}`,
+          label: `Create ${RESERVED_FILES[kind]}`,
+          separated: first,
+        });
+        first = false;
+      }
+    }
+    items.push(
+      { id: 'rename', label: 'Rename', separated: true },
+      { id: 'move', label: 'Move…' },
+      { id: 'delete', label: 'Delete', separated: true, danger: true },
+    );
+    return items;
+  }
+
+  const menuItems = $derived(menu ? menuItemsFor(menu.node) : []);
+
+  // The Bundle root is rendered here directly (not via <Tree/>), so its own
+  // reserved-file handling lives here: strip reserved files from the root leaf
+  // listing and surface them as affordances on a root header row (slice:
+  // reserved-files — index.md can appear at ANY level, including the root).
+  const rootChildren = $derived(bundle.tree?.children ?? []);
+  const rootOrdinary = $derived(
+    rootChildren.filter((c) => c.isDir || !isReservedFile(c.path)),
+  );
+  const rootReserved = $derived(
+    rootChildren
+      .filter((c) => !c.isDir && isReservedFile(c.path))
+      .map((c) => ({ path: c.path, kind: reservedKind(c.path) as ReservedKind })),
+  );
+  const ROOT_RESERVED_ORDER: ReservedKind[] = ['index', 'log'];
+  const rootReservedSorted = $derived(
+    [...rootReserved].sort(
+      (a, b) => ROOT_RESERVED_ORDER.indexOf(a.kind) - ROOT_RESERVED_ORDER.indexOf(b.kind),
+    ),
+  );
+  const ROOT_RESERVED_GLYPH: Record<ReservedKind, string> = { index: '☰', log: '🕑' };
 
   function onMenuSelect(id: string) {
     const node = menu?.node;
     if (!node) return;
     if (id === 'newConcept') dialog = { kind: 'newConcept', node, value: '' };
     else if (id === 'newFolder') dialog = { kind: 'newFolder', node, value: '' };
-    else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name };
+    else if (id.startsWith('createReserved:')) {
+      const kind = id.slice('createReserved:'.length) as ReservedKind;
+      const path = reservedPath(node.path, kind);
+      focusTypeForPath = null; // reserved files have no `type` to focus.
+      void treeActions.createReservedFile(node.path, kind, path);
+    } else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name };
     else if (id === 'move') dialog = { kind: 'move', node, value: parentOf(node.path) };
     else if (id === 'delete') dialog = { kind: 'delete', node };
   }
@@ -250,7 +335,10 @@
       const name = d.value.trim();
       if (name === '') return;
       const file = name.endsWith('.md') ? name : `${name}.md`;
-      await treeActions.createConcept(joinPath(childDirOf(d.node), file));
+      const path = joinPath(childDirOf(d.node), file);
+      const ok = await treeActions.createConcept(path);
+      // Land in `type`: a scaffolded (non-reserved) Concept opens focused there.
+      if (ok && !isReservedFile(path)) focusTypeForPath = path;
     } else if (d.kind === 'newFolder') {
       const name = d.value.trim();
       if (name === '') return;
@@ -291,7 +379,23 @@
         role="tree"
         tabindex="-1"
       >
-        {#each bundle.tree.children ?? [] as child (child.path)}
+        {#if rootReservedSorted.length > 0}
+          <div class="root-reserved" data-testid="root-reserved">
+            {#each rootReservedSorted as r (r.path)}
+              <button
+                type="button"
+                class="reserved-btn"
+                class:selected={editor.path === r.path}
+                title={`Open ${RESERVED_FILES[r.kind]} (Bundle root)`}
+                aria-label={`Open ${RESERVED_FILES[r.kind]}`}
+                data-reserved-path={r.path}
+                data-reserved-kind={r.kind}
+                onclick={() => openConcept(r.path)}
+              >{ROOT_RESERVED_GLYPH[r.kind]} {RESERVED_FILES[r.kind]}</button>
+            {/each}
+          </div>
+        {/if}
+        {#each rootOrdinary as child (child.path)}
           <Tree node={child} selected={editor.path} onopen={openConcept} onmenu={openMenu} />
         {/each}
       </div>
@@ -335,7 +439,13 @@
       <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
     {/if}
     {#if editor.path}
-      <Properties content={editor.content} onchange={onPropertiesChange} />
+      <Properties
+        content={editor.content}
+        path={editor.path}
+        types={bundleTypes}
+        focusType={focusTypeNow}
+        onchange={onPropertiesChange}
+      />
     {/if}
     <div
       class="editor-host"
@@ -359,7 +469,7 @@
     <ContextMenu
       x={menu.x}
       y={menu.y}
-      items={MENU_ITEMS}
+      items={menuItems}
       onselect={onMenuSelect}
       onclose={() => (menu = null)}
     />
@@ -538,6 +648,40 @@
 
   .status.error {
     color: #c0392b;
+  }
+
+  .root-reserved {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.1rem 0.1rem 0.35rem;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+  }
+
+  .reserved-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.45rem;
+    border: 1px solid rgba(127, 127, 127, 0.3);
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    opacity: 0.85;
+  }
+
+  .reserved-btn:hover {
+    background: rgba(127, 127, 127, 0.15);
+    opacity: 1;
+  }
+
+  .reserved-btn.selected {
+    background: rgba(80, 140, 255, 0.25);
+    opacity: 1;
   }
 
   .root-new {

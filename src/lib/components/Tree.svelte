@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TreeNode } from '$lib/types';
   import { session } from '$lib/state/session.svelte';
+  import { isReservedFile, reservedKind, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Self from './Tree.svelte';
 
   interface Props {
@@ -36,6 +37,29 @@
   }
 
   const isMarkdown = $derived(!node.isDir && node.name.toLowerCase().endsWith('.md'));
+
+  // Reserved files (`index.md`/`log.md`) are NOT shown as ordinary tree leaves;
+  // they are surfaced as per-folder affordances on the containing folder row
+  // instead. Strip them from the normal child listing here (slice: reserved-files).
+  const ordinaryChildren = $derived(
+    (node.children ?? []).filter((c) => c.isDir || !isReservedFile(c.path)),
+  );
+
+  // The reserved files this folder directly contains, in a stable order, each as
+  // { kind, path } so the affordance can open it. The icon opens it like any
+  // other Concept (normal markdown editing — no special rendered view).
+  const RESERVED_ORDER: ReservedKind[] = ['index', 'log'];
+  const reservedAffordances = $derived(
+    node.isDir
+      ? (node.children ?? [])
+          .filter((c) => !c.isDir && isReservedFile(c.path))
+          .map((c) => ({ kind: reservedKind(c.path) as ReservedKind, path: c.path }))
+          .sort((a, b) => RESERVED_ORDER.indexOf(a.kind) - RESERVED_ORDER.indexOf(b.kind))
+      : [],
+  );
+
+  /** A small glyph per reserved kind for the folder-row affordance. */
+  const RESERVED_GLYPH: Record<ReservedKind, string> = { index: '☰', log: '🕑' };
 </script>
 
 {#if node.isDir}
@@ -44,6 +68,23 @@
       <span class="twisty" class:open={expanded}>▸</span>
       <span class="name">{node.name}</span>
     </button>
+    <!-- Reserved-file affordances: click an icon to open the folder's index.md /
+         log.md directly (they are stripped from the ordinary leaf listing). -->
+    {#each reservedAffordances as r (r.path)}
+      <button
+        class="reserved-btn"
+        class:selected={selected === r.path}
+        type="button"
+        title={`Open ${RESERVED_FILES[r.kind]}`}
+        aria-label={`Open ${RESERVED_FILES[r.kind]}`}
+        data-reserved-path={r.path}
+        data-reserved-kind={r.kind}
+        onclick={(e) => {
+          e.stopPropagation();
+          onopen(r.path);
+        }}
+      >{RESERVED_GLYPH[r.kind]}</button>
+    {/each}
     <button
       class="menu-btn"
       type="button"
@@ -53,9 +94,9 @@
       onclick={openMenu}
     >⋯</button>
   </div>
-  {#if expanded && node.children}
+  {#if expanded}
     <ul class="children">
-      {#each node.children as child (child.path)}
+      {#each ordinaryChildren as child (child.path)}
         <li>
           <Self node={child} {selected} {onopen} {onmenu} depth={depth + 1} />
         </li>
@@ -96,6 +137,30 @@
   .row {
     display: flex;
     align-items: center;
+  }
+
+  .reserved-btn {
+    flex: 0 0 auto;
+    width: 1.4rem;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 4px;
+    opacity: 0.55;
+  }
+
+  .reserved-btn:hover {
+    background: rgba(127, 127, 127, 0.2);
+    opacity: 1;
+  }
+
+  .reserved-btn.selected {
+    opacity: 1;
+    background: rgba(80, 140, 255, 0.25);
   }
 
   .menu-btn {

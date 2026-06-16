@@ -19,18 +19,45 @@
     setList,
     type Property,
   } from '$lib/frontmatter';
+  import { isReservedFile } from '$lib/reserved';
 
   interface Props {
     /** Raw markdown of the open Concept (source of truth). */
     content: string;
+    /** Bundle-relative path of the open Concept (for the reserved-file exemption). */
+    path: string | null;
+    /** Existing Bundle `type` values, for the `type` field's autocomplete. */
+    types?: string[];
+    /**
+     * When true, focus the `type` input on mount/path-change. Set by the app
+     * shell right after a NEW Concept is created so the user lands in `type`.
+     */
+    focusType?: boolean;
     /** Called with new full markdown after a property edit. */
     onchange: (content: string) => void;
   }
 
-  let { content, onchange }: Props = $props();
+  let { content, path, types = [], focusType = false, onchange }: Props = $props();
 
   const properties = $derived<Property[]>(parseProperties(content));
-  const typeMissing = $derived(isTypeMissing(properties));
+  // Reserved files (`index.md`/`log.md`) are EXEMPT from the required-`type`
+  // rule (OKF): never flag a missing/empty `type` on them. The raw check lives
+  // in `isTypeMissing`; the exemption is applied here, at the caller.
+  const reserved = $derived(path !== null && isReservedFile(path));
+  const typeMissing = $derived(!reserved && isTypeMissing(properties));
+
+  // The `type` input element, focused when a new Concept opens so the user
+  // lands in `type` (the field they must fill to make the Concept OKF-valid).
+  let typeInput = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    // Re-focus when the requested-focus flag is set for the open path.
+    void path;
+    if (focusType && typeInput) {
+      typeInput.focus();
+      typeInput.select();
+    }
+  });
 
   // Draft text for the per-list "add chip" inputs, keyed by property key.
   let chipDrafts = $state<Record<string, string>>({});
@@ -78,7 +105,26 @@
       </label>
 
       <div class="value">
-        {#if prop.kind === 'scalar'}
+        {#if prop.kind === 'scalar' && isType}
+          <!-- The `type` field: autocompletes against existing Bundle types via
+               a datalist (free entry still allowed), and is the focus target
+               when a new Concept opens. -->
+          <input
+            id={`prop-${prop.key}`}
+            class="text"
+            type="text"
+            data-testid={`scalar-${prop.key}`}
+            list="type-suggestions"
+            bind:this={typeInput}
+            value={prop.scalar ?? ''}
+            onchange={(e) => editScalar(prop.key, (e.currentTarget as HTMLInputElement).value)}
+          />
+          <datalist id="type-suggestions" data-testid="type-suggestions">
+            {#each types as t (t)}
+              <option value={t}></option>
+            {/each}
+          </datalist>
+        {:else if prop.kind === 'scalar'}
           <input
             id={`prop-${prop.key}`}
             class="text"
