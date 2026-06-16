@@ -1,11 +1,13 @@
 mod app_state;
 mod bundle;
+mod index;
 mod watcher;
 
 use std::path::PathBuf;
 
 use app_state::AppState;
 use bundle::TreeNode;
+use index::TagCount;
 use tauri::{Manager, State};
 
 /// Absolute path of the opened Bundle root.
@@ -33,6 +35,43 @@ fn write_concept(state: State<'_, AppState>, path: String, content: String) -> R
     let resolved = bundle::write_concept(&state.bundle_root, &path, &content)?;
     state.note_self_write(resolved);
     Ok(())
+}
+
+/// Every Concept path in the Bundle index. The frontend seeds its synchronous
+/// broken-link existence cache from this (one query instead of per-link calls).
+#[tauri::command]
+fn list_concept_paths(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let index = state.index.read().map_err(|e| e.to_string())?;
+    Ok(index.concept_paths())
+}
+
+/// Whether a Concept exists at `path` (bundle-relative). Convenience companion
+/// to `list_concept_paths`; the broken-link decoration uses the cached set.
+#[tauri::command]
+fn concept_exists(state: State<'_, AppState>, path: String) -> Result<bool, String> {
+    let index = state.index.read().map_err(|e| e.to_string())?;
+    Ok(index.concept_exists(&path))
+}
+
+/// Sources linking TO `path` (backlinks). Used by the backlinks panel (slice 7).
+#[tauri::command]
+fn backlinks(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
+    let index = state.index.read().map_err(|e| e.to_string())?;
+    Ok(index.backlinks(&path))
+}
+
+/// All tags across the Bundle with per-tag counts. Used by the tags view (slice 8).
+#[tauri::command]
+fn all_tags(state: State<'_, AppState>) -> Result<Vec<TagCount>, String> {
+    let index = state.index.read().map_err(|e| e.to_string())?;
+    Ok(index.all_tags())
+}
+
+/// All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12).
+#[tauri::command]
+fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let index = state.index.read().map_err(|e| e.to_string())?;
+    Ok(index.all_types())
 }
 
 /// Resolve the Bundle root from the first positional CLI arg (default `.`),
@@ -68,7 +107,12 @@ pub fn run() {
             bundle_root,
             list_tree,
             read_concept,
-            write_concept
+            write_concept,
+            list_concept_paths,
+            concept_exists,
+            backlinks,
+            all_tags,
+            all_types
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

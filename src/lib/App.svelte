@@ -4,7 +4,8 @@
   import { backend } from '$lib/ipc';
   import { bundle } from '$lib/state/bundle.svelte';
   import { editor } from '$lib/state/editor.svelte';
-  import { buildEditor, setEditorDoc } from '$lib/editor/cm';
+  import { indexStore } from '$lib/state/index.svelte';
+  import { buildEditor, setEditorDoc, refreshBrokenLinkDecorations } from '$lib/editor/cm';
   import { resolveLink } from '$lib/links';
   import Tree from '$lib/components/Tree.svelte';
   import Properties from '$lib/components/Properties.svelte';
@@ -14,14 +15,18 @@
 
   onMount(() => {
     void bundle.load();
+    // Seed the broken-link existence cache from the Bundle index.
+    void indexStore.refresh();
 
     // Subscribe to filesystem changes from the backend watcher. On any change:
-    // refresh the tree (add/remove/rename) and reload the open Concept if it
-    // changed. Emerald's own autosave writes are suppressed by the backend, so
-    // they never arrive here (no reload loop / cursor jump).
+    // refresh the tree (add/remove/rename), reload the open Concept if it
+    // changed, and refresh the index's existing-path set so broken-link styling
+    // restyles created/removed targets. Emerald's own autosave writes are
+    // suppressed by the backend, so they never arrive here (no reload loop).
     const unsubscribe = backend.onFileChanged((change) => {
       void bundle.load();
       void editor.onExternalChange(change.kind, change.paths);
+      void indexStore.refresh();
     });
 
     // Browser-style history shortcuts: Alt+Left = Back, Alt+Right = Forward.
@@ -58,11 +63,25 @@
         onChange: (doc) => editor.edit(doc),
         onBlur: () => void editor.flush(),
         onLinkClick: handleLinkClick,
+        brokenLinkContext: {
+          currentPath: () => editor.path ?? '',
+          exists: (path) => indexStore.exists(path),
+        },
       });
     } else {
       // No-op when content is unchanged (guards against feedback from edits).
       setEditorDoc(view, content);
     }
+  });
+
+  // Keep broken-link styling fresh: re-run the decoration whenever the index's
+  // existing-path set changes (file-changed → indexStore.version bumps) or the
+  // open Concept switches (relative links resolve against a new base path).
+  $effect(() => {
+    // Track both reactive deps so the effect re-runs on either change.
+    void indexStore.version;
+    void editor.path;
+    if (view) refreshBrokenLinkDecorations(view);
   });
 
   function openConcept(path: string) {

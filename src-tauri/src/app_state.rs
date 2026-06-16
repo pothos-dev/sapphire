@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
+
+use crate::index::Index;
 
 /// How long after a self-write the watcher ignores echo events for that path.
 /// Generous enough to cover the fs event round-trip, short enough that a genuine
@@ -18,14 +20,20 @@ const SELF_WRITE_WINDOW: Duration = Duration::from_millis(1500);
 pub struct AppState {
     /// Canonicalized absolute path of the opened Bundle root.
     pub bundle_root: PathBuf,
+    /// In-memory Bundle index (frontmatter + links + reverse map), built on
+    /// startup and kept current by the watcher. Behind an `RwLock`: queries
+    /// (the common case) take a shared read lock; reindexing takes a write lock.
+    pub index: RwLock<Index>,
     /// Absolute path -> instant of Emerald's last write to it.
     self_writes: Mutex<HashMap<PathBuf, Instant>>,
 }
 
 impl AppState {
     pub fn new(bundle_root: PathBuf) -> Self {
+        let index = Index::build(&bundle_root);
         Self {
             bundle_root,
+            index: RwLock::new(index),
             self_writes: Mutex::new(HashMap::new()),
         }
     }

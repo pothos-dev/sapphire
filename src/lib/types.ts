@@ -41,6 +41,15 @@ export type FileChange = {
 };
 
 /**
+ * A tag and the number of Concepts that carry it. Matches the Rust `TagCount`
+ * (`serde rename_all = "camelCase"`). Returned by `Backend.allTags()`.
+ */
+export type TagCount = {
+  tag: string;
+  count: number;
+};
+
+/**
  * Parsed YAML frontmatter on a Concept. Only `type` is required; other keys
  * are recommended and unknown keys must be preserved. Filled in by later
  * index slices; defined here so the vocabulary is stable.

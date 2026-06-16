@@ -70,13 +70,23 @@ fn handle_event(app: &AppHandle, event: notify::Event) {
 
     let mut rel_paths: Vec<String> = Vec::new();
     for abs in &event.paths {
-        // Suppress Emerald's own writes (autosave echo).
+        let Some(rel) = to_bundle_relative(root, abs) else {
+            continue;
+        };
+
+        // Keep the index current for EVERY change, including Emerald's own
+        // autosave writes — the index must reflect on-disk truth regardless of
+        // who wrote it. (Only the *frontend event* is suppressed for self
+        // writes, below, to avoid reload loops / cursor jumps.)
+        if rel.ends_with(".md") {
+            update_index(&state, &rel, abs, kind);
+        }
+
+        // Suppress Emerald's own writes for the frontend echo.
         if state.is_recent_self_write(abs) {
             continue;
         }
-        if let Some(rel) = to_bundle_relative(root, abs) {
-            rel_paths.push(rel);
-        }
+        rel_paths.push(rel);
     }
 
     if rel_paths.is_empty() {
@@ -88,6 +98,28 @@ fn handle_event(app: &AppHandle, event: notify::Event) {
         paths: rel_paths,
     };
     let _ = app.emit(FILE_CHANGED_EVENT, payload);
+}
+
+/// Apply a single Concept change to the in-memory index. Created/modified read
+/// the new content from disk and reindex; removed drops the entry. Mirrors the
+/// startup build so the index stays correct without a restart. Lock-poison and
+/// transient read errors are tolerated (the index is best-effort; a stale entry
+/// never blocks editing — broken links are tolerated by design).
+fn update_index(state: &AppState, rel: &str, abs: &Path, kind: &str) {
+    let Ok(mut index) = state.index.write() else {
+        return;
+    };
+    match kind {
+        "removed" => index.remove_concept(rel),
+        _ => {
+            // created | modified: re-read and reindex. If the read fails (e.g. a
+            // create event for a file already gone), treat it as a removal.
+            match std::fs::read_to_string(abs) {
+                Ok(content) => index.reindex_concept(rel, &content),
+                Err(_) => index.remove_concept(rel),
+            }
+        }
+    }
 }
 
 /// Map a notify `EventKind` to our coarse "created"/"modified"/"removed"

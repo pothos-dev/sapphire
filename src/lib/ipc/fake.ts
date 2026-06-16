@@ -1,5 +1,6 @@
 import type { Backend } from './backend';
-import type { TreeNode, FileChange } from '$lib/types';
+import type { TreeNode, FileChange, TagCount } from '$lib/types';
+import { resolveLink } from '$lib/links';
 
 /**
  * In-memory Backend implementation over a seeded fixture Bundle.
@@ -118,6 +119,35 @@ This Concept has nested and multi-line frontmatter to prove verbatim
 round-tripping when an unrelated scalar is edited.
 `,
 
+  // A Concept exercising the broken-link decoration AND the backlink graph:
+  // it links to TWO existing Concepts (relative + bundle-absolute) and to TWO
+  // non-existent targets (relative + bundle-absolute). Broken links must render
+  // visually distinct yet stay clickable; existing links stay normal. This
+  // Concept also gives `concepts/codemirror.md` and `index.md` extra backlinks,
+  // making the backlinks query non-trivial.
+  'concepts/links-demo.md': `---
+type: concept
+title: Links Demo
+description: Exercises broken-link styling and the backlink graph.
+tags: [okf, links]
+---
+
+# Links Demo
+
+Working links resolve to real Concepts:
+
+- [CodeMirror](./codemirror.md) — existing (relative)
+- [Knowledge Base](/index.md) — existing (bundle-absolute)
+
+Broken links point at Concepts that do not exist; they must render distinct
+but stay clickable (never blocked, per the OKF spec):
+
+- [Ghost Concept](./ghost.md) — broken (relative)
+- [Missing Page](/does-not-exist.md) — broken (bundle-absolute)
+
+An external link is never treated as broken: [Example](https://example.com).
+`,
+
   'concepts/editor/live-preview.md': `---
 type: concept
 title: Live Preview
@@ -215,6 +245,84 @@ function buildTree(): TreeNode {
   return root;
 }
 
+// ---------------------------------------------------------------------------
+// In-memory Bundle index, computed over the FILES fixture.
+//
+// Mirrors the Rust `index.rs` behaviour closely enough to test the UI: parse
+// `type`/`tags` from frontmatter, extract outbound internal links (reusing the
+// shared `resolveLink` so resolution matches the editor exactly), and derive a
+// reverse (backlink) map plus tag/type aggregates. Recomputed on demand from
+// FILES so created/removed/edited Concepts are reflected (like the real
+// watcher-maintained index).
+// ---------------------------------------------------------------------------
+
+/** Split a Concept into its raw frontmatter block (or null) and body. */
+function splitFrontmatter(content: string): { yaml: string | null; body: string } {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(content);
+  if (!m) return { yaml: null, body: content };
+  return { yaml: m[1], body: content.slice(m[0].length) };
+}
+
+/** Parse `type` (scalar) and `tags` (flat `[a, b]` or block list) from YAML. */
+function parseFrontmatter(content: string): { type: string | null; tags: string[] } {
+  const { yaml } = splitFrontmatter(content);
+  if (yaml === null) return { type: null, tags: [] };
+
+  let type: string | null = null;
+  const tags: string[] = [];
+  const lines = yaml.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const typeMatch = /^type:\s*(.*)$/.exec(line);
+    if (typeMatch) {
+      const v = typeMatch[1].trim();
+      type = v === '' ? null : v;
+      continue;
+    }
+    const tagsInline = /^tags:\s*\[(.*)\]\s*$/.exec(line);
+    if (tagsInline) {
+      for (const t of tagsInline[1].split(',')) {
+        const tag = t.trim();
+        if (tag !== '') tags.push(tag);
+      }
+      continue;
+    }
+    if (/^tags:\s*$/.test(line)) {
+      // Block list: collect following `  - tag` lines.
+      for (let j = i + 1; j < lines.length; j++) {
+        const item = /^\s*-\s*(.+?)\s*$/.exec(lines[j]);
+        if (!item) break;
+        tags.push(item[1]);
+      }
+    }
+  }
+  return { type, tags };
+}
+
+/** Extract outbound internal link targets from a Concept's body, resolved. */
+function outboundLinks(path: string, content: string): string[] {
+  const { body } = splitFrontmatter(content);
+  const targets = new Set<string>();
+  // [text](target) but NOT images ![alt](src): require no `!` before `[`.
+  const re = /(!?)\[[^\]]*\]\(([^)]*)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    if (m[1] === '!') continue; // image, not a Concept link
+    // Drop a trailing "title" inside the parens.
+    const href = m[2].trim().split(/\s+/)[0];
+    const resolved = resolveLink(path, href);
+    if (resolved.kind === 'internal') targets.add(resolved.path);
+  }
+  return [...targets];
+}
+
+/** All `.md` Concept paths currently in the fixture. */
+function conceptPaths(): string[] {
+  return Object.keys(FILES)
+    .filter((p) => p.endsWith('.md'))
+    .sort();
+}
+
 /** Reject paths that escape the bundle, mirroring the Rust validation. */
 function isSafePath(path: string): boolean {
   if (path.startsWith('/')) return false;
@@ -292,5 +400,46 @@ export const fakeBackend: Backend = {
     return () => {
       fileChangeSubscribers.delete(cb);
     };
+  },
+
+  async listConceptPaths(): Promise<string[]> {
+    return conceptPaths();
+  },
+
+  async conceptExists(path: string): Promise<boolean> {
+    return path.endsWith('.md') && Object.prototype.hasOwnProperty.call(FILES, path);
+  },
+
+  async backlinks(path: string): Promise<string[]> {
+    const sources: string[] = [];
+    for (const source of conceptPaths()) {
+      if (outboundLinks(source, FILES[source]).includes(path)) {
+        sources.push(source);
+      }
+    }
+    return sources.sort();
+  },
+
+  async allTags(): Promise<TagCount[]> {
+    const counts = new Map<string, number>();
+    for (const path of conceptPaths()) {
+      const { tags } = parseFrontmatter(FILES[path]);
+      // De-dupe within a Concept so a repeated tag counts once.
+      for (const tag of new Set(tags)) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => a.tag.localeCompare(b.tag));
+  },
+
+  async allTypes(): Promise<string[]> {
+    const set = new Set<string>();
+    for (const path of conceptPaths()) {
+      const { type } = parseFrontmatter(FILES[path]);
+      if (type !== null && type !== '') set.add(type);
+    }
+    return [...set].sort();
   },
 };

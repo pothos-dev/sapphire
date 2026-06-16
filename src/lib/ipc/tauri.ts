@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { Backend } from './backend';
-import type { TreeNode, FileChange } from '$lib/types';
+import type { TreeNode, FileChange, TagCount } from '$lib/types';
 
 /** Tauri event name emitted by the Rust watcher (matches watcher.rs). */
 const FILE_CHANGED_EVENT = 'file-changed';
@@ -49,5 +49,25 @@ export const tauriBackend: Backend = {
       unlisten?.();
       unlisten = null;
     };
+  },
+
+  listConceptPaths(): Promise<string[]> {
+    return invoke<string[]>('list_concept_paths');
+  },
+
+  conceptExists(path: string): Promise<boolean> {
+    return invoke<boolean>('concept_exists', { path });
+  },
+
+  backlinks(path: string): Promise<string[]> {
+    return invoke<string[]>('backlinks', { path });
+  },
+
+  allTags(): Promise<TagCount[]> {
+    return invoke<TagCount[]>('all_tags');
+  },
+
+  allTypes(): Promise<string[]> {
+    return invoke<string[]>('all_types');
   },
 };

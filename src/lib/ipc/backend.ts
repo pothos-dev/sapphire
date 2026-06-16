@@ -1,4 +1,4 @@
-import type { TreeNode, FileChange } from '$lib/types';
+import type { TreeNode, FileChange, TagCount } from '$lib/types';
 
 /**
  * The Backend interface is the ONLY boundary between the frontend and Rust.
@@ -37,6 +37,31 @@ export interface Backend {
    */
   onFileChanged(cb: (change: FileChange) => void): () => void;
 
-  // slice 6:  indexQuery(...)
+  // --- Bundle index queries (slice: bundle-index-broken-links) ---
+  // The Rust index is built on startup and kept current by the watcher. These
+  // are the consumers' read surface over it. Paths are bundle-relative.
+
+  /**
+   * Every Concept path in the Bundle index. The broken-link decoration seeds a
+   * SYNCHRONOUS existence cache from this (CodeMirror decorations are
+   * synchronous, so they cannot await a per-link `conceptExists`). The cache is
+   * refreshed on `onFileChanged` and on Concept switch. We expose the full list
+   * (over per-path `conceptExists`) precisely because a one-shot snapshot makes
+   * the synchronous decoration efficient.
+   */
+  listConceptPaths(): Promise<string[]>;
+
+  /** Whether a Concept exists at `path` (companion to `listConceptPaths`). */
+  conceptExists(path: string): Promise<boolean>;
+
+  /** Sources linking TO `path` (backlinks). Used by the backlinks panel (slice 7). */
+  backlinks(path: string): Promise<string[]>;
+
+  /** All tags across the Bundle with per-tag counts. Used by the tags view (slice 8). */
+  allTags(): Promise<TagCount[]>;
+
+  /** All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12). */
+  allTypes(): Promise<string[]>;
+
   // slice 14: search(query)
 }
