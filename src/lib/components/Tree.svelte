@@ -9,11 +9,19 @@
     selected: string | null;
     /** called when a `.md` file is clicked */
     onopen: (path: string) => void;
+    /** called on right-click (or the per-row menu button) with the node + coords */
+    onmenu: (node: TreeNode, x: number, y: number) => void;
     /** depth for indentation (root's children start at 0) */
     depth?: number;
   }
 
-  let { node, selected, onopen, depth = 0 }: Props = $props();
+  let { node, selected, onopen, onmenu, depth = 0 }: Props = $props();
+
+  function openMenu(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    onmenu(node, e.clientX, e.clientY);
+  }
 
   // Expanded state is owned by the session store (persisted per-Bundle, restored
   // on launch). The store is seeded with the default-open folders (depth < 2) on
@@ -31,23 +39,31 @@
 </script>
 
 {#if node.isDir}
-  <div class="row dir" style="padding-left: {indent}px">
+  <div class="row dir" style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected="false" tabindex="-1">
     <button class="entry dir-toggle" type="button" onclick={toggle} aria-expanded={expanded}>
       <span class="twisty" class:open={expanded}>▸</span>
       <span class="name">{node.name}</span>
     </button>
+    <button
+      class="menu-btn"
+      type="button"
+      title="Actions"
+      aria-label="Folder actions"
+      data-menu-path={node.path}
+      onclick={openMenu}
+    >⋯</button>
   </div>
   {#if expanded && node.children}
     <ul class="children">
       {#each node.children as child (child.path)}
         <li>
-          <Self node={child} {selected} {onopen} depth={depth + 1} />
+          <Self node={child} {selected} {onopen} {onmenu} depth={depth + 1} />
         </li>
       {/each}
     </ul>
   {/if}
 {:else}
-  <div class="row file" style="padding-left: {indent}px">
+  <div class="row file" style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected={selected === node.path} tabindex="-1">
     <button
       class="entry file-entry"
       class:selected={selected === node.path}
@@ -59,6 +75,14 @@
     >
       <span class="name">{node.name}</span>
     </button>
+    <button
+      class="menu-btn"
+      type="button"
+      title="Actions"
+      aria-label="Concept actions"
+      data-menu-path={node.path}
+      onclick={openMenu}
+    >⋯</button>
   </div>
 {/if}
 
@@ -71,13 +95,39 @@
 
   .row {
     display: flex;
+    align-items: center;
+  }
+
+  .menu-btn {
+    flex: 0 0 auto;
+    visibility: hidden;
+    width: 1.5rem;
+    margin-right: 0.2rem;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 4px;
+    opacity: 0.7;
+  }
+
+  .row:hover .menu-btn {
+    visibility: visible;
+  }
+
+  .menu-btn:hover {
+    background: rgba(127, 127, 127, 0.2);
+    opacity: 1;
   }
 
   .entry {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
     padding: 0.15rem 0.4rem;
     border: none;
     background: none;

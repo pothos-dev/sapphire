@@ -147,6 +147,35 @@ class EditorStore {
   }
 
   /**
+   * Follow the open Concept across a rename/move. If the currently-open path
+   * (or an ancestor folder of it) was renamed, rewrite `path` and the history
+   * entries to the new location so the editor keeps pointing at the same
+   * Concept (no spurious reload — the content is unchanged on disk). Called by
+   * the tree-CRUD UI, which knows the from→to mapping (the watcher's separate
+   * removed/created events cannot convey it). Returns the new open path, if any.
+   */
+  followRename(from: string, to: string): string | null {
+    const remap = (p: string): string | null => {
+      if (p === from) return to;
+      if (p.startsWith(`${from}/`)) return `${to}/${p.slice(from.length + 1)}`;
+      return null;
+    };
+
+    // Rewrite any affected history entries so Back/Forward stay valid.
+    let changed = false;
+    this.history = this.history.map((p) => {
+      const next = remap(p);
+      if (next !== null) changed = true;
+      return next ?? p;
+    });
+
+    const openNext = this.path === null ? null : remap(this.path);
+    if (openNext !== null) this.path = openNext;
+
+    return changed || openNext !== null ? (this.path ?? null) : null;
+  }
+
+  /**
    * React to an external filesystem change. If the open Concept's file changed
    * on disk (by another tool), reload it so the editor reflects the new content;
    * if it was removed, clear the editor. Other paths are ignored here (the tree

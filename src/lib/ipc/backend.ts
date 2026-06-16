@@ -37,6 +37,44 @@ export interface Backend {
    */
   onFileChanged(cb: (change: FileChange) => void): () => void;
 
+  // --- Tree CRUD (slice: tree-crud) ---
+  // Structural filesystem operations driven from the document tree. All paths
+  // are bundle-relative, forward-slash; the backend validates them against the
+  // Bundle root and rejects escapes / invalid targets. These are NOT recorded
+  // as self-writes: structural changes SHOULD refresh the tree + index via the
+  // watcher's `file-changed` event. Move/rename is a plain filesystem operation
+  // here — inbound links are NOT rewritten (a later slice); broken links are
+  // tolerated.
+
+  /**
+   * Create a new, empty Concept (`.md`) at `path`. The minimal stub is an empty
+   * file — the rich frontmatter scaffold is a later slice. Rejects a non-`.md`
+   * path, an existing target, or a path whose parent folder is missing.
+   */
+  createConcept(path: string): Promise<void>;
+
+  /** Create a new folder (and any missing parents) at `path`. */
+  createFolder(path: string): Promise<void>;
+
+  /**
+   * Rename or move `from` to `to` (both bundle-relative). Plain filesystem
+   * rename: works for both Concepts and folders; rejects an existing target or
+   * a missing target folder. Links are NOT rewritten.
+   */
+  renamePath(from: string, to: string): Promise<void>;
+
+  /**
+   * Move `from` into the folder `toDir` (bundle-relative; '' for the Bundle
+   * root), keeping the original name. Convenience over `renamePath`.
+   */
+  movePath(from: string, toDir: string): Promise<void>;
+
+  /**
+   * Delete `path` (a Concept or a folder, recursively). The frontend confirms
+   * before calling this to avoid accidental data loss.
+   */
+  deletePath(path: string): Promise<void>;
+
   // --- Bundle index queries (slice: bundle-index-broken-links) ---
   // The Rust index is built on startup and kept current by the watcher. These
   // are the consumers' read surface over it. Paths are bundle-relative.

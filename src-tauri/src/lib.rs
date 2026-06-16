@@ -39,6 +39,45 @@ fn write_concept(state: State<'_, AppState>, path: String, content: String) -> R
     Ok(())
 }
 
+/// Create a new, empty Concept (`.md`) at `path` (bundle-relative). The minimal
+/// stub is an empty file; the rich frontmatter scaffold is a later slice. NOT
+/// recorded as a self-write: a structural create SHOULD refresh the tree.
+#[tauri::command]
+fn create_concept(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    bundle::create_concept(&state.bundle_root, &path)?;
+    Ok(())
+}
+
+/// Create a new folder (and any missing parents) at `path` (bundle-relative).
+#[tauri::command]
+fn create_folder(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    bundle::create_folder(&state.bundle_root, &path)?;
+    Ok(())
+}
+
+/// Rename/move `from` to `to` (both bundle-relative). Plain filesystem rename —
+/// inbound links are NOT rewritten (a later slice). Works for Concepts + folders.
+#[tauri::command]
+fn rename_path(state: State<'_, AppState>, from: String, to: String) -> Result<(), String> {
+    bundle::rename_path(&state.bundle_root, &from, &to)?;
+    Ok(())
+}
+
+/// Move `from` into the folder `toDir` (bundle-relative; '' for the root),
+/// keeping the original name. Convenience over `rename_path`.
+#[tauri::command]
+fn move_path(state: State<'_, AppState>, from: String, to_dir: String) -> Result<(), String> {
+    bundle::move_path(&state.bundle_root, &from, &to_dir)?;
+    Ok(())
+}
+
+/// Delete `path` (a Concept or a folder, recursively). The frontend confirms
+/// before calling this.
+#[tauri::command]
+fn delete_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    bundle::delete_path(&state.bundle_root, &path)
+}
+
 /// Every Concept path in the Bundle index. The frontend seeds its synchronous
 /// broken-link existence cache from this (one query instead of per-link calls).
 #[tauri::command]
@@ -186,6 +225,11 @@ pub fn run() {
             list_tree,
             read_concept,
             write_concept,
+            create_concept,
+            create_folder,
+            rename_path,
+            move_path,
+            delete_path,
             list_concept_paths,
             concept_exists,
             backlinks,

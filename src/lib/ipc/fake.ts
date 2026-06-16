@@ -197,6 +197,13 @@ Built on [CodeMirror](../codemirror.md).
 };
 
 /**
+ * Explicitly-created folders that contain no `.md` file yet. Folders are
+ * normally inferred from file paths, but `createFolder` can make an empty one;
+ * we track those here so the tree reflects them (like a real empty directory).
+ */
+const FOLDERS = new Set<string>();
+
+/**
  * Build the recursive TreeNode for the fixture from the flat FILES map.
  * Directories are inferred from path segments; only `.md` files are listed
  * (the fixture contains only markdown, mirroring an OKF Bundle's focus).
@@ -222,6 +229,9 @@ function buildTree(): TreeNode {
     dirs.set(dirPath, node);
     return node;
   };
+
+  // Explicitly-created empty folders (and their ancestors).
+  for (const folder of FOLDERS) ensureDir(folder);
 
   for (const path of Object.keys(FILES)) {
     const slash = path.lastIndexOf('/');
@@ -356,6 +366,91 @@ function simulateExternalChange(
   }
 }
 
+/**
+ * Notify subscribers of an already-applied change (the caller mutated FILES /
+ * FOLDERS first). Used by the tree-CRUD ops, which — unlike `writeConcept` —
+ * DO deliver to subscribers so the tree + index refresh.
+ */
+function notifyFsChange(kind: FileChange['kind'], path: string): void {
+  for (const cb of fileChangeSubscribers) {
+    cb({ kind, paths: [path] });
+  }
+}
+
+/** True if `path` is an existing folder (explicit, or implied by a file). */
+function folderExists(path: string): boolean {
+  if (FOLDERS.has(path)) return true;
+  const prefix = `${path}/`;
+  return Object.keys(FILES).some((p) => p.startsWith(prefix));
+}
+
+/** True if `path` is an existing file OR folder. */
+function pathExists(path: string): boolean {
+  return Object.prototype.hasOwnProperty.call(FILES, path) || folderExists(path);
+}
+
+/**
+ * Rename/move `from` to `to`, handling both a single Concept and a folder
+ * (rewriting every descendant path). Mutates FILES + FOLDERS in place.
+ */
+function renameInternal(from: string, to: string): void {
+  if (!pathExists(from)) throw new Error(`no such path: ${from}`);
+  if (pathExists(to)) throw new Error(`already exists: ${to}`);
+
+  if (Object.prototype.hasOwnProperty.call(FILES, from)) {
+    // Single file.
+    FILES[to] = FILES[from];
+    delete FILES[from];
+    return;
+  }
+
+  // Folder: move it and every descendant (files + tracked subfolders).
+  const fromPrefix = `${from}/`;
+  for (const p of Object.keys(FILES)) {
+    if (p.startsWith(fromPrefix)) {
+      FILES[`${to}/${p.slice(fromPrefix.length)}`] = FILES[p];
+      delete FILES[p];
+    }
+  }
+  for (const f of [...FOLDERS]) {
+    if (f === from) {
+      FOLDERS.delete(f);
+      FOLDERS.add(to);
+    } else if (f.startsWith(fromPrefix)) {
+      FOLDERS.delete(f);
+      FOLDERS.add(`${to}/${f.slice(fromPrefix.length)}`);
+    }
+  }
+  FOLDERS.add(to);
+}
+
+/**
+ * Delete `path` (file or folder, recursively). Returns the list of removed
+ * paths (so each can be reported as a `removed` change).
+ */
+function deleteInternal(path: string): string[] {
+  const removed: string[] = [];
+  if (Object.prototype.hasOwnProperty.call(FILES, path)) {
+    delete FILES[path];
+    removed.push(path);
+    return removed;
+  }
+  if (folderExists(path)) {
+    const prefix = `${path}/`;
+    for (const p of Object.keys(FILES)) {
+      if (p.startsWith(prefix)) {
+        delete FILES[p];
+        removed.push(p);
+      }
+    }
+    for (const f of [...FOLDERS]) {
+      if (f === path || f.startsWith(prefix)) FOLDERS.delete(f);
+    }
+    removed.push(path);
+  }
+  return removed;
+}
+
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__emeraldFake = {
     simulateExternalChange,
@@ -400,6 +495,60 @@ export const fakeBackend: Backend = {
     return () => {
       fileChangeSubscribers.delete(cb);
     };
+  },
+
+  // --- Tree CRUD (slice: tree-crud) ---
+  // Mutate the in-memory fixture, then notify subscribers — structural changes
+  // SHOULD refresh the tree + index (unlike `writeConcept`, which is Emerald's
+  // own autosave and is suppressed). This mirrors the real backend, where these
+  // ops are NOT recorded as self-writes so the watcher's `file-changed` fires.
+
+  async createConcept(path: string): Promise<void> {
+    if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
+    if (!path.endsWith('.md')) throw new Error(`a Concept path must end in .md: ${path}`);
+    if (Object.prototype.hasOwnProperty.call(FILES, path)) {
+      throw new Error(`already exists: ${path}`);
+    }
+    FILES[path] = '';
+    notifyFsChange('created', path);
+  },
+
+  async createFolder(path: string): Promise<void> {
+    if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
+    if (path === '') throw new Error('path must not be empty');
+    if (folderExists(path)) throw new Error(`already exists: ${path}`);
+    FOLDERS.add(path);
+    notifyFsChange('created', path);
+  },
+
+  async renamePath(from: string, to: string): Promise<void> {
+    if (!isSafePath(from) || !isSafePath(to)) {
+      throw new Error('path escapes the bundle');
+    }
+    renameInternal(from, to);
+    // A rename is a remove of the old path + create of the new one.
+    notifyFsChange('removed', from);
+    notifyFsChange('created', to);
+  },
+
+  async movePath(from: string, toDir: string): Promise<void> {
+    if (!isSafePath(from) || (toDir !== '' && !isSafePath(toDir))) {
+      throw new Error('path escapes the bundle');
+    }
+    const name = from.split('/').filter(Boolean).pop();
+    if (!name) throw new Error(`invalid source path: ${from}`);
+    const to = toDir === '' ? name : `${toDir.replace(/\/+$/, '')}/${name}`;
+    if (to === from) throw new Error(`already in that folder: ${from}`);
+    renameInternal(from, to);
+    notifyFsChange('removed', from);
+    notifyFsChange('created', to);
+  },
+
+  async deletePath(path: string): Promise<void> {
+    if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
+    const removed = deleteInternal(path);
+    if (removed.length === 0) throw new Error(`no such path: ${path}`);
+    for (const p of removed) notifyFsChange('removed', p);
   },
 
   async listConceptPaths(): Promise<string[]> {

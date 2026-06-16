@@ -11,9 +11,11 @@
   import { buildEditor, setEditorDoc, refreshBrokenLinkDecorations } from '$lib/editor/cm';
   import { resolveLink } from '$lib/links';
   import Tree from '$lib/components/Tree.svelte';
+  import ContextMenu from '$lib/components/ContextMenu.svelte';
   import Properties from '$lib/components/Properties.svelte';
   import Backlinks from '$lib/components/Backlinks.svelte';
   import TagBrowser from '$lib/components/TagBrowser.svelte';
+  import { treeActions } from '$lib/state/treeActions.svelte';
 
   let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
@@ -174,6 +176,99 @@
     editor.edit(content);
     void editor.flush();
   }
+
+  // --- Tree CRUD: context menu + dialogs (slice: tree-crud) ---
+
+  type Dialog =
+    | { kind: 'newConcept' | 'newFolder' | 'rename'; node: TreeNode; value: string }
+    | { kind: 'move'; node: TreeNode; value: string }
+    | { kind: 'delete'; node: TreeNode };
+
+  // The open context menu (right-click / per-row ⋯), or null.
+  let menu = $state<{ node: TreeNode; x: number; y: number } | null>(null);
+  // The open modal dialog (name prompt / move picker / delete confirm), or null.
+  let dialog = $state<Dialog | null>(null);
+
+  /** The folder containing `path` ('' for the Bundle root). */
+  function parentOf(path: string): string {
+    const slash = path.lastIndexOf('/');
+    return slash === -1 ? '' : path.slice(0, slash);
+  }
+
+  /**
+   * Folder a NEW child of `node` should live in: the node itself if it's a
+   * directory, else its containing folder.
+   */
+  function childDirOf(node: TreeNode): string {
+    return node.isDir ? node.path : parentOf(node.path);
+  }
+
+  /** Join a folder ('' = root) and a name into a bundle-relative path. */
+  function joinPath(dir: string, name: string): string {
+    return dir === '' ? name : `${dir}/${name}`;
+  }
+
+  /** All folder paths in the tree (for the Move picker), '' = Bundle root. */
+  function folderPaths(node: TreeNode, out: string[] = []): string[] {
+    if (node.isDir) {
+      out.push(node.path);
+      for (const child of node.children ?? []) folderPaths(child, out);
+    }
+    return out;
+  }
+
+  function openMenu(node: TreeNode, x: number, y: number) {
+    menu = { node, x, y };
+  }
+
+  const MENU_ITEMS = [
+    { id: 'newConcept', label: 'New Concept' },
+    { id: 'newFolder', label: 'New Folder' },
+    { id: 'rename', label: 'Rename', separated: true },
+    { id: 'move', label: 'Move…' },
+    { id: 'delete', label: 'Delete', separated: true, danger: true },
+  ];
+
+  function onMenuSelect(id: string) {
+    const node = menu?.node;
+    if (!node) return;
+    if (id === 'newConcept') dialog = { kind: 'newConcept', node, value: '' };
+    else if (id === 'newFolder') dialog = { kind: 'newFolder', node, value: '' };
+    else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name };
+    else if (id === 'move') dialog = { kind: 'move', node, value: parentOf(node.path) };
+    else if (id === 'delete') dialog = { kind: 'delete', node };
+  }
+
+  function closeDialog() {
+    dialog = null;
+  }
+
+  async function confirmDialog() {
+    if (!dialog) return;
+    const d = dialog;
+    if (d.kind === 'newConcept') {
+      const name = d.value.trim();
+      if (name === '') return;
+      const file = name.endsWith('.md') ? name : `${name}.md`;
+      await treeActions.createConcept(joinPath(childDirOf(d.node), file));
+    } else if (d.kind === 'newFolder') {
+      const name = d.value.trim();
+      if (name === '') return;
+      await treeActions.createFolder(joinPath(childDirOf(d.node), name));
+    } else if (d.kind === 'rename') {
+      const name = d.value.trim();
+      if (name === '' || name === d.node.name) {
+        closeDialog();
+        return;
+      }
+      await treeActions.renamePath(d.node.path, joinPath(parentOf(d.node.path), name));
+    } else if (d.kind === 'move') {
+      await treeActions.movePath(d.node.path, d.value);
+    } else if (d.kind === 'delete') {
+      await treeActions.deletePath(d.node.path);
+    }
+    closeDialog();
+  }
 </script>
 
 <div class="app" data-testid="app-root" bind:this={appRoot}>
@@ -183,11 +278,32 @@
     {:else if bundle.error}
       <p class="status error">{bundle.error}</p>
     {:else if bundle.tree}
-      <div class="tree-root" data-testid="tree">
+      <div
+        class="tree-root"
+        data-testid="tree"
+        oncontextmenu={(e) => {
+          // Right-click on empty tree space targets the Bundle root.
+          if (e.target === e.currentTarget && bundle.tree) {
+            e.preventDefault();
+            openMenu(bundle.tree, e.clientX, e.clientY);
+          }
+        }}
+        role="tree"
+        tabindex="-1"
+      >
         {#each bundle.tree.children ?? [] as child (child.path)}
-          <Tree node={child} selected={editor.path} onopen={openConcept} />
+          <Tree node={child} selected={editor.path} onopen={openConcept} onmenu={openMenu} />
         {/each}
       </div>
+      <button
+        type="button"
+        class="root-new"
+        data-testid="root-new-concept"
+        onclick={() => bundle.tree && openMenu(bundle.tree, 16, 80)}
+      >+ New…</button>
+    {/if}
+    {#if treeActions.error}
+      <p class="status error" data-testid="tree-error">{treeActions.error}</p>
     {/if}
   </aside>
 
@@ -238,6 +354,82 @@
     <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
     <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
   </aside>
+
+  {#if menu}
+    <ContextMenu
+      x={menu.x}
+      y={menu.y}
+      items={MENU_ITEMS}
+      onselect={onMenuSelect}
+      onclose={() => (menu = null)}
+    />
+  {/if}
+
+  {#if dialog}
+    <div class="dialog-backdrop" role="presentation" onclick={closeDialog}></div>
+    <div class="dialog" role="dialog" aria-modal="true" data-testid="tree-dialog">
+      {#if dialog.kind === 'delete'}
+        <p class="dialog-title">Delete “{dialog.node.name}”?</p>
+        <p class="dialog-body">
+          This {dialog.node.isDir ? 'folder and everything in it' : 'Concept'} will be
+          permanently removed.
+        </p>
+        <div class="dialog-actions">
+          <button type="button" onclick={closeDialog}>Cancel</button>
+          <button
+            type="button"
+            class="danger"
+            data-testid="dialog-confirm"
+            onclick={confirmDialog}>Delete</button
+          >
+        </div>
+      {:else if dialog.kind === 'move'}
+        <p class="dialog-title">Move “{dialog.node.name}” to…</p>
+        <select
+          class="dialog-input"
+          data-testid="dialog-move-target"
+          bind:value={dialog.value}
+        >
+          {#each folderPaths(bundle.tree ?? { name: '', path: '', isDir: true, children: [] }) as dir (dir)}
+            <option value={dir}>{dir === '' ? '/ (Bundle root)' : dir}</option>
+          {/each}
+        </select>
+        <div class="dialog-actions">
+          <button type="button" onclick={closeDialog}>Cancel</button>
+          <button type="button" data-testid="dialog-confirm" onclick={confirmDialog}>Move</button>
+        </div>
+      {:else}
+        <p class="dialog-title">
+          {dialog.kind === 'newConcept'
+            ? 'New Concept'
+            : dialog.kind === 'newFolder'
+              ? 'New Folder'
+              : 'Rename'}
+        </p>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          class="dialog-input"
+          type="text"
+          data-testid="dialog-input"
+          placeholder={dialog.kind === 'newConcept' ? 'name (.md optional)' : 'name'}
+          bind:value={dialog.value}
+          autofocus
+          onkeydown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void confirmDialog();
+            }
+          }}
+        />
+        <div class="dialog-actions">
+          <button type="button" onclick={closeDialog}>Cancel</button>
+          <button type="button" data-testid="dialog-confirm" onclick={confirmDialog}>
+            {dialog.kind === 'rename' ? 'Rename' : 'Create'}
+          </button>
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -346,5 +538,98 @@
 
   .status.error {
     color: #c0392b;
+  }
+
+  .root-new {
+    margin: 0.25rem 0.1rem;
+    padding: 0.2rem 0.5rem;
+    border: 1px dashed rgba(127, 127, 127, 0.4);
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    opacity: 0.8;
+  }
+
+  .root-new:hover {
+    background: rgba(127, 127, 127, 0.12);
+    opacity: 1;
+  }
+
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .dialog {
+    position: fixed;
+    z-index: 1101;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 280px;
+    padding: 1rem;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #0f0f0f;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  }
+
+  :global(.app[data-theme='dark']) .dialog {
+    background: #2a2a2a;
+    color: #e6e6e6;
+  }
+
+  .dialog-title {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+  }
+
+  .dialog-body {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .dialog-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.5rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgba(127, 127, 127, 0.4);
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+  }
+
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .dialog-actions button {
+    padding: 0.35rem 0.8rem;
+    border: 1px solid rgba(127, 127, 127, 0.4);
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .dialog-actions button:hover {
+    background: rgba(127, 127, 127, 0.15);
+  }
+
+  .dialog-actions button.danger {
+    color: #fff;
+    background: #c0392b;
+    border-color: #c0392b;
   }
 </style>

@@ -51,6 +51,27 @@ export const tauriBackend: Backend = {
     };
   },
 
+  createConcept(path: string): Promise<void> {
+    return invoke<void>('create_concept', { path });
+  },
+
+  createFolder(path: string): Promise<void> {
+    return invoke<void>('create_folder', { path });
+  },
+
+  renamePath(from: string, to: string): Promise<void> {
+    return invoke<void>('rename_path', { from, to });
+  },
+
+  movePath(from: string, toDir: string): Promise<void> {
+    // Tauri command arg names are snake_case; `to_dir` matches lib.rs.
+    return invoke<void>('move_path', { from, toDir });
+  },
+
+  deletePath(path: string): Promise<void> {
+    return invoke<void>('delete_path', { path });
+  },
+
   listConceptPaths(): Promise<string[]> {
     return invoke<string[]>('list_concept_paths');
   },

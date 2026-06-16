@@ -143,6 +143,85 @@ pub fn write_concept(root: &Path, rel_path: &str, content: &str) -> Result<PathB
     Ok(resolved)
 }
 
+/// Create a new, empty Concept (`.md`) at `rel_path`. The minimal stub here is
+/// an empty file — the rich frontmatter scaffold is a later slice. Rejects a
+/// non-`.md` path, an escaping path, or an existing target. Parent folders must
+/// already exist (use `create_folder` first). Returns the resolved absolute path
+/// (not recorded as a self-write: a structural create SHOULD refresh the tree).
+pub fn create_concept(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
+    if !rel_path.ends_with(".md") {
+        return Err(format!("a Concept path must end in .md: {rel_path}"));
+    }
+    let resolved = resolve_new(root, rel_path)?;
+    if resolved.exists() {
+        return Err(format!("already exists: {rel_path}"));
+    }
+    std::fs::write(&resolved, "").map_err(|e| e.to_string())?;
+    Ok(resolved)
+}
+
+/// Create a new folder at `rel_path` (and any missing parents). Rejects an
+/// escaping path or an existing target. Returns the resolved absolute path.
+pub fn create_folder(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
+    let resolved = resolve_new(root, rel_path)?;
+    if resolved.exists() {
+        return Err(format!("already exists: {rel_path}"));
+    }
+    std::fs::create_dir_all(&resolved).map_err(|e| e.to_string())?;
+    Ok(resolved)
+}
+
+/// Rename (or move, when the target is in a different folder) `from` to `to`.
+/// Both are bundle-relative; `from` must exist, `to` must not. This is a PLAIN
+/// filesystem rename — inbound links are NOT rewritten (a later slice). Works
+/// for both Concepts and folders. Returns the resolved `to` absolute path.
+pub fn rename_path(root: &Path, from: &str, to: &str) -> Result<PathBuf, String> {
+    let src = resolve(root, from)?;
+    let dst = resolve_new(root, to)?;
+    if dst.exists() {
+        return Err(format!("already exists: {to}"));
+    }
+    if let Some(parent) = dst.parent() {
+        if !parent.exists() {
+            return Err(format!("target folder does not exist: {to}"));
+        }
+    }
+    std::fs::rename(&src, &dst).map_err(|e| e.to_string())?;
+    Ok(dst)
+}
+
+/// Move `from` into the folder `to_dir` (both bundle-relative; `to_dir` is ''
+/// for the Bundle root), keeping the original file/folder name. Convenience over
+/// `rename_path` for the tree's "move into folder" action. Returns the resolved
+/// destination absolute path.
+pub fn move_path(root: &Path, from: &str, to_dir: &str) -> Result<PathBuf, String> {
+    let name = from
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("invalid source path: {from}"))?;
+    let to = if to_dir.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}/{}", to_dir.trim_end_matches('/'), name)
+    };
+    if to == from {
+        return Err(format!("already in that folder: {from}"));
+    }
+    rename_path(root, from, &to)
+}
+
+/// Delete `rel_path` (a Concept or a folder, recursively). The path must exist
+/// and stay within the Bundle. The frontend confirms before calling this.
+pub fn delete_path(root: &Path, rel_path: &str) -> Result<(), String> {
+    let resolved = resolve(root, rel_path)?;
+    if resolved.is_dir() {
+        std::fs::remove_dir_all(&resolved).map_err(|e| e.to_string())
+    } else {
+        std::fs::remove_file(&resolved).map_err(|e| e.to_string())
+    }
+}
+
 /// Resolve a bundle-relative path against the root, rejecting escapes
 /// (`..`, absolute paths, or anything outside the Bundle).
 pub fn resolve(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
@@ -167,6 +246,50 @@ pub fn resolve(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
+/// Resolve a bundle-relative path for a target that may NOT yet exist (create,
+/// rename/move destination). `resolve` canonicalizes the full path and so fails
+/// for a non-existent target; here we validate the components for escapes and
+/// canonicalize the nearest existing ancestor to confirm containment, then
+/// re-append the remaining segments. Rejects absolute paths and `..` escapes.
+pub fn resolve_new(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
+    let rel = Path::new(rel_path);
+    if rel.is_absolute() {
+        return Err(format!("path must be bundle-relative: {rel_path}"));
+    }
+    if rel.as_os_str().is_empty() {
+        return Err("path must not be empty".to_string());
+    }
+    for component in rel.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            _ => return Err(format!("path escapes the bundle: {rel_path}")),
+        }
+    }
+    let joined = root.join(rel);
+
+    // Walk up to the nearest existing ancestor, canonicalize it, and confirm it
+    // is within the (canonical) root. This catches symlink escapes for the
+    // existing portion while tolerating the not-yet-created tail.
+    let mut existing = joined.as_path();
+    loop {
+        match existing.parent() {
+            Some(p) => {
+                if existing.exists() {
+                    break;
+                }
+                existing = p;
+            }
+            None => break,
+        }
+    }
+    if let Ok(canonical_ancestor) = existing.canonicalize() {
+        if !canonical_ancestor.starts_with(root) {
+            return Err(format!("path escapes the bundle: {rel_path}"));
+        }
+    }
+    Ok(joined)
+}
+
 /// Convert a relative `Path` to a '/'-separated bundle-relative string.
 fn to_rel_string(rel: &Path) -> String {
     rel.components()
@@ -176,4 +299,94 @@ fn to_rel_string(rel: &Path) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    /// A throwaway canonicalized bundle root under the OS temp dir.
+    fn temp_root() -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "emerald-tree-crud-{}-{}",
+            std::process::id(),
+            n
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn create_concept_writes_empty_md() {
+        let root = temp_root();
+        create_concept(&root, "note.md").unwrap();
+        assert_eq!(std::fs::read_to_string(root.join("note.md")).unwrap(), "");
+    }
+
+    #[test]
+    fn create_concept_rejects_non_md_and_existing() {
+        let root = temp_root();
+        assert!(create_concept(&root, "note.txt").is_err());
+        create_concept(&root, "note.md").unwrap();
+        assert!(create_concept(&root, "note.md").is_err());
+    }
+
+    #[test]
+    fn create_folder_and_nested_create() {
+        let root = temp_root();
+        create_folder(&root, "sub/deep").unwrap();
+        assert!(root.join("sub/deep").is_dir());
+        create_concept(&root, "sub/deep/a.md").unwrap();
+        assert!(root.join("sub/deep/a.md").is_file());
+    }
+
+    #[test]
+    fn rename_moves_and_rejects_existing_target() {
+        let root = temp_root();
+        create_concept(&root, "a.md").unwrap();
+        rename_path(&root, "a.md", "b.md").unwrap();
+        assert!(!root.join("a.md").exists());
+        assert!(root.join("b.md").exists());
+
+        create_concept(&root, "c.md").unwrap();
+        assert!(rename_path(&root, "b.md", "c.md").is_err());
+    }
+
+    #[test]
+    fn move_into_folder_keeps_name() {
+        let root = temp_root();
+        create_folder(&root, "folder").unwrap();
+        create_concept(&root, "a.md").unwrap();
+        move_path(&root, "a.md", "folder").unwrap();
+        assert!(root.join("folder/a.md").exists());
+        // Moving back to root works too.
+        move_path(&root, "folder/a.md", "").unwrap();
+        assert!(root.join("a.md").exists());
+    }
+
+    #[test]
+    fn delete_file_and_folder() {
+        let root = temp_root();
+        create_concept(&root, "a.md").unwrap();
+        delete_path(&root, "a.md").unwrap();
+        assert!(!root.join("a.md").exists());
+
+        create_folder(&root, "folder").unwrap();
+        create_concept(&root, "folder/b.md").unwrap();
+        delete_path(&root, "folder").unwrap();
+        assert!(!root.join("folder").exists());
+    }
+
+    #[test]
+    fn rejects_escapes() {
+        let root = temp_root();
+        assert!(create_concept(&root, "../escape.md").is_err());
+        assert!(create_folder(&root, "../escape").is_err());
+        assert!(resolve_new(&root, "/abs/path.md").is_err());
+        assert!(resolve_new(&root, "").is_err());
+    }
 }
