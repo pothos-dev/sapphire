@@ -74,6 +74,21 @@ export type BundleState = {
 };
 
 /**
+ * One full-text search match: a Concept (by bundle-relative path), the 1-based
+ * line number of the match, and the matching line's text (snippet). Matches the
+ * Rust `SearchHit` (`serde rename_all = "camelCase"`). Returned by
+ * `Backend.search()`.
+ */
+export type SearchHit = {
+  /** bundle-relative, '/'-separated path of the matched Concept */
+  path: string;
+  /** 1-based line number of the match within the Concept body */
+  line: number;
+  /** the matching line's text */
+  snippet: string;
+};
+
+/**
  * Parsed YAML frontmatter on a Concept. Only `type` is required; other keys
  * are recommended and unknown keys must be preserved. Filled in by later
  * index slices; defined here so the vocabulary is stable.

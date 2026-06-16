@@ -8,12 +8,13 @@
   import { session } from '$lib/state/session.svelte';
   import { theme } from '$lib/state/theme.svelte';
   import type { TreeNode } from '$lib/types';
-  import { buildEditor, setEditorDoc, refreshBrokenLinkDecorations } from '$lib/editor/cm';
+  import { buildEditor, setEditorDoc, refreshBrokenLinkDecorations, scrollToLine } from '$lib/editor/cm';
   import { resolveLink } from '$lib/links';
   import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import QuickNav from '$lib/components/QuickNav.svelte';
+  import SearchPanel from '$lib/components/SearchPanel.svelte';
   import Properties from '$lib/components/Properties.svelte';
   import Backlinks from '$lib/components/Backlinks.svelte';
   import TagBrowser from '$lib/components/TagBrowser.svelte';
@@ -27,6 +28,11 @@
   // path list is refreshed from the index whenever it changes so newly-created
   // Concepts are matchable immediately.
   let quickNavOpen = $state(false);
+  // Full-text search panel (Ctrl+Shift+F). When a result is chosen we open the
+  // Concept and stash the target line so the editor scrolls to it once the new
+  // document has been loaded into the CodeMirror view.
+  let searchOpen = $state(false);
+  let pendingScrollLine: number | null = null;
   let conceptPaths = $state<string[]>([]);
   $effect(() => {
     void indexStore.version;
@@ -119,6 +125,14 @@
         return;
       }
 
+      // Full-text search: Ctrl+Shift+F (Cmd+Shift+F on macOS). Requires Shift so
+      // it doesn't collide with the (Cmd/Ctrl)+F editor find or other shortcuts.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchOpen = !searchOpen;
+        return;
+      }
+
       // Browser-style history shortcuts: Alt+Left = Back, Alt+Right = Forward.
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (e.key === 'ArrowLeft') {
@@ -188,6 +202,15 @@
       // No-op when content is unchanged (guards against feedback from edits).
       setEditorDoc(view, content);
     }
+
+    // Full-text search: after the matching Concept's document is in the view,
+    // scroll to (and place the cursor on) the matched line, then clear the
+    // request so ordinary edits don't re-scroll. Runs in this effect because it
+    // must happen AFTER the doc replacement above.
+    if (pendingScrollLine !== null && view) {
+      scrollToLine(view, pendingScrollLine);
+      pendingScrollLine = null;
+    }
   });
 
   // Keep broken-link styling fresh: re-run the decoration whenever the index's
@@ -204,6 +227,22 @@
     // Plain navigation cancels any pending "focus type" request from a create.
     focusTypeForPath = null;
     void editor.open(path);
+  }
+
+  // Open a full-text search result: navigate to the Concept (through history),
+  // then scroll the editor to the matched line. We stash the line and let the
+  // editor-build $effect apply the scroll once the new document is loaded, so
+  // the scroll lands AFTER the doc replacement. Re-running search on the same
+  // open Concept (path unchanged) still scrolls: `editor.open` is a no-op then,
+  // so apply the scroll directly to the current view.
+  function openSearchResult(path: string, line: number) {
+    focusTypeForPath = null;
+    if (editor.path === path) {
+      if (view) scrollToLine(view, line);
+    } else {
+      pendingScrollLine = line;
+      void editor.open(path);
+    }
   }
 
   // OKF link navigation (slice 5). A rendered-link click in the live preview is
@@ -500,6 +539,12 @@
     recent={session.recentFiles}
     onopen={openConcept}
     onclose={() => (quickNavOpen = false)}
+  />
+
+  <SearchPanel
+    open={searchOpen}
+    onopen={openSearchResult}
+    onclose={() => (searchOpen = false)}
   />
 
   {#if menu}

@@ -2,6 +2,7 @@ mod app_state;
 mod bundle;
 mod config;
 mod index;
+mod search;
 mod watcher;
 
 use std::path::PathBuf;
@@ -10,6 +11,7 @@ use app_state::AppState;
 use bundle::TreeNode;
 use config::{BundleState, WindowState};
 use index::TagCount;
+use search::SearchHit;
 use tauri::{LogicalPosition, LogicalSize, Manager, State, WindowEvent};
 
 /// Absolute path of the opened Bundle root.
@@ -121,6 +123,15 @@ fn concepts_by_tag(state: State<'_, AppState>, tag: String) -> Result<Vec<String
 fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let index = state.index.read().map_err(|e| e.to_string())?;
     Ok(index.all_types())
+}
+
+/// Full-text (body content) search across the Bundle, on demand. Scans every
+/// `.md` Concept body with the ripgrep libraries (no external binary) and
+/// returns matches (path + 1-based line + matching line snippet), ordered by
+/// path then line and capped server-side. Case-insensitive literal search.
+#[tauri::command]
+fn search(state: State<'_, AppState>, query: String) -> Result<Vec<SearchHit>, String> {
+    search::search(&state.bundle_root, &query)
 }
 
 /// Load the persisted per-Bundle session state (last-open Concept, expanded
@@ -236,6 +247,7 @@ pub fn run() {
             all_tags,
             concepts_by_tag,
             all_types,
+            search,
             load_bundle_state,
             save_bundle_state
         ])

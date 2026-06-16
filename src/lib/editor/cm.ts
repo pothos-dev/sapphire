@@ -330,3 +330,21 @@ export function setEditorDoc(view: EditorView, doc: string): void {
 export function refreshBrokenLinkDecorations(view: EditorView): void {
   view.dispatch({ effects: refreshBrokenLinks.of(null) });
 }
+
+/**
+ * Scroll the editor to (and place the cursor at the start of) `line`, a 1-based
+ * line number. Used by full-text search to reveal the matching line after
+ * opening a Concept. Clamps out-of-range lines (the doc may differ slightly
+ * from the searched snapshot). Marked programmatic so the selection change is
+ * not mistaken for a user edit.
+ */
+export function scrollToLine(view: EditorView, line: number): void {
+  const total = view.state.doc.lines;
+  const clamped = Math.max(1, Math.min(line, total));
+  const pos = view.state.doc.line(clamped).from;
+  view.dispatch({
+    selection: { anchor: pos },
+    effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+    annotations: programmatic.of(true),
+  });
+}

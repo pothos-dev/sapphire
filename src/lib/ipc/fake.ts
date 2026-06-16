@@ -1,5 +1,5 @@
 import type { Backend } from './backend';
-import type { TreeNode, FileChange, TagCount, BundleState } from '$lib/types';
+import type { TreeNode, FileChange, TagCount, BundleState, SearchHit } from '$lib/types';
 import { resolveLink } from '$lib/links';
 
 /**
@@ -73,6 +73,8 @@ timestamp: 2026-06-15T10:00:00Z
 
 CodeMirror 6 is the editor core. Emerald layers OKF-aware extensions on top.
 
+The distinctive word marmalade appears here so full-text search has a target.
+
 It powers the [Live preview](./editor/live-preview.md) experience.
 `,
 
@@ -87,6 +89,8 @@ tags: [okf, core]
 
 A **Bundle** is the root folder opened by Emerald — a tree of Concepts and
 reserved files, per the OKF spec.
+
+A second mention of Marmalade lives here to prove cross-Concept full-text search.
 
 See also [CodeMirror](./codemirror.md) (relative link) and the
 [Knowledge Base](/index.md) entry point (bundle-absolute link).
@@ -613,7 +617,36 @@ export const fakeBackend: Backend = {
     if (typeof localStorage === 'undefined') return;
     localStorage.setItem(BUNDLE_STATE_KEY, JSON.stringify(state));
   },
+
+  // Full-text search: scan every `.md` Concept's full content for a
+  // case-insensitive substring of `query`, the JS equivalent of the Rust
+  // ripgrep-crate search. Returns one hit per matching line (path + 1-based
+  // line + the matching line text), ordered by path then line and capped at
+  // MAX_SEARCH_RESULTS to mirror the backend's server-side cap. An empty /
+  // whitespace query yields no matches (the UI doesn't search until input).
+  async search(query: string): Promise<SearchHit[]> {
+    const needle = query.trim().toLowerCase();
+    if (needle === '') return [];
+
+    const hits: SearchHit[] = [];
+    for (const path of conceptPaths()) {
+      const lines = FILES[path].split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].replace(/\r$/, '');
+        if (line.toLowerCase().includes(needle)) {
+          hits.push({ path, line: i + 1, snippet: line });
+          if (hits.length >= MAX_SEARCH_RESULTS) break;
+        }
+      }
+      if (hits.length >= MAX_SEARCH_RESULTS) break;
+    }
+    hits.sort((a, b) => (a.path === b.path ? a.line - b.line : a.path.localeCompare(b.path)));
+    return hits.slice(0, MAX_SEARCH_RESULTS);
+  },
 };
+
+/** Mirror of the Rust `MAX_RESULTS` cap (search.rs). */
+const MAX_SEARCH_RESULTS = 500;
 
 /** localStorage key for the fake Bundle's session state. */
 const BUNDLE_STATE_KEY = `emerald:bundleState:${FAKE_BUNDLE_ROOT}`;

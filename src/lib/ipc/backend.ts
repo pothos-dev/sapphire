@@ -1,4 +1,4 @@
-import type { TreeNode, FileChange, TagCount, BundleState } from '$lib/types';
+import type { TreeNode, FileChange, TagCount, BundleState, SearchHit } from '$lib/types';
 
 /**
  * The Backend interface is the ONLY boundary between the frontend and Rust.
@@ -130,5 +130,15 @@ export interface Backend {
    */
   saveBundleState(state: BundleState): Promise<void>;
 
-  // slice 14: search(query)
+  // --- Full-text search (slice: full-text-search) ---
+
+  /**
+   * Full-text (body content) search across the Bundle, on demand. Scans every
+   * `.md` Concept body and returns matches (path + 1-based line + matching line
+   * snippet), ordered by path then line. The query is a case-insensitive
+   * literal "find text"; an empty/whitespace query yields no matches. The
+   * backend caps the result count (a few hundred) so a very common term cannot
+   * flood the channel or the UI; the frontend shows the capped list as-is.
+   */
+  search(query: string): Promise<SearchHit[]>;
 }
