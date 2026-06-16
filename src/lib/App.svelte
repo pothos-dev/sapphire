@@ -5,7 +5,9 @@
   import { bundle } from '$lib/state/bundle.svelte';
   import { editor } from '$lib/state/editor.svelte';
   import { buildEditor, setEditorDoc } from '$lib/editor/cm';
+  import { resolveLink } from '$lib/links';
   import Tree from '$lib/components/Tree.svelte';
+  import Properties from '$lib/components/Properties.svelte';
 
   let editorParent = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
@@ -22,8 +24,22 @@
       void editor.onExternalChange(change.kind, change.paths);
     });
 
+    // Browser-style history shortcuts: Alt+Left = Back, Alt+Right = Forward.
+    const onKeydown = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        void editor.back();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        void editor.forward();
+      }
+    };
+    window.addEventListener('keydown', onKeydown);
+
     return () => {
       unsubscribe();
+      window.removeEventListener('keydown', onKeydown);
       view?.destroy();
       view = null;
     };
@@ -41,6 +57,7 @@
         readOnly: false,
         onChange: (doc) => editor.edit(doc),
         onBlur: () => void editor.flush(),
+        onLinkClick: handleLinkClick,
       });
     } else {
       // No-op when content is unchanged (guards against feedback from edits).
@@ -50,6 +67,29 @@
 
   function openConcept(path: string) {
     void editor.open(path);
+  }
+
+  // OKF link navigation (slice 5). A rendered-link click in the live preview is
+  // routed here: external links open in a browser tab (preserving prior
+  // behavior); bundle-absolute / relative links resolve against the open
+  // Concept's path and navigate the single editor pane (pushing history).
+  function handleLinkClick(href: string) {
+    const open = editor.path ?? '';
+    const target = resolveLink(open, href);
+    if (target.kind === 'external') {
+      window.open(target.href, '_blank', 'noopener,noreferrer');
+    } else if (target.kind === 'internal') {
+      void editor.open(target.path);
+    }
+    // 'none' (pure anchor / empty): no navigation.
+  }
+
+  // A frontmatter property edit produces new full markdown; route it through the
+  // same edit/autosave path as editor typing. The build $effect above syncs the
+  // CodeMirror view from `editor.content`, so the body view stays consistent.
+  function onPropertiesChange(content: string) {
+    editor.edit(content);
+    void editor.flush();
   }
 </script>
 
@@ -69,11 +109,34 @@
   </aside>
 
   <main class="editor-pane" aria-label="Concept">
+    <nav class="nav-bar" aria-label="Navigation history">
+      <button
+        type="button"
+        class="nav-btn"
+        data-testid="nav-back"
+        title="Back (Alt+Left)"
+        aria-label="Back"
+        disabled={!editor.canGoBack}
+        onclick={() => void editor.back()}>←</button
+      >
+      <button
+        type="button"
+        class="nav-btn"
+        data-testid="nav-forward"
+        title="Forward (Alt+Right)"
+        aria-label="Forward"
+        disabled={!editor.canGoForward}
+        onclick={() => void editor.forward()}>→</button
+      >
+    </nav>
     {#if editor.error}
       <p class="status error">{editor.error}</p>
     {/if}
     {#if !editor.path && !editor.error}
       <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
+    {/if}
+    {#if editor.path}
+      <Properties content={editor.content} onchange={onPropertiesChange} />
     {/if}
     <div
       class="editor-host"
@@ -119,12 +182,44 @@
 
   .editor-pane {
     position: relative;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     min-width: 0;
   }
 
+  .nav-bar {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.2);
+  }
+
+  .nav-btn {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: 1px solid rgba(127, 127, 127, 0.3);
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .nav-btn:hover:not(:disabled) {
+    background: rgba(127, 127, 127, 0.15);
+  }
+
+  .nav-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
   .editor-host {
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
   }
 
   .editor-host.hidden {

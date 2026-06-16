@@ -28,16 +28,61 @@ class EditorStore {
   dirty = $state<boolean>(false);
 
   /**
-   * Navigation history stub. Slice 5 turns this into real back/forward
-   * navigation; for now we just record the trail of opened Concepts.
+   * Browser-style navigation history of visited Concept paths. `history[index]`
+   * is the current Concept. Opening a Concept (tree click or link) pushes onto
+   * the stack, truncating any forward entries (standard browser semantics).
+   * Back/Forward move `index` without re-pushing.
    */
   history = $state<string[]>([]);
+  /** Index of the current entry in `history` (-1 when empty). */
+  index = $state<number>(-1);
+
+  /** True when there is a previous Concept to go Back to. */
+  canGoBack = $derived(this.index > 0);
+  /** True when there is a forward Concept to advance to. */
+  canGoForward = $derived(this.index >= 0 && this.index < this.history.length - 1);
 
   /** Pending debounced-save timer. */
   #saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Open a Concept by bundle-relative path and load its raw markdown. */
+  /**
+   * Open a Concept by bundle-relative path and load its raw markdown. This is
+   * the navigation entry point for tree clicks and link clicks: it pushes a new
+   * history entry (truncating forward history). Re-opening the already-current
+   * Concept is a no-op (no duplicate history entry).
+   */
   async open(path: string): Promise<void> {
+    if (path === this.path) return;
+    await this.#load(path);
+    if (this.path !== path) return; // load failed; don't record history
+    // Truncate forward history, then push the new entry as current.
+    this.history = [...this.history.slice(0, this.index + 1), path];
+    this.index = this.history.length - 1;
+  }
+
+  /** Go to the previous Concept in history, if any. */
+  async back(): Promise<void> {
+    if (!this.canGoBack) return;
+    const target = this.history[this.index - 1];
+    await this.#load(target);
+    if (this.path === target) this.index -= 1;
+  }
+
+  /** Re-advance to the next Concept in history, if any. */
+  async forward(): Promise<void> {
+    if (!this.canGoForward) return;
+    const target = this.history[this.index + 1];
+    await this.#load(target);
+    if (this.path === target) this.index += 1;
+  }
+
+  /**
+   * Load a Concept's raw markdown into the editor WITHOUT touching history.
+   * Flushes any pending autosave first so navigating never loses edits. On a
+   * read error (e.g. a broken link to a missing Concept), surfaces the error in
+   * a graceful state instead of crashing.
+   */
+  async #load(path: string): Promise<void> {
     // Flush any pending edits to the previously-open Concept first.
     await this.flush();
 
@@ -48,8 +93,11 @@ class EditorStore {
       this.path = path;
       this.content = content;
       this.dirty = false;
-      this.history.push(path);
     } catch (e) {
+      // Broken link / missing Concept: don't crash. Show a not-found state.
+      this.path = path;
+      this.content = '';
+      this.dirty = false;
       this.error = e instanceof Error ? e.message : String(e);
     } finally {
       this.loading = false;

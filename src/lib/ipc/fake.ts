@@ -87,7 +87,35 @@ tags: [okf, core]
 A **Bundle** is the root folder opened by Emerald — a tree of Concepts and
 reserved files, per the OKF spec.
 
-See also [CodeMirror](./codemirror.md).
+See also [CodeMirror](./codemirror.md) (relative link) and the
+[Knowledge Base](/index.md) entry point (bundle-absolute link).
+`,
+
+  // A Concept exercising the frontmatter Properties panel: scalars, a `tags`
+  // flat list, an EMPTY required `type` (flag case), an unknown/extra key, and
+  // — critically — complex values (a nested map and a multi-line block scalar)
+  // that must round-trip BYTE-FOR-BYTE when an unrelated scalar is edited.
+  'concepts/complex-frontmatter.md': `---
+type:
+title: Complex Frontmatter
+description: Exercises the Properties panel.
+tags: [okf, complex]
+custom_field: keep me intact
+nested:
+  author: jane
+  reviewers:
+    - bob
+    - carol
+prose: |
+  This is a multi-line
+  block scalar that must
+  be preserved verbatim.
+---
+
+# Complex Frontmatter
+
+This Concept has nested and multi-line frontmatter to prove verbatim
+round-tripping when an unrelated scalar is edited.
 `,
 
   'concepts/editor/live-preview.md': `---
