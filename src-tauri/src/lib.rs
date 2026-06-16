@@ -1,5 +1,6 @@
 mod app_state;
 mod bundle;
+mod config;
 mod index;
 mod watcher;
 
@@ -7,8 +8,9 @@ use std::path::PathBuf;
 
 use app_state::AppState;
 use bundle::TreeNode;
+use config::{BundleState, WindowState};
 use index::TagCount;
-use tauri::{Manager, State};
+use tauri::{LogicalPosition, LogicalSize, Manager, State, WindowEvent};
 
 /// Absolute path of the opened Bundle root.
 #[tauri::command]
@@ -82,6 +84,41 @@ fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     Ok(index.all_types())
 }
 
+/// Load the persisted per-Bundle session state (last-open Concept, expanded
+/// folders, window geometry) for the open Bundle. Robust to a missing/corrupt
+/// store: returns defaults. See `config.rs` — never written into the Bundle.
+#[tauri::command]
+fn load_bundle_state(state: State<'_, AppState>) -> Result<BundleState, String> {
+    Ok(config::load_bundle_state(&state.bundle_root))
+}
+
+/// Persist the per-Bundle session state for the open Bundle. Merges into the
+/// global store (other Bundles' entries + app config are preserved). The
+/// frontend calls this (debounced) when the open Concept or expanded folders
+/// change. Window geometry is owned by Rust and merged separately, so the
+/// frontend's saved value here carries the window through untouched.
+#[tauri::command]
+fn save_bundle_state(state: State<'_, AppState>, bundle_state: BundleState) -> Result<(), String> {
+    config::save_bundle_state(&state.bundle_root, bundle_state)
+}
+
+/// Capture the current window geometry into a `WindowState`. Uses logical
+/// (DPI-independent) units so a restore on a differently-scaled display is sane.
+fn capture_window_state(window: &tauri::WebviewWindow) -> Option<WindowState> {
+    let scale = window.scale_factor().ok()?;
+    let size = window.inner_size().ok()?.to_logical::<f64>(scale);
+    let pos = window
+        .outer_position()
+        .ok()
+        .map(|p| p.to_logical::<f64>(scale));
+    Some(WindowState {
+        width: size.width.round() as u32,
+        height: size.height.round() as u32,
+        x: pos.map(|p| p.x.round() as i32),
+        y: pos.map(|p| p.y.round() as i32),
+    })
+}
+
 /// Resolve the Bundle root from the first positional CLI arg (default `.`),
 /// then canonicalize it.
 fn resolve_bundle_root() -> PathBuf {
@@ -96,6 +133,39 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let bundle_root = resolve_bundle_root();
+
+            // Restore the saved window geometry for this Bundle (size always;
+            // position only if we have one). Window state lives in Rust so the
+            // frontend never imports window APIs (ARCHITECTURE.md).
+            if let Some(win) = config::load_window_state(&bundle_root) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_size(LogicalSize::new(win.width, win.height));
+                    if let (Some(x), Some(y)) = (win.x, win.y) {
+                        let _ = window.set_position(LogicalPosition::new(x, y));
+                    }
+                }
+            }
+
+            // Save window geometry on resize / move / close. We persist the
+            // window slice independently of the frontend's session state so the
+            // two never clobber each other.
+            if let Some(window) = app.get_webview_window("main") {
+                let root_for_events = bundle_root.clone();
+                let window_for_events = window.clone();
+                window.on_window_event(move |event| {
+                    if matches!(
+                        event,
+                        WindowEvent::Resized(_)
+                            | WindowEvent::Moved(_)
+                            | WindowEvent::CloseRequested { .. }
+                    ) {
+                        if let Some(ws) = capture_window_state(&window_for_events) {
+                            let _ = config::save_window_state(&root_for_events, ws);
+                        }
+                    }
+                });
+            }
+
             app.manage(AppState::new(bundle_root));
 
             // Start the filesystem watcher and keep the handle alive for the
@@ -121,7 +191,9 @@ pub fn run() {
             backlinks,
             all_tags,
             concepts_by_tag,
-            all_types
+            all_types,
+            load_bundle_state,
+            save_bundle_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

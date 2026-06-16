@@ -5,6 +5,9 @@
   import { bundle } from '$lib/state/bundle.svelte';
   import { editor } from '$lib/state/editor.svelte';
   import { indexStore } from '$lib/state/index.svelte';
+  import { session } from '$lib/state/session.svelte';
+  import { theme } from '$lib/state/theme.svelte';
+  import type { TreeNode } from '$lib/types';
   import { buildEditor, setEditorDoc, refreshBrokenLinkDecorations } from '$lib/editor/cm';
   import { resolveLink } from '$lib/links';
   import Tree from '$lib/components/Tree.svelte';
@@ -13,10 +16,50 @@
   import TagBrowser from '$lib/components/TagBrowser.svelte';
 
   let editorParent = $state<HTMLDivElement | null>(null);
+  let appRoot = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
 
+  /** Collect bundle-relative paths of all directories at depth < `maxDepth`. */
+  function defaultOpenFolders(node: TreeNode, depth: number, maxDepth: number, out: string[]) {
+    if (!node.isDir) return;
+    if (depth >= 0 && depth < maxDepth && node.path !== '') out.push(node.path);
+    for (const child of node.children ?? []) {
+      defaultOpenFolders(child, depth + 1, maxDepth, out);
+    }
+  }
+
   onMount(() => {
-    void bundle.load();
+    // Apply the OS-driven theme and keep it live.
+    const stopTheme = theme.start();
+
+    // Load the Bundle, then restore persisted per-Bundle session state:
+    // expanded folders + last-open Concept. Both must wait for their data
+    // (the tree, the session) before applying.
+    void (async () => {
+      await Promise.all([bundle.load(), session.load()]);
+
+      // Seed the default-open folders (depth < 2) for a FRESH Bundle (no stored
+      // session). Otherwise honour exactly what was restored.
+      if (
+        bundle.tree &&
+        session.expandedFolders.size === 0 &&
+        session.lastOpenConcept === null
+      ) {
+        const defaults: string[] = [];
+        // Root is depth -1 here so its direct children (folders) are depth 0.
+        defaultOpenFolders(bundle.tree, -1, 2, defaults);
+        for (const p of defaults) session.setExpanded(p, true);
+      }
+
+      // Restore the last-open Concept, then mark restoration complete so the
+      // persistence effect/seeded defaults begin saving (gated until now so a
+      // transient `editor.path === null` mid-restore cannot wipe stored state).
+      if (session.lastOpenConcept) {
+        await editor.open(session.lastOpenConcept);
+      }
+      session.endRestore();
+    })();
+
     // Seed the broken-link existence cache from the Bundle index.
     void indexStore.refresh();
 
@@ -47,9 +90,28 @@
     return () => {
       unsubscribe();
       window.removeEventListener('keydown', onKeydown);
+      stopTheme();
       view?.destroy();
       view = null;
     };
+  });
+
+  // Apply the resolved theme as `data-theme` on the app root, so both the app
+  // UI and the atomic-editor (cm.ts reads the inherited attribute) are themed
+  // consistently. Re-runs when the OS scheme (or future mode) changes.
+  $effect(() => {
+    const resolved = theme.resolved;
+    if (appRoot) appRoot.setAttribute('data-theme', resolved);
+    // The atomic-editor reads `data-theme` on the CodeMirror root; keep it in
+    // sync with the app theme so the editor is themed identically.
+    if (view) view.dom.setAttribute('data-theme', resolved);
+  });
+
+  // Persist the last-open Concept whenever navigation changes it (tree click,
+  // link, back/forward all funnel through `editor.path`).
+  $effect(() => {
+    const path = editor.path;
+    if (session.restored) session.setLastOpenConcept(path);
   });
 
   // Build / update the CodeMirror view whenever the open Concept content changes.
@@ -114,7 +176,7 @@
   }
 </script>
 
-<div class="app">
+<div class="app" data-testid="app-root" bind:this={appRoot}>
   <aside class="tree-pane" aria-label="Bundle tree">
     {#if bundle.loading}
       <p class="status">Loading…</p>
@@ -186,22 +248,32 @@
 
   :global(body) {
     font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-    color: #0f0f0f;
-    background: #f6f6f6;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :global(body) {
-      color: #e6e6e6;
-      background: #1e1e1e;
-    }
-  }
-
+  /* Theme is driven by `data-theme` on the app root (set by the theme store,
+     state/theme.svelte.ts — OS-driven default). The attribute is the single
+     source of truth so the app UI and the atomic-editor stay consistent. */
   .app {
     display: grid;
     grid-template-columns: 280px 1fr 260px;
     height: 100vh;
     overflow: hidden;
+    color: #0f0f0f;
+    background: #f6f6f6;
+  }
+
+  /* `:global` because the attribute is set at runtime by the theme store, so
+     Svelte's static analysis cannot see it (would flag the selector unused). */
+  :global(.app[data-theme='dark']) {
+    color: #e6e6e6;
+    background: #1e1e1e;
+  }
+
+  /* Keep the document background in step with the app theme (covers overscroll
+     and the area outside the grid). */
+  :global(body:has(.app[data-theme='dark'])) {
+    background: #1e1e1e;
+    color: #e6e6e6;
   }
 
   .side-pane {

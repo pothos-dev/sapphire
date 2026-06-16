@@ -50,8 +50,9 @@ import '@atomic-editor/editor/styles.css';
  *
  * We do NOT use atomic-editor's `wikiLinks` — OKF uses standard markdown links.
  *
- * Theme follows `prefers-color-scheme` for now (slice 9 owns the theme source):
- * we set `data-theme="light"` on the editor root when the OS prefers light.
+ * Theme: the editor root's `data-theme` mirrors the app root's, which is owned
+ * by the theme store (`state/theme.svelte.ts`, OS-driven default). We seed it at
+ * build time from the inherited `data-theme` and the app shell keeps it in sync.
  *
  * Autosave hooks: `onChange` fires on every user edit (the editor store
  * debounces it); `onBlur` fires when focus leaves the editor (flush save).
@@ -187,12 +188,22 @@ export interface BuildEditorOptions {
   brokenLinkContext?: BrokenLinkContext;
 }
 
-function prefersLight(): boolean {
-  return (
+/**
+ * Resolve the theme to seed the editor root with at build time, by reading the
+ * `data-theme` set on the nearest ancestor (the app root — owned by the theme
+ * store, see `state/theme.svelte.ts`). The app shell keeps this attribute in
+ * sync afterwards via an `$effect`; this just avoids a flash of the wrong theme
+ * on the very first build. Falls back to the OS preference if no ancestor has
+ * set it yet.
+ */
+function inheritedTheme(parent: HTMLElement): 'light' | 'dark' {
+  const fromDom = parent.closest('[data-theme]')?.getAttribute('data-theme');
+  if (fromDom === 'light' || fromDom === 'dark') return fromDom;
+  const prefersDark =
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-color-scheme: light)').matches
-  );
+    window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return prefersDark ? 'dark' : 'light';
 }
 
 /**
@@ -290,10 +301,9 @@ export function buildEditor({
 
   const view = new EditorView({ state, parent });
 
-  // Light/dark per ARCHITECTURE.md: data-theme="light" when OS prefers light.
-  if (prefersLight()) {
-    view.dom.setAttribute('data-theme', 'light');
-  }
+  // Seed the editor root's theme from the app root (the theme store keeps it in
+  // sync afterwards). atomic-editor reads `data-theme` on the CodeMirror root.
+  view.dom.setAttribute('data-theme', inheritedTheme(parent));
 
   return view;
 }

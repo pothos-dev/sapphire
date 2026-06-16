@@ -1,5 +1,5 @@
 import type { Backend } from './backend';
-import type { TreeNode, FileChange, TagCount } from '$lib/types';
+import type { TreeNode, FileChange, TagCount, BundleState } from '$lib/types';
 import { resolveLink } from '$lib/links';
 
 /**
@@ -451,4 +451,42 @@ export const fakeBackend: Backend = {
     }
     return [...set].sort();
   },
+
+  // Per-Bundle session state, backed by `localStorage` keyed by the fake bundle
+  // path. localStorage survives a page reload, so a Playwright reload restores
+  // the last-open Concept + expanded folders exactly as the real backend would
+  // restore them from the OS config file. Robust to corrupt JSON (-> defaults).
+  async loadBundleState(): Promise<BundleState> {
+    return loadFakeBundleState();
+  },
+
+  async saveBundleState(state: BundleState): Promise<void> {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(BUNDLE_STATE_KEY, JSON.stringify(state));
+  },
 };
+
+/** localStorage key for the fake Bundle's session state. */
+const BUNDLE_STATE_KEY = `emerald:bundleState:${FAKE_BUNDLE_ROOT}`;
+
+/** Default per-Bundle state (mirrors the Rust `BundleState::default`). */
+function defaultBundleState(): BundleState {
+  return { lastOpenConcept: null, expandedFolders: [] };
+}
+
+/** Read the fake Bundle state from localStorage; corrupt/missing -> defaults. */
+function loadFakeBundleState(): BundleState {
+  if (typeof localStorage === 'undefined') return defaultBundleState();
+  const raw = localStorage.getItem(BUNDLE_STATE_KEY);
+  if (raw === null) return defaultBundleState();
+  try {
+    const parsed = JSON.parse(raw) as Partial<BundleState>;
+    return {
+      lastOpenConcept: parsed.lastOpenConcept ?? null,
+      expandedFolders: Array.isArray(parsed.expandedFolders) ? parsed.expandedFolders : [],
+      window: parsed.window,
+    };
+  } catch {
+    return defaultBundleState();
+  }
+}

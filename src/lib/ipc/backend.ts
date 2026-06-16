@@ -1,4 +1,4 @@
-import type { TreeNode, FileChange, TagCount } from '$lib/types';
+import type { TreeNode, FileChange, TagCount, BundleState } from '$lib/types';
 
 /**
  * The Backend interface is the ONLY boundary between the frontend and Rust.
@@ -70,6 +70,27 @@ export interface Backend {
 
   /** All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12). */
   allTypes(): Promise<string[]>;
+
+  // --- Per-Bundle session state (slice: config-theme-state-store) ---
+  // A reusable read/write seam for persisting per-Bundle UI state in the OS
+  // config folder, keyed (in the backend) by the Bundle's absolute path. NEVER
+  // written into the Bundle (CONTEXT.md). Slices add fields to `BundleState`
+  // and round-trip them through this same pair (slice 13: `recentFiles`).
+
+  /**
+   * Load this Bundle's persisted session state (last-open Concept, expanded
+   * folders, ...). Robust to a missing/corrupt store: resolves to defaults
+   * (`{ lastOpenConcept: null, expandedFolders: [] }`), never rejects.
+   */
+  loadBundleState(): Promise<BundleState>;
+
+  /**
+   * Persist this Bundle's session state. The frontend calls this (debounced)
+   * when the open Concept or expanded folders change. Window geometry is owned
+   * by Rust and merged separately, so passing the value loaded earlier carries
+   * it through untouched.
+   */
+  saveBundleState(state: BundleState): Promise<void>;
 
   // slice 14: search(query)
 }

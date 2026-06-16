@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TreeNode } from '$lib/types';
+  import { session } from '$lib/state/session.svelte';
   import Self from './Tree.svelte';
 
   interface Props {
@@ -14,15 +15,16 @@
 
   let { node, selected, onopen, depth = 0 }: Props = $props();
 
-  // Directories are expanded by default near the top, collapsed deeper.
-  // `depth` is a fixed prop per node instance; only its initial value matters.
-  // svelte-ignore state_referenced_locally
-  let expanded = $state(depth < 2);
+  // Expanded state is owned by the session store (persisted per-Bundle, restored
+  // on launch). The store is seeded with the default-open folders (depth < 2) on
+  // startup for a fresh Bundle, so reading it here gives both the restored set
+  // and the sensible default. Toggling reports back to the store, which persists.
+  const expanded = $derived(node.isDir && session.isExpanded(node.path));
 
   const indent = $derived(depth * 12);
 
   function toggle() {
-    expanded = !expanded;
+    session.setExpanded(node.path, !expanded);
   }
 
   const isMarkdown = $derived(!node.isDir && node.name.toLowerCase().endsWith('.md'));

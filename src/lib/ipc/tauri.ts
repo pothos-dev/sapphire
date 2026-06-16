@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { Backend } from './backend';
-import type { TreeNode, FileChange, TagCount } from '$lib/types';
+import type { TreeNode, FileChange, TagCount, BundleState } from '$lib/types';
 
 /** Tauri event name emitted by the Rust watcher (matches watcher.rs). */
 const FILE_CHANGED_EVENT = 'file-changed';
@@ -73,5 +73,14 @@ export const tauriBackend: Backend = {
 
   allTypes(): Promise<string[]> {
     return invoke<string[]>('all_types');
+  },
+
+  loadBundleState(): Promise<BundleState> {
+    return invoke<BundleState>('load_bundle_state');
+  },
+
+  saveBundleState(state: BundleState): Promise<void> {
+    // Tauri command arg names are snake_case; `bundle_state` matches lib.rs.
+    return invoke<void>('save_bundle_state', { bundleState: state });
   },
 };
