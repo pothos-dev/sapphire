@@ -8,3 +8,13 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Rust / Tauri build artifacts
+/src-tauri/target
+/src-tauri/gen
+
+# Playwright artifacts (keep tests/screenshots/, which is committed)
+/test-results
+/playwright-report
+/.playwright
+
