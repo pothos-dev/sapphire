@@ -132,9 +132,20 @@ pub fn read_concept(root: &Path, rel_path: &str) -> Result<String, String> {
     std::fs::read_to_string(&resolved).map_err(|e| e.to_string())
 }
 
+/// Write a Concept's raw markdown back to disk by bundle-relative path, after
+/// validating the path stays within the Bundle root. Returns the resolved
+/// absolute path so the caller can record it as a self-write (watcher echo
+/// suppression). The file is expected to already exist (we only edit open
+/// Concepts); resolution rejects escapes the same way `read_concept` does.
+pub fn write_concept(root: &Path, rel_path: &str, content: &str) -> Result<PathBuf, String> {
+    let resolved = resolve(root, rel_path)?;
+    std::fs::write(&resolved, content).map_err(|e| e.to_string())?;
+    Ok(resolved)
+}
+
 /// Resolve a bundle-relative path against the root, rejecting escapes
 /// (`..`, absolute paths, or anything outside the Bundle).
-fn resolve(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
+pub fn resolve(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
     let rel = Path::new(rel_path);
     if rel.is_absolute() {
         return Err(format!("path must be bundle-relative: {rel_path}"));

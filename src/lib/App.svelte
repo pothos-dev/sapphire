@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { EditorView } from '@codemirror/view';
+  import { backend } from '$lib/ipc';
   import { bundle } from '$lib/state/bundle.svelte';
   import { editor } from '$lib/state/editor.svelte';
   import { buildEditor, setEditorDoc } from '$lib/editor/cm';
@@ -11,7 +12,18 @@
 
   onMount(() => {
     void bundle.load();
+
+    // Subscribe to filesystem changes from the backend watcher. On any change:
+    // refresh the tree (add/remove/rename) and reload the open Concept if it
+    // changed. Emerald's own autosave writes are suppressed by the backend, so
+    // they never arrive here (no reload loop / cursor jump).
+    const unsubscribe = backend.onFileChanged((change) => {
+      void bundle.load();
+      void editor.onExternalChange(change.kind, change.paths);
+    });
+
     return () => {
+      unsubscribe();
       view?.destroy();
       view = null;
     };
@@ -23,8 +35,15 @@
     if (!editorParent) return;
 
     if (!view) {
-      view = buildEditor({ parent: editorParent, doc: content, readOnly: true });
+      view = buildEditor({
+        parent: editorParent,
+        doc: content,
+        readOnly: false,
+        onChange: (doc) => editor.edit(doc),
+        onBlur: () => void editor.flush(),
+      });
     } else {
+      // No-op when content is unchanged (guards against feedback from edits).
       setEditorDoc(view, content);
     }
   });

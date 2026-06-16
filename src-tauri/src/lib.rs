@@ -1,5 +1,6 @@
 mod app_state;
 mod bundle;
+mod watcher;
 
 use std::path::PathBuf;
 
@@ -25,6 +26,15 @@ fn read_concept(state: State<'_, AppState>, path: String) -> Result<String, Stri
     bundle::read_concept(&state.bundle_root, &path)
 }
 
+/// Write a Concept's raw markdown back to disk (autosave). Records the write in
+/// the self-write tracker so the filesystem watcher suppresses its own echo.
+#[tauri::command]
+fn write_concept(state: State<'_, AppState>, path: String, content: String) -> Result<(), String> {
+    let resolved = bundle::write_concept(&state.bundle_root, &path, &content)?;
+    state.note_self_write(resolved);
+    Ok(())
+}
+
 /// Resolve the Bundle root from the first positional CLI arg (default `.`),
 /// then canonicalize it.
 fn resolve_bundle_root() -> PathBuf {
@@ -40,12 +50,25 @@ pub fn run() {
         .setup(|app| {
             let bundle_root = resolve_bundle_root();
             app.manage(AppState::new(bundle_root));
+
+            // Start the filesystem watcher and keep the handle alive for the
+            // app's lifetime by managing it in Tauri state.
+            match watcher::start(app.handle().clone()) {
+                Ok(w) => {
+                    app.manage(watcher::WatcherHandle::new(w));
+                }
+                Err(e) => {
+                    eprintln!("failed to start filesystem watcher: {e}");
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             bundle_root,
             list_tree,
-            read_concept
+            read_concept,
+            write_concept
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

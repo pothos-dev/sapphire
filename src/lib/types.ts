@@ -29,6 +29,18 @@ export type Concept = {
 };
 
 /**
+ * A filesystem change reported by the Rust watcher over the IPC seam.
+ * `paths` are bundle-relative, '/'-separated. Emerald's own autosave writes
+ * are suppressed by the backend and never appear here.
+ */
+export type FileChange = {
+  /** what happened to the paths */
+  kind: 'created' | 'modified' | 'removed';
+  /** affected bundle-relative paths */
+  paths: string[];
+};
+
+/**
  * Parsed YAML frontmatter on a Concept. Only `type` is required; other keys
  * are recommended and unknown keys must be preserved. Filled in by later
  * index slices; defined here so the vocabulary is stable.

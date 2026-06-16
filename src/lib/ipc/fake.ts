@@ -1,5 +1,5 @@
 import type { Backend } from './backend';
-import type { TreeNode } from '$lib/types';
+import type { TreeNode, FileChange } from '$lib/types';
 
 /**
  * In-memory Backend implementation over a seeded fixture Bundle.
@@ -155,12 +155,44 @@ function buildTree(): TreeNode {
   return root;
 }
 
-const TREE = buildTree();
-
 /** Reject paths that escape the bundle, mirroring the Rust validation. */
 function isSafePath(path: string): boolean {
   if (path.startsWith('/')) return false;
   return !path.split('/').includes('..');
+}
+
+/** Subscribers to simulated filesystem changes (see `onFileChanged`). */
+const fileChangeSubscribers = new Set<(change: FileChange) => void>();
+
+/**
+ * Test hook: simulate an EXTERNAL filesystem change (as if another tool edited
+ * the bundle), updating the in-memory fixture and notifying subscribers. This
+ * is the fake's stand-in for the Rust `notify` watcher — it lets Playwright
+ * exercise the tree-refresh / reload-open-Concept path. Unlike `writeConcept`
+ * (Emerald's own autosave), these changes ARE delivered to subscribers.
+ *
+ * Exposed on `window.__emeraldFake` so tests can drive it from the browser.
+ */
+function simulateExternalChange(
+  kind: FileChange['kind'],
+  path: string,
+  content?: string,
+): void {
+  if (kind === 'removed') {
+    delete FILES[path];
+  } else if (content !== undefined) {
+    FILES[path] = content;
+  }
+  for (const cb of fileChangeSubscribers) {
+    cb({ kind, paths: [path] });
+  }
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__emeraldFake = {
+    simulateExternalChange,
+    files: FILES,
+  };
 }
 
 export const fakeBackend: Backend = {
@@ -169,7 +201,9 @@ export const fakeBackend: Backend = {
   },
 
   async listTree(): Promise<TreeNode> {
-    return TREE;
+    // Rebuild each call so created/removed files (via writeConcept or a
+    // simulated external change) are reflected, like the real walker.
+    return buildTree();
   },
 
   async readConcept(path: string): Promise<string> {
@@ -181,5 +215,22 @@ export const fakeBackend: Backend = {
       throw new Error(`no such concept: ${path}`);
     }
     return content;
+  },
+
+  async writeConcept(path: string, content: string): Promise<void> {
+    if (!isSafePath(path)) {
+      throw new Error(`path escapes the bundle: ${path}`);
+    }
+    // Emerald's own write: update the in-memory bundle but do NOT notify
+    // subscribers — the real backend suppresses the watcher echo for self
+    // writes, and the fake must be behaviourally faithful (no reload loop).
+    FILES[path] = content;
+  },
+
+  onFileChanged(cb: (change: FileChange) => void): () => void {
+    fileChangeSubscribers.add(cb);
+    return () => {
+      fileChangeSubscribers.delete(cb);
+    };
   },
 };
