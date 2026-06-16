@@ -67,6 +67,14 @@ fn all_tags(state: State<'_, AppState>) -> Result<Vec<TagCount>, String> {
     Ok(index.all_tags())
 }
 
+/// Concept paths carrying `tag`. Used by the tag browser (slice 8) to reveal
+/// the Concepts under a selected tag.
+#[tauri::command]
+fn concepts_by_tag(state: State<'_, AppState>, tag: String) -> Result<Vec<String>, String> {
+    let index = state.index.read().map_err(|e| e.to_string())?;
+    Ok(index.concepts_by_tag(&tag))
+}
+
 /// All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12).
 #[tauri::command]
 fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -112,6 +120,7 @@ pub fn run() {
             concept_exists,
             backlinks,
             all_tags,
+            concepts_by_tag,
             all_types
         ])
         .run(tauri::generate_context!())

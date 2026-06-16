@@ -434,6 +434,15 @@ export const fakeBackend: Backend = {
       .sort((a, b) => a.tag.localeCompare(b.tag));
   },
 
+  async conceptsByTag(tag: string): Promise<string[]> {
+    const out: string[] = [];
+    for (const path of conceptPaths()) {
+      const { tags } = parseFrontmatter(FILES[path]);
+      if (tags.includes(tag)) out.push(path);
+    }
+    return out.sort();
+  },
+
   async allTypes(): Promise<string[]> {
     const set = new Set<string>();
     for (const path of conceptPaths()) {

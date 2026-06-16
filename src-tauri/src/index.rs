@@ -179,6 +179,19 @@ impl Index {
             .collect()
     }
 
+    /// Concept paths carrying `tag` in their frontmatter `tags`, sorted. Empty
+    /// when no Concept carries it. The index holds per-Concept tags, so this is
+    /// a direct query (the tag browser slice avoids scanning on the frontend).
+    pub fn concepts_by_tag(&self, tag: &str) -> Vec<String> {
+        let mut out: BTreeSet<String> = BTreeSet::new();
+        for (path, entry) in &self.concepts {
+            if entry.tags.iter().any(|t| t == tag) {
+                out.insert(path.clone());
+            }
+        }
+        out.into_iter().collect()
+    }
+
     /// All distinct frontmatter `type` values across the Bundle, sorted.
     pub fn all_types(&self) -> Vec<String> {
         let mut set: BTreeSet<String> = BTreeSet::new();
@@ -509,5 +522,17 @@ mod tests {
         let x = tags.iter().find(|t| t.tag == "x").unwrap();
         assert_eq!(x.count, 2);
         assert_eq!(idx.all_types(), vec!["concept", "index"]);
+    }
+
+    #[test]
+    fn lists_concepts_by_tag() {
+        let mut idx = Index::default();
+        idx.insert_concept("a.md", "---\ntype: concept\ntags: [x, y]\n---\n");
+        idx.insert_concept("b.md", "---\ntype: index\ntags: [x]\n---\n");
+        idx.insert_concept("c.md", "---\ntype: concept\ntags: [z]\n---\n");
+        idx.rebuild_reverse();
+        assert_eq!(idx.concepts_by_tag("x"), vec!["a.md", "b.md"]);
+        assert_eq!(idx.concepts_by_tag("y"), vec!["a.md"]);
+        assert!(idx.concepts_by_tag("nope").is_empty());
     }
 }

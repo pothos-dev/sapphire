@@ -67,6 +67,10 @@ export const tauriBackend: Backend = {
     return invoke<TagCount[]>('all_tags');
   },
 
+  conceptsByTag(tag: string): Promise<string[]> {
+    return invoke<string[]>('concepts_by_tag', { tag });
+  },
+
   allTypes(): Promise<string[]> {
     return invoke<string[]>('all_types');
   },

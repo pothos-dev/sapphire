@@ -9,6 +9,8 @@
   import { resolveLink } from '$lib/links';
   import Tree from '$lib/components/Tree.svelte';
   import Properties from '$lib/components/Properties.svelte';
+  import Backlinks from '$lib/components/Backlinks.svelte';
+  import TagBrowser from '$lib/components/TagBrowser.svelte';
 
   let editorParent = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
@@ -164,6 +166,16 @@
       bind:this={editorParent}
     ></div>
   </main>
+
+  <!-- Right-hand sidebar: Backlinks for the open Concept + the Tag browser.
+       Both refresh via the shared index `version` signal (bumped on every
+       file-changed), the same mechanism the broken-link cache uses — so no
+       bespoke refresh path. Selecting an entry routes through `openConcept`
+       (editor navigation), so it participates in back/forward history. -->
+  <aside class="side-pane" aria-label="Backlinks and tags" data-testid="side-pane">
+    <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
+    <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
+  </aside>
 </div>
 
 <style>
@@ -187,9 +199,14 @@
 
   .app {
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 280px 1fr 260px;
     height: 100vh;
     overflow: hidden;
+  }
+
+  .side-pane {
+    overflow: auto;
+    border-left: 1px solid rgba(127, 127, 127, 0.3);
   }
 
   .tree-pane {

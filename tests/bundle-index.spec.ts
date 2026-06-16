@@ -21,6 +21,9 @@ async function queryBackend<T>(
 ): Promise<T> {
   return page.evaluate(
     async ({ method, arg }) => {
+      // Runtime URL resolved by Vite's dev server in the browser, not a TS
+      // module path — TS cannot resolve it, so silence the resolution error.
+      // @ts-expect-error -- browser-runtime dynamic import via Vite dev server
       const mod = await import('/src/lib/ipc/index.ts');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const backend = (mod as any).backend;

@@ -60,6 +60,14 @@ export interface Backend {
   /** All tags across the Bundle with per-tag counts. Used by the tags view (slice 8). */
   allTags(): Promise<TagCount[]>;
 
+  /**
+   * Concept paths carrying `tag` in their frontmatter `tags`. Used by the tag
+   * browser (slice 8) to reveal the Concepts under a selected tag. The query
+   * lives in the index (which already holds per-Concept tags) rather than
+   * scanning on the frontend.
+   */
+  conceptsByTag(tag: string): Promise<string[]>;
+
   /** All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12). */
   allTypes(): Promise<string[]>;
 
