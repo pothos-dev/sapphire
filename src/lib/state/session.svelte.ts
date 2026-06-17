@@ -1,4 +1,5 @@
 import { backend } from '$lib/ipc';
+import { createDebouncer } from '$lib/debounce';
 import type { BundleState } from '$lib/types';
 
 /**
@@ -70,8 +71,11 @@ class SessionStore {
 
   /** Opaque window geometry from Rust; carried through saves untouched. */
   #window: unknown = undefined;
-  /** Pending debounced-save timer. */
-  #saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Debounced persistence: coalesces rapid UI-state changes into one write. */
+  #persist = createDebouncer(
+    () => void backend.saveBundleState(this.#snapshot()).catch(() => {}),
+    SAVE_DEBOUNCE_MS,
+  );
 
   /** Load persisted state from the backend. Defaults on a missing/corrupt store. */
   async load(): Promise<void> {
@@ -206,11 +210,7 @@ class SessionStore {
     // Never persist before the FULL restore sequence finishes (a transient
     // default observed mid-restore must not overwrite the just-loaded state).
     if (!this.restored) return;
-    if (this.#saveTimer !== null) clearTimeout(this.#saveTimer);
-    this.#saveTimer = setTimeout(() => {
-      this.#saveTimer = null;
-      void backend.saveBundleState(this.#snapshot()).catch(() => {});
-    }, SAVE_DEBOUNCE_MS);
+    this.#persist.schedule();
   }
 }
 

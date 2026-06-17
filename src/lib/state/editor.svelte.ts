@@ -1,4 +1,5 @@
 import { backend } from '$lib/ipc';
+import { createDebouncer } from '$lib/debounce';
 import { errMessage } from '$lib/errors';
 
 /** Autosave debounce: save this long after the user stops typing. */
@@ -41,8 +42,8 @@ class EditorStore {
   /** True when there is a forward Concept to advance to. */
   canGoForward = $derived(this.index >= 0 && this.index < this.history.length - 1);
 
-  /** Pending debounced-save timer. */
-  #saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Debounced autosave: writes the current content this long after edits stop. */
+  #autosave = createDebouncer(() => void this.#save(), AUTOSAVE_DEBOUNCE_MS);
 
   /**
    * Open a Concept by bundle-relative path and load its raw markdown. This is
@@ -113,19 +114,12 @@ class EditorStore {
   }
 
   #scheduleSave(): void {
-    if (this.#saveTimer !== null) clearTimeout(this.#saveTimer);
-    this.#saveTimer = setTimeout(() => {
-      this.#saveTimer = null;
-      void this.#save();
-    }, AUTOSAVE_DEBOUNCE_MS);
+    this.#autosave.schedule();
   }
 
   /** Write the current content to disk immediately (cancels the debounce). */
   async flush(): Promise<void> {
-    if (this.#saveTimer !== null) {
-      clearTimeout(this.#saveTimer);
-      this.#saveTimer = null;
-    }
+    this.#autosave.cancel();
     if (this.dirty) await this.#save();
   }
 
