@@ -9,8 +9,6 @@
 //! Pure-ish module logic — `lib.rs` just calls `start` in setup.
 
 use std::path::{Component, Path};
-use std::sync::Arc;
-use std::time::Duration;
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -153,20 +151,15 @@ fn to_bundle_relative(root: &Path, abs: &Path) -> Option<String> {
 }
 
 /// Hold the watcher alive for the lifetime of the app. We wrap it so `lib.rs`
-/// can stash it without naming the concrete watcher type everywhere.
-pub struct WatcherHandle(#[allow(dead_code)] Arc<RecommendedWatcher>);
+/// can stash it without naming the concrete watcher type everywhere. The field
+/// is never read — owning it is what keeps the watcher (and thus watching) alive.
+pub struct WatcherHandle(#[allow(dead_code)] RecommendedWatcher);
 
 impl WatcherHandle {
     pub fn new(watcher: RecommendedWatcher) -> Self {
-        WatcherHandle(Arc::new(watcher))
+        WatcherHandle(watcher)
     }
 }
-
-/// Debounce hint (documented for the frontend; not enforced here): notify can
-/// fire multiple events per logical change. The frontend coalesces tree
-/// refreshes. Kept as a constant in case we add server-side debouncing.
-#[allow(dead_code)]
-pub const COALESCE_HINT: Duration = Duration::from_millis(50);
 
 #[cfg(test)]
 mod tests {
