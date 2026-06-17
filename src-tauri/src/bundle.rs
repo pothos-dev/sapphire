@@ -6,8 +6,9 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
-use ignore::WalkBuilder;
 use serde::Serialize;
+
+use crate::paths::{bundle_walker, to_rel_string};
 
 /// A node in the Bundle's directory tree. Matches the TS `TreeNode`.
 #[derive(Debug, Serialize)]
@@ -48,12 +49,7 @@ pub fn list_tree(root: &Path) -> Result<TreeNode, String> {
         },
     );
 
-    let walker = WalkBuilder::new(root)
-        .hidden(true)
-        .git_ignore(true)
-        .git_global(false)
-        .parents(false)
-        .build();
+    let walker = bundle_walker(root).build();
 
     for result in walker {
         let entry = result.map_err(|e| e.to_string())?;
@@ -271,16 +267,6 @@ pub fn resolve_new(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
 }
 
 /// Convert a relative `Path` to a '/'-separated bundle-relative string.
-fn to_rel_string(rel: &Path) -> String {
-    rel.components()
-        .filter_map(|c| match c {
-            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

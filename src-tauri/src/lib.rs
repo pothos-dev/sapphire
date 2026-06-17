@@ -2,6 +2,7 @@ mod app_state;
 mod bundle;
 mod config;
 mod index;
+mod paths;
 mod rewrite;
 mod search;
 mod watcher;
