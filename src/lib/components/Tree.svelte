@@ -71,12 +71,21 @@
 
 {#if node.isDir}
   <div class="row dir" data-row-path={node.path} style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected="false" tabindex="-1">
-    <button class="entry dir-toggle" type="button" onclick={toggle} aria-expanded={expanded}>
+    <!-- The disclosure twisty and the folder name are split into two toggle
+         buttons so the reserved-file icons (index/log) can sit between them,
+         directly in front of the label — matching the Explorer header. The
+         twisty button is the accessible control (carries aria-expanded + the
+         folder's accessible name); the name button is a redundant click target
+         hidden from assistive tech to avoid a duplicate announcement. -->
+    <button
+      class="entry dir-toggle twisty-toggle"
+      type="button"
+      onclick={toggle}
+      aria-expanded={expanded}
+      aria-label={displayName}
+    >
       <span class="twisty" class:open={expanded}>▸</span>
-      <span class="name">{displayName}</span>
     </button>
-    <!-- Reserved-file affordances: click an icon to open the folder's index.md /
-         log.md directly (they are stripped from the ordinary leaf listing). -->
     {#each reservedAffordances as r (r.path)}
       <button
         class="reserved-btn"
@@ -92,6 +101,15 @@
         }}
       >{RESERVED_GLYPH[r.kind]}</button>
     {/each}
+    <button
+      class="entry dir-toggle name-toggle"
+      type="button"
+      onclick={toggle}
+      tabindex="-1"
+      aria-hidden="true"
+    >
+      <span class="name">{displayName}</span>
+    </button>
   </div>
   {#if expanded}
     <ul class="children">
@@ -128,6 +146,12 @@
   .row {
     display: flex;
     align-items: center;
+  }
+
+  /* Folder rows highlight as a whole (the twisty/name halves are transparent),
+     so the split toggle still reads as one row. */
+  .row.dir:hover {
+    background: var(--hover);
   }
 
   .reserved-btn {
@@ -180,6 +204,26 @@
 
   .entry:hover:not(:disabled) {
     background: var(--hover);
+  }
+
+  /* Split folder toggle: twisty on the left, name takes the rest. Kept
+     transparent — the row owns the hover highlight (see `.row.dir:hover`). */
+  .twisty-toggle {
+    flex: 0 0 auto;
+    gap: 0;
+    padding-right: 0;
+  }
+
+  .twisty-toggle:hover {
+    background: none;
+  }
+
+  .name-toggle {
+    padding-left: 0.25rem;
+  }
+
+  .name-toggle:hover {
+    background: none;
   }
 
   .entry:focus-visible {
