@@ -36,6 +36,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 
 use crate::index::Index;
+use crate::paths::{dir_of, find_byte, is_external, resolve_internal};
 
 /// Summary of an auto-rewrite pass: how many links across how many files were
 /// changed. Matches the TS `{ linksChanged, filesChanged }`.
@@ -314,79 +315,6 @@ fn relative_path(from_dir: &str, target: &str) -> String {
     }
 }
 
-/// Directory portion of a bundle-relative path ('' for a root-level file).
-fn dir_of(path: &str) -> &str {
-    match path.rfind('/') {
-        Some(slash) => &path[..slash],
-        None => "",
-    }
-}
-
-/// Resolve an `href` (path part only — caller stripped anchor/query) to a
-/// bundle-relative internal target, or `None` for external/empty. Mirrors
-/// `resolve_internal` in `index.rs` / `resolveLink` in `links.ts`.
-fn resolve_internal(current_path: &str, path_part: &str) -> Option<String> {
-    let raw = path_part.trim();
-    if raw.is_empty() || is_external(raw) || raw.starts_with('#') {
-        return None;
-    }
-    let path = if let Some(stripped) = raw.strip_prefix('/') {
-        normalize_segments(stripped.split('/'))
-    } else {
-        let dir = dir_of(current_path);
-        let dir_segments: Vec<&str> = if dir.is_empty() {
-            Vec::new()
-        } else {
-            dir.split('/').collect()
-        };
-        normalize_segments(dir_segments.into_iter().chain(raw.split('/')))
-    };
-    if path.is_empty() {
-        None
-    } else {
-        Some(path)
-    }
-}
-
-/// True for `scheme:`-prefixed URLs. Mirrors `is_external` in `index.rs`.
-fn is_external(href: &str) -> bool {
-    let bytes = href.as_bytes();
-    if bytes.is_empty() || !bytes[0].is_ascii_alphabetic() {
-        return false;
-    }
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b':' {
-            return i > 0;
-        }
-        let ok = b.is_ascii_alphanumeric() || matches!(b, b'+' | b'.' | b'-');
-        if !ok {
-            return false;
-        }
-    }
-    false
-}
-
-/// Collapse `.`/`..` segments; leading `..` that would escape are dropped.
-fn normalize_segments<'a>(segments: impl Iterator<Item = &'a str>) -> String {
-    let mut out: Vec<&str> = Vec::new();
-    for seg in segments {
-        match seg {
-            "" | "." => continue,
-            ".." => {
-                out.pop();
-            }
-            s => out.push(s),
-        }
-    }
-    out.join("/")
-}
-
-fn find_byte(bytes: &[u8], from: usize, target: u8) -> Option<usize> {
-    bytes[from..]
-        .iter()
-        .position(|&b| b == target)
-        .map(|p| from + p)
-}
 
 /// Byte length of a UTF-8 code point from its leading byte.
 fn utf8_len(b: u8) -> usize {
