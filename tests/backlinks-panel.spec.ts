@@ -1,9 +1,13 @@
 import { test, expect } from '@playwright/test';
 
-/** Expand a collapsible sidebar Section if it is currently collapsed (idempotent). */
-async function expandSection(page: import('@playwright/test').Page, name: string) {
-  const header = page.getByTestId(`${name}-section-header`);
-  if ((await header.getAttribute('aria-expanded')) === 'false') await header.click();
+/**
+ * Expand the right Sidebar (idempotent) so its Backlinks Section is interactable.
+ * The right Sidebar starts COLLAPSED (right-sidebar-move-backlinks); expanding it
+ * reveals Backlinks, whose own Section defaults to expanded.
+ */
+async function expandRightSidebar(page: import('@playwright/test').Page) {
+  const toggle = page.getByTestId('right-sidebar-toggle');
+  if ((await toggle.getAttribute('aria-pressed')) === 'false') await toggle.click();
 }
 
 /**
@@ -24,8 +28,8 @@ test('backlinks panel lists sources and opens them via navigation', async ({ pag
   const tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
 
-  // Backlinks is a collapsed-by-default sidebar Section; expand to read it.
-  await expandSection(page, 'backlinks');
+  // Backlinks lives in the collapsed-by-default right Sidebar; expand it to read.
+  await expandRightSidebar(page);
   const backlinks = page.getByTestId('backlinks');
   await expect(backlinks).toBeVisible();
 
@@ -61,7 +65,7 @@ test('backlinks panel refreshes when links change on disk', async ({ page }) => 
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
 
-  await expandSection(page, 'backlinks');
+  await expandRightSidebar(page);
   const backlinks = page.getByTestId('backlinks');
 
   // complex-frontmatter.md initially has no backlinks.

@@ -84,6 +84,12 @@ export type BundleState = {
   tagsOpen?: boolean;
   /** whether the Backlinks section is expanded */
   backlinksOpen?: boolean;
+  /**
+   * whether the right Sidebar (Backlinks; later Outline) is expanded
+   * (right-sidebar-move-backlinks). Unlike the flags above this defaults to
+   * `false` on read — the right Sidebar starts collapsed on a fresh Bundle.
+   */
+  rightSidebarOpen?: boolean;
 };
 
 /**

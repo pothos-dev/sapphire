@@ -29,22 +29,27 @@
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
 
-  // Left-sidebar accordion: the Bundle tree plus the Backlinks and Tags panes
-  // are collapsible sections (VSCode-style). Each expanded body is capped to its
-  // share of the viewport — the cap is driven by `--expanded-count` (see below
-  // and SidebarSection.svelte).
+  // Sidebar accordions (VSCode-style): the left Sidebar holds the Bundle tree
+  // (Explorer) + Tags; the right Sidebar holds Backlinks (Outline arrives in a
+  // later slice). Each expanded Section body is capped to its share of the
+  // viewport — the cap is driven by `--expanded-count`, computed PER SIDEBAR so
+  // each accordion divides its own height (see SidebarSection.svelte).
   //
   // All collapse state is persisted per-Bundle in the session store
-  // (persist-sidebar-collapse-state): the whole-sidebar collapse plus each
-  // Section's expanded flag survive a reload. Reads come from the store's runes
-  // and toggles funnel through its setters, which are gated on `restored` (a
-  // toggle firing mid-restore is a no-op persistence-wise, so it can't clobber
-  // stored state — exactly how `setExpanded` is guarded). All Sections default
-  // to expanded for a fresh Bundle.
+  // (persist-sidebar-collapse-state / right-sidebar-move-backlinks): the
+  // whole-sidebar collapse plus each Section's expanded flag survive a reload.
+  // Reads come from the store's runes and toggles funnel through its setters,
+  // which are gated on `restored` (a toggle firing mid-restore is a no-op
+  // persistence-wise, so it can't clobber stored state — exactly how
+  // `setExpanded` is guarded). Left Sections default to expanded for a fresh
+  // Bundle; the right Sidebar starts COLLAPSED.
   const expandedCount = $derived(
-    (session.explorerOpen ? 1 : 0) +
-      (session.backlinksOpen ? 1 : 0) +
-      (session.tagsOpen ? 1 : 0),
+    (session.explorerOpen ? 1 : 0) + (session.tagsOpen ? 1 : 0),
+  );
+  // Right-Sidebar expanded count: only meaningful while the right Sidebar is
+  // open. Backlinks is its sole Section for now (Outline lands later).
+  const rightExpandedCount = $derived(
+    session.rightSidebarOpen && session.backlinksOpen ? 1 : 0,
   );
 
   let editorParent = $state<HTMLDivElement | null>(null);
@@ -641,20 +646,11 @@
       </div>
     </SidebarSection>
 
-    <!-- Backlinks + Tags now live in the left sidebar as collapsible sections
-         (no right sidebar). Both refresh via the shared index `version` signal
-         (bumped on every file-changed) — the same mechanism the broken-link
-         cache uses, so no bespoke refresh path. Selecting an entry routes
-         through `openConcept` (editor navigation) for back/forward history. -->
-    <SidebarSection
-      title="Backlinks"
-      expanded={session.backlinksOpen}
-      ontoggle={() => session.setBacklinksOpen(!session.backlinksOpen)}
-      testid="backlinks-section"
-    >
-      <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
-    </SidebarSection>
-
+    <!-- Tags lives in the left Sidebar (Backlinks moved to the right Sidebar).
+         It refreshes via the shared index `version` signal (bumped on every
+         file-changed) — the same mechanism the broken-link cache uses, so no
+         bespoke refresh path. Selecting an entry routes through `openConcept`
+         (editor navigation) for back/forward history. -->
     <SidebarSection
       title="Tags"
       expanded={session.tagsOpen}
@@ -730,6 +726,52 @@
           onclick={() => void editor.forward()}>→</button
         >
       </div>
+      <div class="nav-right">
+        <button
+          type="button"
+          class="nav-btn"
+          data-testid="right-sidebar-toggle"
+          title={session.rightSidebarOpen
+            ? 'Collapse Outline & Backlinks'
+            : 'Expand Outline & Backlinks'}
+          aria-label={session.rightSidebarOpen
+            ? 'Collapse Outline & Backlinks'
+            : 'Expand Outline & Backlinks'}
+          aria-pressed={session.rightSidebarOpen}
+          onclick={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
+        >
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+            <rect
+              x="1.5"
+              y="2.5"
+              width="13"
+              height="11"
+              rx="1.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+            <line
+              x1="10"
+              y1="2.5"
+              x2="10"
+              y2="13.5"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+            <rect
+              x="10"
+              y="2.5"
+              width="4.5"
+              height="11"
+              rx="1.5"
+              fill="currentColor"
+              opacity={session.rightSidebarOpen ? 0.5 : 0}
+              stroke="none"
+            />
+          </svg>
+        </button>
+      </div>
     </nav>
     {#if editor.error}
       <p class="status error">{editor.error}</p>
@@ -759,6 +801,32 @@
       bind:this={editorParent}
     ></div>
   </main>
+
+  <!-- Right Sidebar: a second accordion mirroring the left one, anchored so its
+       fixed-width inner stays flush to the LEFT and slides out to the RIGHT edge
+       when the aside's width animates to 0 (the aside uses default
+       `justify-content: flex-start` and clips with `overflow: hidden`). It holds
+       Backlinks (Outline arrives in a later slice) and starts COLLAPSED. Its
+       `--expanded-count` is its own (Backlinks only), so the body cap divides
+       this sidebar's height independently of the left one. -->
+  <aside
+    class="side-bar right-side-bar"
+    class:collapsed={!session.rightSidebarOpen}
+    aria-label="Outline & Backlinks"
+    data-testid="right-side-bar"
+    style="--expanded-count: {rightExpandedCount}"
+  >
+    <div class="side-bar-inner">
+      <SidebarSection
+        title="Backlinks"
+        expanded={session.backlinksOpen}
+        ontoggle={() => session.setBacklinksOpen(!session.backlinksOpen)}
+        testid="backlinks-section"
+      >
+        <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
+      </SidebarSection>
+    </div>
+  </aside>
 
   <QuickNav
     open={quickNavOpen}
@@ -862,14 +930,15 @@
      state/theme.svelte.ts — OS-driven default). The attribute selects the token
      block in app.css; the app UI and atomic-editor both read from it, so they
      stay consistent. Base resets + the body typeface live in app.css. */
-  /* The first track is `auto`, so it follows the sidebar's own width. Collapsing
-     animates that width to 0 (see `.side-bar`); the `auto` track shrinks with it
-     and the `1fr` editor pane expands to fill the gap. We animate `width` rather
-     than `grid-template-columns` because the latter doesn't interpolate in the
+  /* Three tracks: left Sidebar | editor pane | right Sidebar. The outer `auto`
+     tracks follow each sidebar's own width. Collapsing animates that width to 0
+     (see `.side-bar`); the `auto` track shrinks with it and the `1fr` editor
+     pane expands to fill the gap. We animate `width` rather than
+     `grid-template-columns` because the latter doesn't interpolate in the
      WebKitGTK webview Tauri uses on Linux. */
   .app {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto 1fr auto;
     height: 100vh;
     overflow: hidden;
     color: var(--text);
@@ -893,6 +962,20 @@
   .app.sidebar-collapsed .side-bar {
     width: 0;
     border-right-width: 0;
+  }
+
+  /* Right Sidebar: mirrors the left one but borders on its LEFT edge and anchors
+     its inner stack to the LEFT (flex-start, the default) so the content slides
+     out to the right edge as the aside's width animates to 0. */
+  .right-side-bar {
+    justify-content: flex-start;
+    border-right: none;
+    border-left: 1px solid var(--border);
+  }
+
+  .right-side-bar.collapsed {
+    width: 0;
+    border-left-width: 0;
   }
 
   .side-bar-inner {
@@ -937,6 +1020,10 @@
     display: flex;
     gap: 0.35rem;
     justify-self: center;
+  }
+
+  .nav-right {
+    justify-self: end;
   }
 
   .nav-btn {

@@ -28,19 +28,18 @@ test('sidebar + section collapse state persists across reload', async ({ page })
   await expect(tree).toBeVisible();
 
   // Fresh-Bundle defaults: the left Sidebar is expanded (the toggle is pressed)
-  // and ALL Sections are expanded (Explorer, Backlinks and Tags bodies visible).
+  // and its Sections are expanded (Explorer and Tags bodies visible). Backlinks
+  // now lives in the right Sidebar (right-sidebar-move-backlinks), so it is no
+  // longer here.
   const sidebarToggle = page.getByTestId('sidebar-toggle');
   await expect(sidebarToggle).toHaveAttribute('aria-pressed', 'true');
 
   const explorerSection = page.getByTestId('explorer-section');
-  const backlinksSection = page.getByTestId('backlinks-section');
   const tagsSection = page.getByTestId('tags-section');
   // Each SidebarSection's header toggle reflects expanded state via aria-expanded.
   const explorerToggle = explorerSection.locator('[aria-expanded]').first();
-  const backlinksToggle = backlinksSection.locator('[aria-expanded]').first();
   const tagsToggle = tagsSection.locator('[aria-expanded]').first();
   await expect(explorerToggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(backlinksToggle).toHaveAttribute('aria-expanded', 'true');
   await expect(tagsToggle).toHaveAttribute('aria-expanded', 'true');
 
   // Collapse the Tags section, then collapse the whole left Sidebar. This is a
@@ -68,11 +67,10 @@ test('sidebar + section collapse state persists across reload', async ({ page })
       leftSidebarOpen: false,
       tagsOpen: false,
       explorerOpen: true,
-      backlinksOpen: true,
     });
 
   // RELOAD: the left Sidebar stays COLLAPSED and the Tags section stays
-  // collapsed, while Explorer and Backlinks stay expanded.
+  // collapsed, while Explorer stays expanded.
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 
@@ -82,9 +80,6 @@ test('sidebar + section collapse state persists across reload', async ({ page })
   ).toHaveAttribute('aria-expanded', 'false');
   await expect(
     page.getByTestId('explorer-section').locator('[aria-expanded]').first(),
-  ).toHaveAttribute('aria-expanded', 'true');
-  await expect(
-    page.getByTestId('backlinks-section').locator('[aria-expanded]').first(),
   ).toHaveAttribute('aria-expanded', 'true');
 
   await page.screenshot({ path: 'tests/screenshots/sidebar-collapse-persist.png', fullPage: true });

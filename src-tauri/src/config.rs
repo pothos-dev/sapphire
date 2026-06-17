@@ -53,6 +53,10 @@ pub struct BundleState {
     pub tags_open: Option<bool>,
     /// Whether the Backlinks section is expanded.
     pub backlinks_open: Option<bool>,
+    /// Whether the right Sidebar (Backlinks; later Outline) is expanded
+    /// (right-sidebar-move-backlinks). Defaults to `false` on the frontend — the
+    /// right Sidebar starts collapsed on a fresh/older Bundle.
+    pub right_sidebar_open: Option<bool>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets

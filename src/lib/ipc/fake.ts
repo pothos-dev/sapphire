@@ -909,6 +909,9 @@ function loadFakeBundleState(): BundleState {
       explorerOpen: parsed.explorerOpen,
       tagsOpen: parsed.tagsOpen,
       backlinksOpen: parsed.backlinksOpen,
+      // Right Sidebar collapse flag: passed through untouched (undefined when
+      // absent, which the session store defaults to `false` on read).
+      rightSidebarOpen: parsed.rightSidebarOpen,
     };
   } catch {
     return defaultBundleState();

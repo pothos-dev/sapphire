@@ -46,6 +46,13 @@ class SessionStore {
   explorerOpen = $state<boolean>(true);
   tagsOpen = $state<boolean>(true);
   backlinksOpen = $state<boolean>(true);
+  /**
+   * Right Sidebar collapse state (right-sidebar-move-backlinks). Unlike the
+   * left-sidebar flags above this defaults to `false` (COLLAPSED) on a fresh
+   * Bundle — the right Sidebar (Backlinks, later Outline) starts hidden and the
+   * user opts in via the nav-bar right-track toggle.
+   */
+  rightSidebarOpen = $state<boolean>(false);
   /** True once `load()` has resolved (data available to render the tree). */
   loaded = $state<boolean>(false);
   /**
@@ -75,6 +82,9 @@ class SessionStore {
       this.explorerOpen = state.explorerOpen ?? true;
       this.tagsOpen = state.tagsOpen ?? true;
       this.backlinksOpen = state.backlinksOpen ?? true;
+      // The right Sidebar defaults to COLLAPSED (`false`) when absent — a fresh
+      // or older Bundle opens with the right Sidebar hidden.
+      this.rightSidebarOpen = state.rightSidebarOpen ?? false;
       this.#window = state.window;
     } catch {
       // Best-effort: a failed load just means no session to restore.
@@ -159,6 +169,13 @@ class SessionStore {
     this.#scheduleSave();
   }
 
+  /** Record the right Sidebar's expanded/collapsed state and schedule a persist. */
+  setRightSidebarOpen(open: boolean): void {
+    if (open === this.rightSidebarOpen) return;
+    this.rightSidebarOpen = open;
+    this.#scheduleSave();
+  }
+
   /** Current state as a plain `BundleState` for persistence. */
   #snapshot(): BundleState {
     return {
@@ -169,6 +186,7 @@ class SessionStore {
       explorerOpen: this.explorerOpen,
       tagsOpen: this.tagsOpen,
       backlinksOpen: this.backlinksOpen,
+      rightSidebarOpen: this.rightSidebarOpen,
       window: this.#window,
     };
   }

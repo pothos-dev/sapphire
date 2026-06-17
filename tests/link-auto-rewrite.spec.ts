@@ -65,10 +65,14 @@ async function openRowMenu(page: Page, path: string): Promise<void> {
   await expect(page.getByTestId('context-menu')).toBeVisible();
 }
 
-/** Expand a collapsible sidebar Section if it is currently collapsed (idempotent). */
-async function expandSection(page: Page, name: string): Promise<void> {
-  const header = page.getByTestId(`${name}-section-header`);
-  if ((await header.getAttribute('aria-expanded')) === 'false') await header.click();
+/**
+ * Expand the right Sidebar (idempotent) so its Backlinks Section is interactable.
+ * Backlinks moved into the collapsed-by-default right Sidebar
+ * (right-sidebar-move-backlinks).
+ */
+async function expandRightSidebar(page: Page): Promise<void> {
+  const toggle = page.getByTestId('right-sidebar-toggle');
+  if ((await toggle.getAttribute('aria-pressed')) === 'false') await toggle.click();
 }
 
 test('link auto-rewrite: inbound + own-outbound links follow a moved Concept', async ({
@@ -142,7 +146,7 @@ test('link auto-rewrite: rewritten links still resolve to the moved Concept', as
   // map over resolveLink) must list BOTH inbound sources — proof the rewritten
   // absolute (A) and relative (C) links still resolve to B at its new location.
   await tree.locator('[data-path="concepts/b.md"]').click();
-  await expandSection(page, 'backlinks');
+  await expandRightSidebar(page);
   const backlinks = page.getByTestId('backlinks');
   await expect(backlinks.locator('[data-testid="backlink"][data-path="a.md"]')).toBeVisible();
   await expect(
