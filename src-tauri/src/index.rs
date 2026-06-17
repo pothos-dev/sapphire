@@ -29,6 +29,10 @@ pub struct ConceptEntry {
     pub concept_type: Option<String>,
     /// `tags` from the frontmatter (flat list); empty when absent.
     pub tags: Vec<String>,
+    /// Distinct top-level frontmatter keys (e.g. `type`, `title`, `tags`).
+    /// Feeds the Properties panel's key-name autocomplete (key-and-tag
+    /// autocomplete slice). Empty when the Concept has no/invalid frontmatter.
+    pub keys: Vec<String>,
     /// Outbound internal link targets (bundle-relative, '/'-separated).
     pub links: Vec<String>,
 }
@@ -95,13 +99,14 @@ impl Index {
     /// NOT touch the reverse map — call `rebuild_reverse` after a batch, or use
     /// `reindex_concept` for the incremental single-file path.
     fn insert_concept(&mut self, rel: &str, content: &str) {
-        let (concept_type, tags) = parse_frontmatter(content);
+        let (concept_type, tags, keys) = parse_frontmatter(content);
         let links = extract_links(rel, content);
         self.concepts.insert(
             rel.to_string(),
             ConceptEntry {
                 concept_type,
                 tags,
+                keys,
                 links,
             },
         );
@@ -204,6 +209,19 @@ impl Index {
         }
         set.into_iter().collect()
     }
+
+    /// All distinct top-level frontmatter keys used across the Bundle, sorted.
+    /// Feeds the Properties panel's key-name autocomplete (the OKF recommended
+    /// keys are merged in client-side, so this is bundle-sourced only).
+    pub fn all_keys(&self) -> Vec<String> {
+        let mut set: BTreeSet<String> = BTreeSet::new();
+        for entry in self.concepts.values() {
+            for key in &entry.keys {
+                set.insert(key.clone());
+            }
+        }
+        set.into_iter().collect()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,20 +229,20 @@ impl Index {
 // ---------------------------------------------------------------------------
 
 /// Parse the leading YAML frontmatter block (delimited by `---`) and extract
-/// `type` (scalar) and `tags` (flat list). Tolerates missing/invalid
-/// frontmatter: returns `(None, [])` rather than erroring (CONTEXT.md — broken
-/// Concepts are never blocked). Unknown keys are simply ignored here (the
-/// Properties panel owns verbatim round-tripping; the index only needs these).
-fn parse_frontmatter(content: &str) -> (Option<String>, Vec<String>) {
+/// `type` (scalar), `tags` (flat list), and the distinct top-level keys.
+/// Tolerates missing/invalid frontmatter: returns `(None, [], [])` rather than
+/// erroring (CONTEXT.md — broken Concepts are never blocked). The Properties
+/// panel owns verbatim round-tripping; the index only needs these aggregates.
+fn parse_frontmatter(content: &str) -> (Option<String>, Vec<String>, Vec<String>) {
     let Some(block) = frontmatter_block(content) else {
-        return (None, Vec::new());
+        return (None, Vec::new(), Vec::new());
     };
     let value: serde_yaml::Value = match serde_yaml::from_str(block) {
         Ok(v) => v,
-        Err(_) => return (None, Vec::new()),
+        Err(_) => return (None, Vec::new(), Vec::new()),
     };
     let Some(map) = value.as_mapping() else {
-        return (None, Vec::new());
+        return (None, Vec::new(), Vec::new());
     };
 
     let concept_type = map
@@ -243,7 +261,12 @@ fn parse_frontmatter(content: &str) -> (Option<String>, Vec<String>) {
         })
         .unwrap_or_default();
 
-    (concept_type, tags)
+    let keys = map
+        .keys()
+        .filter_map(|k| k.as_str().map(|s| s.to_string()))
+        .collect();
+
+    (concept_type, tags, keys)
 }
 
 /// Return the YAML text between the leading `---` fences, or `None` if the
@@ -450,22 +473,26 @@ mod tests {
     #[test]
     fn parses_type_and_tags() {
         let md = "---\ntype: concept\ntags: [a, b]\n---\n\n# Body\n";
-        let (t, tags) = parse_frontmatter(md);
+        let (t, tags, keys) = parse_frontmatter(md);
         assert_eq!(t.as_deref(), Some("concept"));
         assert_eq!(tags, vec!["a", "b"]);
+        assert_eq!(keys, vec!["type", "tags"]);
     }
 
     #[test]
     fn tolerates_missing_frontmatter() {
-        let (t, tags) = parse_frontmatter("# Just a body, no frontmatter\n");
+        let (t, tags, keys) = parse_frontmatter("# Just a body, no frontmatter\n");
         assert!(t.is_none());
         assert!(tags.is_empty());
+        assert!(keys.is_empty());
     }
 
     #[test]
     fn tolerates_empty_type() {
-        let (t, _) = parse_frontmatter("---\ntype:\ntitle: x\n---\n");
+        let (t, _, keys) = parse_frontmatter("---\ntype:\ntitle: x\n---\n");
         assert!(t.is_none());
+        // Even when `type` is empty, its KEY is still present (autocomplete).
+        assert_eq!(keys, vec!["type", "title"]);
     }
 
     #[test]
@@ -522,6 +549,20 @@ mod tests {
         let x = tags.iter().find(|t| t.tag == "x").unwrap();
         assert_eq!(x.count, 2);
         assert_eq!(idx.all_types(), vec!["concept", "index"]);
+    }
+
+    #[test]
+    fn aggregates_distinct_keys() {
+        let mut idx = Index::default();
+        idx.insert_concept("a.md", "---\ntype: concept\ntitle: A\ntags: [x]\n---\n");
+        idx.insert_concept("b.md", "---\ntype: index\ndescription: B\n---\n");
+        idx.insert_concept("c.md", "no frontmatter here");
+        idx.rebuild_reverse();
+        // Distinct, sorted; duplicates across Concepts collapse.
+        assert_eq!(
+            idx.all_keys(),
+            vec!["description", "tags", "title", "type"]
+        );
     }
 
     #[test]

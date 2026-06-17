@@ -23,6 +23,18 @@
     /** Existing Bundle `type` values, for the `type` field's autocomplete. */
     types?: string[];
     /**
+     * Key-name suggestions for the key inputs (when adding/renaming a key):
+     * OKF recommended keys ∪ distinct keys used across the Bundle. Merged and
+     * deduped by the caller (App.svelte).
+     */
+    keys?: string[];
+    /**
+     * Tag-value suggestions for list (chip) inputs: distinct tag values used
+     * across the Bundle. No OKF tag vocabulary exists, so this is bundle-sourced
+     * only. Applied to every list field's chip input (`tags` and any other list).
+     */
+    tags?: string[];
+    /**
      * When true, focus the `type` input on mount/path-change. Set by the app
      * shell right after a NEW Concept is created so the user lands in `type`.
      */
@@ -31,7 +43,15 @@
     onchange: (props: Property[]) => void;
   }
 
-  let { properties, path, types = [], focusType = false, onchange }: Props = $props();
+  let {
+    properties,
+    path,
+    types = [],
+    keys = [],
+    tags = [],
+    focusType = false,
+    onchange,
+  }: Props = $props();
 
   // Reserved files (`index.md`/`log.md`) are EXEMPT from the required-`type`
   // rule (OKF): never flag a missing/empty `type` on them. The raw check lives
@@ -216,6 +236,7 @@
           type="text"
           aria-label={`Property name: ${prop.key}`}
           data-testid={`key-${prop.key}`}
+          list="key-suggestions"
           value={keyDraftValue(id, prop.key)}
           use:autofocusKey={id}
           oninput={(e) => (keyDrafts[id] = (e.currentTarget as HTMLInputElement).value)}
@@ -285,6 +306,7 @@
               type="text"
               placeholder="Add…"
               data-testid={`chip-add-${prop.key}`}
+              list="tag-suggestions"
               bind:value={chipDrafts[prop.key]}
               onkeydown={(e) => onChipKeydown(e, prop.key, prop.list ?? [])}
               onblur={() => addChip(prop.key, prop.list ?? [])}
@@ -303,6 +325,22 @@
       </div>
     </div>
   {/each}
+
+  <!-- Shared autocomplete sources. The key datalist is referenced by every key
+       input (`list="key-suggestions"`): OKF recommended keys ∪ keys used
+       elsewhere in the Bundle. The tag datalist backs every list field's chip
+       input (`list="tag-suggestions"`): distinct bundle tag values (no fixed
+       OKF tag vocabulary). Both refresh via App.svelte on `indexStore.version`. -->
+  <datalist id="key-suggestions" data-testid="key-suggestions">
+    {#each keys as k (k)}
+      <option value={k}></option>
+    {/each}
+  </datalist>
+  <datalist id="tag-suggestions" data-testid="tag-suggestions">
+    {#each tags as t (t)}
+      <option value={t}></option>
+    {/each}
+  </datalist>
 
   <!-- Add controls: create a new scalar (`Text`) or flat-list (`List`) property.
        The kind is fixed at creation. Shown in both the empty and populated

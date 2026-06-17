@@ -103,6 +103,10 @@ export const tauriBackend: Backend = {
     return invoke<string[]>('all_types');
   },
 
+  allKeys(): Promise<string[]> {
+    return invoke<string[]>('all_keys');
+  },
+
   loadBundleState(): Promise<BundleState> {
     return invoke<BundleState>('load_bundle_state');
   },

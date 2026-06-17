@@ -80,6 +80,32 @@
     });
   });
 
+  // OKF recommended frontmatter keys (okf-spec §4.1). Always offered for key
+  // autocomplete, even on an empty Bundle, and merged with the keys actually
+  // used elsewhere in the Bundle (deduped, OKF keys always present).
+  const OKF_KEYS = ['type', 'title', 'description', 'resource', 'tags', 'timestamp'];
+
+  // Key-name autocomplete: OKF recommended keys ∪ distinct keys used across the
+  // Bundle. Refreshed on index change so a newly-introduced key appears.
+  let bundleKeys = $state<string[]>([]);
+  $effect(() => {
+    void indexStore.version;
+    void backend.allKeys().then((k) => {
+      bundleKeys = [...new Set([...OKF_KEYS, ...k])];
+    });
+  });
+
+  // Tag-value autocomplete for `tags` (and any list) chip inputs. No OKF tag
+  // vocabulary exists, so suggestions are bundle-sourced only (allTags → tag
+  // strings). Refreshed on index change like the others.
+  let bundleTags = $state<string[]>([]);
+  $effect(() => {
+    void indexStore.version;
+    void backend.allTags().then((counts) => {
+      bundleTags = counts.map((c) => c.tag);
+    });
+  });
+
   // When a NEW Concept is created from the tree it opens focused on the `type`
   // field (the one the user must fill for OKF validity). This holds the path we
   // want focused; the Properties panel focuses `type` while it matches the open
@@ -660,6 +686,8 @@
         properties={frontmatterProps}
         path={editor.path}
         types={bundleTypes}
+        keys={bundleKeys}
+        tags={bundleTags}
         focusType={focusTypeNow}
         onchange={onPropertiesChange}
       />

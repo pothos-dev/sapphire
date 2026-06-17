@@ -123,6 +123,14 @@ export interface Backend {
   /** All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12). */
   allTypes(): Promise<string[]>;
 
+  /**
+   * All distinct top-level frontmatter keys used across the Bundle, sorted.
+   * Feeds the Properties panel's key-name autocomplete (key-and-tag
+   * autocomplete slice). The OKF recommended keys are merged in client-side, so
+   * this is bundle-sourced only (distinct keys from every Concept's frontmatter).
+   */
+  allKeys(): Promise<string[]>;
+
   // --- Per-Bundle session state (slice: config-theme-state-store) ---
   // A reusable read/write seam for persisting per-Bundle UI state in the OS
   // config folder, keyed (in the backend) by the Bundle's absolute path. NEVER

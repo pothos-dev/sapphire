@@ -329,6 +329,24 @@ function parseFrontmatter(content: string): { type: string | null; tags: string[
   return { type, tags };
 }
 
+/**
+ * Distinct top-level frontmatter keys of a Concept (e.g. `type`, `title`,
+ * `nested`). Mirrors the Rust `parse_frontmatter` key collection: a top-level
+ * key is a non-indented `key:` line in the YAML block. Nested/indented lines and
+ * block-list items (`- x`) are not keys. Returns `[]` when there is no block.
+ */
+function parseFrontmatterKeys(content: string): string[] {
+  const { yaml } = splitFrontmatter(content);
+  if (yaml === null) return [];
+  const keys = new Set<string>();
+  for (const line of yaml.split(/\r?\n/)) {
+    // Top-level keys are not indented. `key:` or `key: value`.
+    const m = /^([^\s:#][^:]*):(\s|$)/.exec(line);
+    if (m) keys.add(m[1].trim());
+  }
+  return [...keys];
+}
+
 /** Extract outbound internal link targets from a Concept's body, resolved. */
 function outboundLinks(path: string, content: string): string[] {
   const { body } = splitFrontmatter(content);
@@ -810,6 +828,14 @@ export const fakeBackend: Backend = {
     for (const path of conceptPaths()) {
       const { type } = parseFrontmatter(FILES[path]);
       if (type !== null && type !== '') set.add(type);
+    }
+    return [...set].sort();
+  },
+
+  async allKeys(): Promise<string[]> {
+    const set = new Set<string>();
+    for (const path of conceptPaths()) {
+      for (const key of parseFrontmatterKeys(FILES[path])) set.add(key);
     }
     return [...set].sort();
   },

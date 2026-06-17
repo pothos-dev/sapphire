@@ -210,6 +210,15 @@ fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     Ok(index.all_types())
 }
 
+/// All distinct top-level frontmatter keys across the Bundle. Used by the
+/// Properties panel's key-name autocomplete (key-and-tag autocomplete slice);
+/// the OKF recommended keys are merged in client-side.
+#[tauri::command]
+fn all_keys(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let index = state.index.read().map_err(|e| e.to_string())?;
+    Ok(index.all_keys())
+}
+
 /// Full-text (body content) search across the Bundle, on demand. Scans every
 /// `.md` Concept body with the ripgrep libraries (no external binary) and
 /// returns matches (path + 1-based line + matching line snippet), ordered by
@@ -354,6 +363,7 @@ pub fn run() {
             all_tags,
             concepts_by_tag,
             all_types,
+            all_keys,
             search,
             load_bundle_state,
             save_bundle_state
