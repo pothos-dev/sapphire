@@ -18,3 +18,6 @@ vite.config.ts.timestamp-*
 /playwright-report
 /.playwright
 
+# Local-only example OKF bundle (Google ga4 sample); not shipped in the repo
+/examples
+
