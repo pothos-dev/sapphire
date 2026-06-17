@@ -28,13 +28,44 @@ be preserved.
 Obsidian-style hybrid editing — markdown source is the source of truth, but inactive lines
 render styled while the cursor line shows raw markup. Implemented via CodeMirror 6 decorations.
 
+### UI chrome
+
+These name the layout, not the domain. Register is conventional editor chrome (VSCode-style),
+deliberately not domain language — section headers are discoverability affordances.
+
+**Pane**:
+Any top-level layout region of the app shell.
+
+**Sidebar**:
+A Pane docked to the left or right edge, holding a vertical stack of **Sections**. There may
+be a left and a right Sidebar (only the left exists today).
+_Avoid_: "side panel" (use Sidebar).
+
+**Section**:
+One collapsible item in a Sidebar — an always-visible header plus a toggleable body. The three
+current Sections are **Explorer** (the Bundle tree), **Backlinks** (Concepts linking to the
+open Concept), and **Tags** (tags across the Bundle).
+_Avoid_: "panel" (collides with VSCode's bottom dock).
+
+**Editor pane**:
+The central Pane showing the open Concept.
+
+**Accordion**:
+The height-sharing behaviour of a Sidebar's stacked Sections (they share the viewport, each
+body capped). Names the behaviour, not a single item — one item is a **Section**.
+
 ## Relationships
 
 - A **Bundle** contains many **Concepts** and **Reserved files**, nested in directories.
 - A **Concept** has one **Frontmatter** block and one markdown body.
 - A **Concept** links to other **Concepts** via standard markdown links: bundle-absolute
   (`[x](/path.md)`) or relative (`[x](./path.md)`). Links are tolerated even when broken.
+- A **Sidebar** contains many **Sections**; each Section shows a view onto the Bundle or the
+  open Concept. The **Accordion** is how a Sidebar's Sections share height.
 
 ## Flagged ambiguities
 
 - "docs folder" / "vault" / "workspace" all referred to the opened root — resolved to **Bundle**.
+- "side panel" / "panel" / "pane" / "accordion section" were used loosely for the collapsible
+  sidebar items — resolved to **Section**, inside a **Sidebar**, with **Accordion** naming only
+  the height-sharing behaviour. "Panel" is avoided (VSCode bottom-dock collision).
