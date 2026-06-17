@@ -14,6 +14,7 @@
     dispatchFrontmatter,
     refreshBrokenLinkDecorations,
     scrollToLine,
+    openSearch,
   } from '$lib/editor/cm';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
   import { splitFrontmatter, parseProperties, type Property } from '$lib/frontmatter';
@@ -235,6 +236,18 @@
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         searchOpen = !searchOpen;
+        return;
+      }
+
+      // In-Concept Find: Ctrl/Cmd+F (no Shift). App owns this binding so it grabs
+      // focus from anywhere; we intercept, focus the editor, and open the
+      // built-in find panel via the editor's exposed `openSearch`. NO-OP when no
+      // Concept is open (no view / no path) — there is nothing to find in.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        if (!view || editor.path === null) return; // no Concept open: no-op.
+        e.preventDefault();
+        view.focus();
+        openSearch(view);
         return;
       }
 

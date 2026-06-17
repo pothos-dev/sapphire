@@ -61,6 +61,18 @@ The central Pane showing the open Concept.
 The height-sharing behaviour of a Sidebar's stacked Sections (they share the viewport, each
 body capped). Names the behaviour, not a single item — one item is a **Section**.
 
+**Search**:
+Bundle-wide full-text search — the centered modal (`Ctrl+Shift+F`) that scans every Concept
+body across the Bundle and lists matching path/line/snippet hits. Always means the cross-Bundle
+operation.
+_Avoid_: using "search" for the in-editor operation (use **Find**).
+
+**Find** (Find & Replace):
+The in-Concept, editor-local find/replace panel (`Ctrl+F`) docked above the Editor pane. Scoped
+to the open Concept's body only (frontmatter lives outside the document — see ADR 0003 — and is
+edited via the Properties Section, not Find). Always means the single-Concept operation.
+_Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
+
 ## Relationships
 
 - A **Bundle** contains many **Concepts** and **Reserved files**, nested in directories.
@@ -76,3 +88,5 @@ body capped). Names the behaviour, not a single item — one item is a **Section
 - "side panel" / "panel" / "pane" / "accordion section" were used loosely for the collapsible
   sidebar items — resolved to **Section**, inside a **Sidebar**, with **Accordion** naming only
   the height-sharing behaviour. "Panel" is avoided (VSCode bottom-dock collision).
+- "search" referred to both the cross-Bundle full-text modal and the in-editor operation —
+  resolved to **Search** (cross-Bundle only) vs **Find** (single-Concept only).
