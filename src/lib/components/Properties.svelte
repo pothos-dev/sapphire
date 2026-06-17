@@ -41,6 +41,16 @@
     focusType?: boolean;
     /** Called with the new properties after an edit. */
     onchange: (props: Property[]) => void;
+    /**
+     * Unified undo/redo (unified-body-frontmatter-undo). The panel doesn't hold
+     * the editor view, so the app shell passes the editor-history commands and
+     * their availability. The buttons drive the SAME single timeline that spans
+     * body + frontmatter.
+     */
+    onUndo?: () => void;
+    onRedo?: () => void;
+    canUndo?: boolean;
+    canRedo?: boolean;
   }
 
   let {
@@ -51,6 +61,10 @@
     tags = [],
     focusType = false,
     onchange,
+    onUndo,
+    onRedo,
+    canUndo = false,
+    canRedo = false,
   }: Props = $props();
 
   // Reserved files (`index.md`/`log.md`) are EXEMPT from the required-`type`
@@ -217,6 +231,34 @@
 </script>
 
 <section class="properties" aria-label="Properties" data-testid="properties">
+  <!-- Panel header: unified undo/redo over the single body+frontmatter history.
+       Buttons mousedown-prevent default so clicking them does not blur (and thus
+       commit) an in-progress scalar/key edit before the command runs. -->
+  <div class="panel-header" data-testid="properties-header">
+    <div class="history">
+      <button
+        type="button"
+        class="hist-btn"
+        data-testid="undo"
+        title="Undo (Ctrl+Z)"
+        aria-label="Undo"
+        disabled={!canUndo}
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => onUndo?.()}>↶</button
+      >
+      <button
+        type="button"
+        class="hist-btn"
+        data-testid="redo"
+        title="Redo (Ctrl+Shift+Z)"
+        aria-label="Redo"
+        disabled={!canRedo}
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => onRedo?.()}>↷</button
+      >
+    </div>
+  </div>
+
   {#if properties.length === 0}
     <p class="empty" data-testid="properties-empty">No frontmatter.</p>
   {/if}
@@ -365,6 +407,52 @@
     font-family: var(--font-ui);
     font-size: 0.85rem;
     background: var(--bg-sunken);
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .history {
+    display: flex;
+    gap: 0.2rem;
+  }
+
+  .hist-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      background-color 0.12s ease,
+      color 0.12s ease;
+  }
+
+  .hist-btn:hover:not(:disabled) {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  .hist-btn:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .hist-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   .empty {

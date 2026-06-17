@@ -11,10 +11,11 @@
   import {
     buildEditor,
     setEditorConcept,
-    setFrontmatter,
+    dispatchFrontmatter,
     refreshBrokenLinkDecorations,
     scrollToLine,
   } from '$lib/editor/cm';
+  import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
   import { splitFrontmatter, parseProperties, type Property } from '$lib/frontmatter';
   import { resolveLink } from '$lib/links';
   import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
@@ -51,6 +52,31 @@
   // field (the single source of truth — ADR 0003) so the Properties panel can
   // render it. Updated by the editor's `onFrontmatterChange` callback.
   let frontmatterProps = $state<Property[]>([]);
+
+  // Unified undo/redo (unified-body-frontmatter-undo): one CodeMirror history
+  // spans body + frontmatter. These mirror `undoDepth`/`redoDepth` so the
+  // Properties-panel buttons can enable/disable reactively. They are NOT derived
+  // from `view.state` (the view isn't reactive); instead `syncHistoryDepths` is
+  // called from the editor's update listener (every transaction) and after any
+  // programmatic undo/redo we trigger.
+  let canUndo = $state(false);
+  let canRedo = $state(false);
+  function syncHistoryDepths() {
+    canUndo = view ? undoDepth(view.state) > 0 : false;
+    canRedo = view ? redoDepth(view.state) > 0 : false;
+  }
+  function doUndo() {
+    if (!view) return;
+    undo(view);
+    view.focus();
+    syncHistoryDepths();
+  }
+  function doRedo() {
+    if (!view) return;
+    redo(view);
+    view.focus();
+    syncHistoryDepths();
+  }
 
   // Quick-nav palette (Ctrl+K). `quickNavOpen` toggles the overlay; the Concept
   // path list is refreshed from the index whenever it changes so newly-created
@@ -187,6 +213,25 @@
         return;
       }
 
+      // Unified undo/redo (unified-body-frontmatter-undo): route Ctrl/Cmd+Z,
+      // Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y to the editor's history so undo works
+      // even when focus is in a Properties <input> (outside the CodeMirror DOM).
+      // When focus IS inside the editor we do nothing here and let CM's own
+      // historyKeymap handle it natively (no double-handling).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const key = e.key.toLowerCase();
+        const isUndo = key === 'z' && !e.shiftKey;
+        const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
+        if (isUndo || isRedo) {
+          const inEditor = !!view && view.dom.contains(document.activeElement);
+          if (inEditor) return; // CM's keymap handles it.
+          e.preventDefault();
+          if (isUndo) doUndo();
+          else doRedo();
+          return;
+        }
+      }
+
       // Browser-style history shortcuts: Alt+Left = Back, Alt+Right = Forward.
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (e.key === 'ArrowLeft') {
@@ -250,10 +295,12 @@
         parent: editorParent,
         doc: body,
         frontmatter: props,
+        path: editor.path,
         readOnly: false,
         onChange: (full) => editor.edit(full),
         onFrontmatterChange: (p) => (frontmatterProps = p),
         onBlur: () => void editor.flush(),
+        onHistory: syncHistoryDepths,
         onLinkClick: handleLinkClick,
         brokenLinkContext: {
           currentPath: () => editor.path ?? '',
@@ -261,10 +308,13 @@
         },
       });
       frontmatterProps = props;
+      syncHistoryDepths();
     } else {
       // No-op when body + frontmatter are unchanged (guards against feedback
-      // from edits); updates the field on Concept switch / external reload.
-      setEditorConcept(view, body, props);
+      // from edits); updates the field on Concept switch / external reload. A
+      // path change triggers a state rebuild (fresh, empty history) so undo
+      // cannot cross the Concept boundary.
+      setEditorConcept(view, body, props, editor.path);
     }
 
     // Full-text search: after the matching Concept's document is in the view,
@@ -330,7 +380,10 @@
   // frontmatter edits persist immediately (matching the prior behavior).
   function onPropertiesChange(props: Property[]) {
     if (!view) return;
-    view.dispatch({ effects: setFrontmatter.of(props) });
+    // Dispatch as a discrete, isolated history step so each committed
+    // frontmatter action is its own undo step and never coalesces with body
+    // typing (unified-body-frontmatter-undo).
+    dispatchFrontmatter(view, props);
     void editor.flush();
   }
 
@@ -690,6 +743,10 @@
         tags={bundleTags}
         focusType={focusTypeNow}
         onchange={onPropertiesChange}
+        onUndo={doUndo}
+        onRedo={doRedo}
+        {canUndo}
+        {canRedo}
       />
     {/if}
     <div

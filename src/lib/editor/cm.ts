@@ -17,7 +17,14 @@ import {
   type Extension,
 } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
-import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirror/commands';
+import {
+  history,
+  historyKeymap,
+  defaultKeymap,
+  indentWithTab,
+  invertedEffects,
+  isolateHistory,
+} from '@codemirror/commands';
 import { indentOnInput } from '@codemirror/language';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
@@ -97,6 +104,35 @@ export const frontmatterField = StateField.define<Property[]>({
 /** The open Concept's current frontmatter properties. */
 export function getFrontmatter(view: EditorView): Property[] {
   return view.state.field(frontmatterField);
+}
+
+/**
+ * Unified undo (ADR 0003 / unified-body-frontmatter-undo): frontmatter lives in
+ * a StateField but is mutated via `setFrontmatter` effects, which CodeMirror's
+ * history does not know how to reverse on its own. `invertedEffects` teaches it:
+ * for any transaction carrying a `setFrontmatter`, we register the INVERSE — a
+ * `setFrontmatter` of the PRIOR field value (`tr.startState`) — so undo/redo
+ * restore frontmatter exactly the way they restore document text. Body edits are
+ * ordinary doc transactions in the same history, so one timeline spans both.
+ */
+const frontmatterUndo = invertedEffects.of((tr) => {
+  // Only emit an inverse when this transaction actually changes frontmatter.
+  if (!tr.effects.some((e) => e.is(setFrontmatter))) return [];
+  return [setFrontmatter.of(tr.startState.field(frontmatterField))];
+});
+
+/**
+ * Dispatch a USER frontmatter edit so it forms its OWN discrete undo step and
+ * never coalesces with body typing. `isolateHistory.of("full")` opens a fresh
+ * history event on both sides; the `setFrontmatter` effect carries the new
+ * value (and `frontmatterUndo` records the inverse). NOT used for programmatic
+ * concept loads — those rebuild the state with empty history (`setEditorConcept`).
+ */
+export function dispatchFrontmatter(view: EditorView, props: Property[]): void {
+  view.dispatch({
+    effects: setFrontmatter.of(props),
+    annotations: isolateHistory.of('full'),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +243,12 @@ export interface BuildEditorOptions {
   doc: string;
   /** The Concept's initial frontmatter properties (ADR 0003). */
   frontmatter?: Property[];
+  /**
+   * Bundle-relative path of the Concept this view starts on. Recorded so
+   * `setEditorConcept` can detect a Concept SWITCH (path change) and rebuild the
+   * state with a fresh history (unified-undo: history never crosses Concepts).
+   */
+  path?: string | null;
   readOnly?: boolean;
   /**
    * Called with the new FULL Concept markdown (`serialize(frontmatter) + body`)
@@ -220,6 +262,13 @@ export interface BuildEditorOptions {
   onFrontmatterChange?: (props: Property[]) => void;
   /** called when the editor loses focus */
   onBlur?: () => void;
+  /**
+   * Called after any transaction that may change the undo/redo history depth
+   * (body edit, frontmatter edit, programmatic replacement) and after a state
+   * rebuild on Concept switch. Lets the host mirror `undoDepth`/`redoDepth` into
+   * reactive UI state for the Properties-panel undo/redo buttons.
+   */
+  onHistory?: () => void;
   /**
    * Called when the user clicks a rendered link in the live preview (inline
    * links and table-cell links). See the slice-5 seam below.
@@ -287,17 +336,16 @@ function livePreviewExtensions(onLinkClick: (url: string) => void): Extension[] 
   ];
 }
 
-export function buildEditor({
-  parent,
-  doc,
-  frontmatter = [],
-  readOnly = false,
-  onChange,
-  onFrontmatterChange,
-  onBlur,
-  onLinkClick,
-  brokenLinkContext,
-}: BuildEditorOptions): EditorView {
+/**
+ * Everything BELOW the frontmatter field in the extension list: the live-preview
+ * set, broken-link styling, history, keymaps and the change/blur listeners.
+ * Shared verbatim by the initial build AND by `setEditorConcept`'s state rebuild
+ * on Concept switch, so the two cannot drift. The frontmatter field is seeded
+ * separately by each caller (the value differs), but the BEHAVIOUR is here.
+ */
+function editorExtensions(opts: Omit<BuildEditorOptions, 'parent' | 'doc' | 'frontmatter'>): Extension[] {
+  const { readOnly = false, onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext } = opts;
+
   // Notify on user edits to the body OR the frontmatter. Frontmatter edits are
   // carried by `setFrontmatter` effects (no doc change), so we watch for both.
   // Debouncing happens in the store.
@@ -306,6 +354,9 @@ export function buildEditor({
       tr.effects.some((e) => e.is(setFrontmatter)),
     );
     if (!update.docChanged && !fmChanged) return;
+    // History depth may have changed (body/frontmatter edit, undo, redo); keep
+    // the host's reactive undo/redo state in sync for the panel buttons.
+    onHistory?.();
     // Mirror the frontmatter out on every field change (incl. programmatic
     // Concept switches / reloads) so the Properties panel stays in sync.
     if (fmChanged) onFrontmatterChange?.(update.state.field(frontmatterField));
@@ -324,40 +375,62 @@ export function buildEditor({
     },
   });
 
+  return [
+    ...livePreviewExtensions(onLinkClick ?? defaultLinkClick),
+    // Broken-link styling (only when the index context is provided). Placed
+    // after the live-preview extensions so its mark class layers on top of
+    // atomic-editor's `.cm-atomic-link` decoration.
+    ...(brokenLinkContext ? [brokenLinks(brokenLinkContext), brokenLinkTheme] : []),
+    // Editing affordances that make the hybrid preview feel like Obsidian.
+    history(),
+    // Unified undo: record the inverse of each frontmatter mutation so the
+    // editor history can undo/redo frontmatter alongside body edits.
+    frontmatterUndo,
+    drawSelection(),
+    indentOnInput(),
+    closeBrackets(),
+    highlightActiveLine(),
+    keymap.of([
+      ...closeBracketsKeymap,
+      ...historyKeymap,
+      ...markdownKeymap,
+      indentWithTab,
+      ...defaultKeymap,
+    ]),
+    // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits
+    // at the state level. Editable from this slice on for autosave.
+    EditorState.readOnly.of(readOnly),
+    EditorView.editable.of(!readOnly),
+    EditorView.lineWrapping,
+    changeListener,
+    blurListener,
+  ];
+}
+
+/**
+ * The build options behind a view, kept so `setEditorConcept` can rebuild the
+ * EditorState (fresh history) on Concept switch using the SAME extension set /
+ * listeners — without the caller having to thread the options back in.
+ */
+const viewOptions = new WeakMap<EditorView, BuildEditorOptions>();
+
+/** Which Concept path each view is currently showing (for switch detection). */
+const viewPath = new WeakMap<EditorView, string | null>();
+
+export function buildEditor(options: BuildEditorOptions): EditorView {
+  const { parent, doc, frontmatter = [] } = options;
   const state = EditorState.create({
     doc,
     extensions: [
       // Seed the frontmatter field with the open Concept's properties.
       frontmatterField.init(() => frontmatter),
-      ...livePreviewExtensions(onLinkClick ?? defaultLinkClick),
-      // Broken-link styling (only when the index context is provided). Placed
-      // after the live-preview extensions so its mark class layers on top of
-      // atomic-editor's `.cm-atomic-link` decoration.
-      ...(brokenLinkContext ? [brokenLinks(brokenLinkContext), brokenLinkTheme] : []),
-      // Editing affordances that make the hybrid preview feel like Obsidian.
-      history(),
-      drawSelection(),
-      indentOnInput(),
-      closeBrackets(),
-      highlightActiveLine(),
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...historyKeymap,
-        ...markdownKeymap,
-        indentWithTab,
-        ...defaultKeymap,
-      ]),
-      // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits
-      // at the state level. Editable from this slice on for autosave.
-      EditorState.readOnly.of(readOnly),
-      EditorView.editable.of(!readOnly),
-      EditorView.lineWrapping,
-      changeListener,
-      blurListener,
+      ...editorExtensions(options),
     ],
   });
 
   const view = new EditorView({ state, parent });
+  viewOptions.set(view, options);
+  viewPath.set(view, options.path ?? null);
 
   // Seed the editor root's theme from the app root (the theme store keeps it in
   // sync afterwards). atomic-editor reads `data-theme` on the CodeMirror root.
@@ -368,12 +441,53 @@ export function buildEditor({
 
 /**
  * Replace an existing view's body + frontmatter (switching Concepts, or
- * reloading after an external change). Marked programmatic so it is NOT
- * autosaved back. Each half is updated only when it actually changed, to avoid
- * pointless transactions and cursor disruption on a reload of identical content
- * (and so a body-only self-edit never resets the cursor via this path).
+ * reloading after an external change).
+ *
+ * Unified-undo (this slice): history must NOT cross Concept boundaries. When the
+ * `path` differs from what the view last showed, we REBUILD the EditorState from
+ * scratch (`view.setState`) with the new body, a freshly-seeded frontmatter
+ * field, and a brand-new `history()` — so undo can never reach back into the
+ * previously-open Concept. The rebuild reuses the same shared `editorExtensions`
+ * (so listeners keep working) and seeds the field directly (NOT via a
+ * `setFrontmatter` effect), which also means the rebuild fires no autosave: a
+ * fresh state with no user transaction produces no `onChange` call.
+ *
+ * When the path is UNCHANGED (external reload of the open Concept, or a body
+ * self-edit reflow), we keep the in-place dispatch path: each half updates only
+ * when it actually changed (no pointless transactions / cursor disruption), and
+ * the dispatch is marked `programmatic` so it is NOT autosaved back. Editing the
+ * SAME doc therefore keeps coalescing in the existing history as before.
  */
-export function setEditorConcept(view: EditorView, body: string, props: Property[]): void {
+export function setEditorConcept(
+  view: EditorView,
+  body: string,
+  props: Property[],
+  path: string | null = null,
+): void {
+  const prevPath = viewPath.get(view) ?? null;
+  const switched = path !== prevPath;
+  viewPath.set(view, path);
+
+  if (switched) {
+    // Fresh state = fresh history. No history can survive the Concept boundary.
+    const options = viewOptions.get(view);
+    view.setState(
+      EditorState.create({
+        doc: body,
+        extensions: [
+          frontmatterField.init(() => props),
+          ...(options ? editorExtensions(options) : []),
+        ],
+      }),
+    );
+    // Mirror the new frontmatter out: a state rebuild fires no update listener,
+    // so push it to the Properties panel explicitly. History was reset to empty,
+    // so refresh the host's undo/redo state too.
+    options?.onFrontmatterChange?.(props);
+    options?.onHistory?.();
+    return;
+  }
+
   const docChanged = view.state.doc.toString() !== body;
   const fmChanged =
     serializeFrontmatter(view.state.field(frontmatterField)) !== serializeFrontmatter(props);
