@@ -90,6 +90,25 @@
   --atomic-editor-selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
   --atomic-editor-search-bg: color-mix(in srgb, var(--accent) 22%, transparent);
   --atomic-editor-search-bg-active: color-mix(in srgb, var(--accent) 45%, transparent);
+
+  /* Fenced-code syntax palette. The library ships a Material Palenight set tuned
+     for DARK backgrounds (its `--atomic-editor-hl-*` defaults), which washes out
+     on our light "paper". Override with a GitHub-Light-derived palette so code
+     reads with real contrast in light mode; the dark block leaves the defaults
+     untouched (they're already a dark-tuned palette). */
+  --atomic-editor-hl-keyword: #cf222e;
+  --atomic-editor-hl-string: #0a3069;
+  --atomic-editor-hl-number: #0550ae;
+  --atomic-editor-hl-comment: #6e7781;
+  --atomic-editor-hl-type: #953800;
+  --atomic-editor-hl-function: #8250df;
+  --atomic-editor-hl-property: #0550ae;
+  --atomic-editor-hl-regexp: #0a3069;
+  --atomic-editor-hl-escape: #0550ae;
+  --atomic-editor-hl-tag: #116329;
+  --atomic-editor-hl-variable: #1f2328;
+  --atomic-editor-hl-operator: #0550ae;
+  --atomic-editor-hl-invalid: #cf222e;
 }
 
 /* The theme attribute lives on the app root; `:has` lets the body adopt the
@@ -143,6 +162,25 @@ body:has([data-theme='dark']) {
   --atomic-editor-selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
   --atomic-editor-search-bg: color-mix(in srgb, var(--accent) 22%, transparent);
   --atomic-editor-search-bg-active: color-mix(in srgb, var(--accent) 45%, transparent);
+
+  /* Re-assert the library's Material Palenight syntax palette for dark mode.
+     The hl vars are declared in :root (light values), and custom properties
+     INHERIT — so without re-declaring here the dark-themed editor element would
+     pick up the light palette instead of the library's `var(…, default)`
+     fallback. These match @atomic-editor's built-in dark defaults. */
+  --atomic-editor-hl-keyword: #c792ea;
+  --atomic-editor-hl-string: #c3e88d;
+  --atomic-editor-hl-number: #f78c6c;
+  --atomic-editor-hl-comment: #6a7a82;
+  --atomic-editor-hl-type: #ffcb6b;
+  --atomic-editor-hl-function: #82aaff;
+  --atomic-editor-hl-property: #82aaff;
+  --atomic-editor-hl-regexp: #f07178;
+  --atomic-editor-hl-escape: #89ddff;
+  --atomic-editor-hl-tag: #f07178;
+  --atomic-editor-hl-variable: #eeffff;
+  --atomic-editor-hl-operator: #89ddff;
+  --atomic-editor-hl-invalid: #ff5370;
 }
 
 html,

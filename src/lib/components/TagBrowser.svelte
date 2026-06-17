@@ -69,10 +69,11 @@
     activeTag = activeTag === tag ? null : tag;
   }
 
-  /** Filename of a bundle-relative path, for a compact label. */
+  /** Leaf name of a bundle-relative path, sans `.md` — the same compact label
+   *  the Explorer tree shows for its Concept leaves (the full path is on hover). */
   function label(p: string): string {
     const slash = p.lastIndexOf('/');
-    return slash === -1 ? p : p.slice(slash + 1);
+    return (slash === -1 ? p : p.slice(slash + 1)).replace(/\.md$/i, '');
   }
 </script>
 
@@ -92,6 +93,7 @@
             aria-expanded={activeTag === tag}
             onclick={() => toggleTag(tag)}
           >
+            <span class="twisty" class:open={activeTag === tag}>▸</span>
             <span class="tag-name">{tag}</span>
             <span class="count" data-testid="tag-count">{count}</span>
           </button>
@@ -141,20 +143,22 @@
     padding: 0;
   }
 
+  /* A tag is a collapsible root, styled like an Explorer folder row: a
+     disclosure twisty, the tag name, then a trailing count. Expanding reveals
+     the tagged Concepts as nested leaves (mirroring the tree's children). */
   .tag {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.35rem;
     width: 100%;
-    padding: 0.25rem 0.4rem;
+    padding: 0.15rem 0.4rem;
     border: none;
-    background: var(--tag-bg);
-    color: var(--tag-text);
+    background: none;
+    color: inherit;
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-sm);
     transition: background 0.12s ease;
   }
 
@@ -164,15 +168,25 @@
 
   .tag:focus-visible {
     outline: 2px solid var(--accent-ring);
-    outline-offset: 1px;
+    outline-offset: -1px;
   }
 
-  .tag.active {
-    background: var(--accent-soft);
-    color: var(--tag-text);
+  .twisty {
+    flex: 0 0 auto;
+    display: inline-block;
+    width: 1em;
+    transition: transform 0.1s ease;
+    color: var(--text-muted);
+  }
+
+  .twisty.open {
+    transform: rotate(90deg);
   }
 
   .tag-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -180,19 +194,16 @@
 
   .count {
     flex: 0 0 auto;
-    min-width: 1.2rem;
-    padding: 0 0.35rem;
-    border-radius: var(--radius-pill);
-    background: var(--bg-sunken);
     color: var(--text-faint);
-    font-size: 0.72rem;
-    text-align: center;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
   }
 
   .concept-list {
-    margin: 0.1rem 0 0.3rem;
+    margin: 0.05rem 0 0.15rem;
     padding-left: 0.6rem;
-    border-left: 2px solid var(--border);
+    margin-left: 0.5rem;
+    border-left: 1px solid var(--border);
   }
 
   .concept {

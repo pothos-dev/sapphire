@@ -45,10 +45,10 @@
     };
   });
 
-  /** Filename of a bundle-relative path, for a compact label. */
-  function label(p: string): string {
-    const slash = p.lastIndexOf('/');
-    return slash === -1 ? p : p.slice(slash + 1);
+  /** Canonical Concept name: the bundle-relative path without the `.md`
+   *  extension (e.g. `concepts/index.md` → `concepts/index`). */
+  function canonical(p: string): string {
+    return p.replace(/\.md$/i, '');
   }
 </script>
 
@@ -69,8 +69,7 @@
             title={source}
             onclick={() => onopen(source)}
           >
-            <span class="name">{label(source)}</span>
-            <span class="path">{source}</span>
+            <span class="name">{canonical(source)}</span>
           </button>
         </li>
       {/each}
@@ -100,8 +99,7 @@
   }
 
   .entry {
-    display: flex;
-    flex-direction: column;
+    display: block;
     width: 100%;
     padding: 0.25rem 0.4rem;
     border: none;
@@ -124,15 +122,8 @@
   }
 
   .name {
+    display: block;
     font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .path {
-    font-size: 0.72rem;
-    color: var(--text-faint);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
