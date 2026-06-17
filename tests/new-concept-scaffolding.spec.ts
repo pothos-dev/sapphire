@@ -10,10 +10,10 @@ import { test, expect, type Page } from '@playwright/test';
  *    while still allowing a brand-new type to be typed freely.
  */
 
-/** Open the per-row ⋯ menu for a tree node by its bundle-relative path. */
+/** Open the context menu for a tree node by right-clicking its row. */
 async function openRowMenu(page: Page, path: string) {
   const tree = page.getByTestId('tree');
-  await tree.locator(`[data-menu-path="${path}"]`).click({ force: true });
+  await tree.locator(`[data-row-path="${path}"]`).click({ button: 'right' });
   await expect(page.getByTestId('context-menu')).toBeVisible();
 }
 

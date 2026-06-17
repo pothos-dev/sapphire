@@ -15,12 +15,10 @@ import { test, expect } from '@playwright/test';
  * notify watcher drives them.
  */
 
-/** Open the per-row ⋯ menu for a tree node by its bundle-relative path. */
+/** Open the context menu for a tree node by right-clicking its row. */
 async function openRowMenu(page: import('@playwright/test').Page, path: string) {
   const tree = page.getByTestId('tree');
-  // The ⋯ button is revealed on row hover (visibility); force the click so the
-  // test doesn't depend on the hover transition.
-  await tree.locator(`[data-menu-path="${path}"]`).click({ force: true });
+  await tree.locator(`[data-row-path="${path}"]`).click({ button: 'right' });
   await expect(page.getByTestId('context-menu')).toBeVisible();
 }
 
@@ -59,7 +57,7 @@ test('tree CRUD: create, rename, move, delete Concepts and folders', async ({ pa
   await page.getByTestId('dialog-input').fill('archive');
   await page.getByTestId('dialog-confirm').click();
   // The ⋯ button is hidden until row hover, so assert the node EXISTS (count).
-  await expect(tree.locator(`[data-menu-path="concepts/archive"]`)).toHaveCount(1);
+  await expect(tree.locator(`[data-row-path="concepts/archive"]`)).toHaveCount(1);
 
   // --- Move the renamed Concept into the new folder ---
   await openRowMenu(page, renamed);
@@ -90,7 +88,7 @@ test('tree CRUD: create, rename, move, delete Concepts and folders', async ({ pa
   await openRowMenu(page, 'concepts/archive');
   await page.getByTestId('context-menu').locator('[data-action="delete"]').click();
   await page.getByTestId('dialog-confirm').click();
-  await expect(tree.locator(`[data-menu-path="concepts/archive"]`)).toHaveCount(0);
+  await expect(tree.locator(`[data-row-path="concepts/archive"]`)).toHaveCount(0);
   await expect(tree.locator(`[data-path="${moved}"]`)).toHaveCount(0);
   // Deleting the open Concept (inside the folder) clears the editor gracefully.
   await expect(page.getByTestId('placeholder')).toBeVisible();

@@ -58,13 +58,17 @@ async function expandFolder(page: Page, name: string): Promise<void> {
   await tree.locator('button.dir-toggle', { hasText: name }).first().click();
 }
 
-/** Open the per-row ⋯ menu for a tree node by its bundle-relative path. */
+/** Open the context menu for a tree node by right-clicking its row. */
 async function openRowMenu(page: Page, path: string): Promise<void> {
   const tree = page.getByTestId('tree');
-  // The ⋯ button is revealed on row hover (visibility); force the click so the
-  // test doesn't depend on the hover transition (mirrors tree-crud.spec.ts).
-  await tree.locator(`[data-menu-path="${path}"]`).click({ force: true });
+  await tree.locator(`[data-row-path="${path}"]`).click({ button: 'right' });
   await expect(page.getByTestId('context-menu')).toBeVisible();
+}
+
+/** Expand a collapsible sidebar Section if it is currently collapsed (idempotent). */
+async function expandSection(page: Page, name: string): Promise<void> {
+  const header = page.getByTestId(`${name}-section-header`);
+  if ((await header.getAttribute('aria-expanded')) === 'false') await header.click();
 }
 
 test('link auto-rewrite: inbound + own-outbound links follow a moved Concept', async ({
@@ -138,6 +142,7 @@ test('link auto-rewrite: rewritten links still resolve to the moved Concept', as
   // map over resolveLink) must list BOTH inbound sources — proof the rewritten
   // absolute (A) and relative (C) links still resolve to B at its new location.
   await tree.locator('[data-path="concepts/b.md"]').click();
+  await expandSection(page, 'backlinks');
   const backlinks = page.getByTestId('backlinks');
   await expect(backlinks.locator('[data-testid="backlink"][data-path="a.md"]')).toBeVisible();
   await expect(

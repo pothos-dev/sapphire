@@ -10,7 +10,7 @@
     selected: string | null;
     /** called when a `.md` file is clicked */
     onopen: (path: string) => void;
-    /** called on right-click (or the per-row menu button) with the node + coords */
+    /** called on right-click with the node + coords */
     onmenu: (node: TreeNode, x: number, y: number) => void;
     /** depth for indentation (root's children start at 0) */
     depth?: number;
@@ -70,7 +70,7 @@
 </script>
 
 {#if node.isDir}
-  <div class="row dir" style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected="false" tabindex="-1">
+  <div class="row dir" data-row-path={node.path} style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected="false" tabindex="-1">
     <button class="entry dir-toggle" type="button" onclick={toggle} aria-expanded={expanded}>
       <span class="twisty" class:open={expanded}>▸</span>
       <span class="name">{displayName}</span>
@@ -92,14 +92,6 @@
         }}
       >{RESERVED_GLYPH[r.kind]}</button>
     {/each}
-    <button
-      class="menu-btn"
-      type="button"
-      title="Actions"
-      aria-label="Folder actions"
-      data-menu-path={node.path}
-      onclick={openMenu}
-    >⋯</button>
   </div>
   {#if expanded}
     <ul class="children">
@@ -111,7 +103,7 @@
     </ul>
   {/if}
 {:else}
-  <div class="row file" style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected={selected === node.path} tabindex="-1">
+  <div class="row file" data-row-path={node.path} style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected={selected === node.path} tabindex="-1">
     <button
       class="entry file-entry"
       class:selected={selected === node.path}
@@ -123,14 +115,6 @@
     >
       <span class="name">{displayName}</span>
     </button>
-    <button
-      class="menu-btn"
-      type="button"
-      title="Actions"
-      aria-label="Concept actions"
-      data-menu-path={node.path}
-      onclick={openMenu}
-    >⋯</button>
   </div>
 {/if}
 
@@ -173,37 +157,6 @@
   }
 
   .reserved-btn:focus-visible {
-    outline: 2px solid var(--accent-ring);
-    outline-offset: -1px;
-  }
-
-  .menu-btn {
-    flex: 0 0 auto;
-    visibility: hidden;
-    width: 1.5rem;
-    margin-right: 0.2rem;
-    border: none;
-    background: none;
-    color: inherit;
-    font: inherit;
-    line-height: 1;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    opacity: 0.7;
-    transition: background 0.12s ease;
-  }
-
-  .row:hover .menu-btn {
-    visibility: visible;
-  }
-
-  .menu-btn:hover {
-    background: var(--hover);
-    opacity: 1;
-  }
-
-  .menu-btn:focus-visible {
-    visibility: visible;
     outline: 2px solid var(--accent-ring);
     outline-offset: -1px;
   }
