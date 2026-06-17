@@ -24,10 +24,10 @@
   // Left-sidebar accordion: the Bundle tree plus the Backlinks and Tags panes
   // are collapsible sections (VSCode-style). Each expanded body is capped to its
   // share of the viewport — the cap is driven by `--expanded-count` (see below
-  // and SidebarSection.svelte). Default: everything open.
+  // and SidebarSection.svelte). Default: Explorer open; Backlinks and Tags collapsed.
   let treeOpen = $state(true);
-  let backlinksOpen = $state(true);
-  let tagsOpen = $state(true);
+  let backlinksOpen = $state(false);
+  let tagsOpen = $state(false);
   const expandedCount = $derived(
     (treeOpen ? 1 : 0) + (backlinksOpen ? 1 : 0) + (tagsOpen ? 1 : 0),
   );
