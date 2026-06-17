@@ -467,6 +467,11 @@
     data-testid="side-bar"
     style="--expanded-count: {expandedCount}"
   >
+    <!-- Fixed-width inner, anchored to the sidebar's right edge (the aside uses
+         `justify-content: flex-end`). When the aside's width animates to 0 the
+         inner keeps its width and slides out to the left, clipped by the aside's
+         `overflow: hidden` — a clean slide rather than a content squish. -->
+    <div class="side-bar-inner">
     <SidebarSection
       title="Explorer"
       expanded={treeOpen}
@@ -552,6 +557,7 @@
     >
       <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
     </SidebarSection>
+    </div>
   </aside>
 
   <main class="editor-pane" aria-label="Concept">
@@ -744,37 +750,46 @@
      state/theme.svelte.ts — OS-driven default). The attribute selects the token
      block in app.css; the app UI and atomic-editor both read from it, so they
      stay consistent. Base resets + the body typeface live in app.css. */
+  /* The first track is `auto`, so it follows the sidebar's own width. Collapsing
+     animates that width to 0 (see `.side-bar`); the `auto` track shrinks with it
+     and the `1fr` editor pane expands to fill the gap. We animate `width` rather
+     than `grid-template-columns` because the latter doesn't interpolate in the
+     WebKitGTK webview Tauri uses on Linux. */
   .app {
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: auto 1fr;
     height: 100vh;
     overflow: hidden;
     color: var(--text);
     background: var(--bg);
   }
 
-  /* Collapsed sidebar: hide the aside and collapse to a single column. The
-     aside is `display: none` so it leaves the grid — the editor pane becomes
-     the sole item and fills the one remaining 1fr track. (A `0 1fr` two-track
-     layout would instead drop the editor into the zero-width first track.) */
-  .app.sidebar-collapsed {
-    grid-template-columns: 1fr;
+  /* Left sidebar: a fixed-width box clipping a vertical stack of collapsible
+     accordion sections. The inner stack (`.side-bar-inner`) holds the flex
+     column; the aside itself is just the animated, clipping frame. */
+  .side-bar {
+    width: 280px;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    justify-content: flex-end;
+    border-right: 1px solid var(--border);
+    background: var(--bg-elevated);
+    transition: width 0.22s ease;
   }
 
   .app.sidebar-collapsed .side-bar {
-    display: none;
+    width: 0;
+    border-right-width: 0;
   }
 
-  /* Left sidebar: a vertical stack of collapsible accordion sections. Fixed to
-     the viewport height with its own overflow hidden; each section's body caps
-     and scrolls itself (see SidebarSection.svelte). */
-  .side-bar {
+  .side-bar-inner {
+    flex: none;
+    width: 280px;
+    height: 100vh;
     display: flex;
     flex-direction: column;
-    height: 100vh;
     overflow: hidden;
-    border-right: 1px solid var(--border);
-    background: var(--bg-elevated);
     font-size: 0.9rem;
   }
 
