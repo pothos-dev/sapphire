@@ -852,11 +852,11 @@
   }
 
   /* Breathing room on both sides of the editor column. The atomic-editor
-     package sets `padding-inline: 0.5rem` on `.cm-content`; nudge it up so the
-     prose isn't flush against the pane edge when the window is narrower than
-     the 70ch measure. Selector mirrors the package's `.atomic-cm-editor
-     .cm-content` for matching specificity, plus our scoped class to win. */
-  .editor-host :global(.atomic-cm-editor .cm-content) {
+     package injects `.cm-content { padding: 0 }` via a CodeMirror theme
+     (specificity `(0,2,0)` — a generated wrapper class scoping `.cm-content`).
+     We match `.cm-editor .cm-content` (specificity `(0,3,0)`) so this
+     `padding-inline` longhand wins over the theme's `padding` shorthand. */
+  .editor-host :global(.cm-editor .cm-content) {
     padding-inline: 2.5rem;
   }
 

@@ -175,7 +175,7 @@
 
 <style>
   .properties {
-    padding: 0.6rem 2.5rem;
+    padding: 0.6rem 1.5rem;
     border-bottom: 1px solid var(--border);
     display: flex;
     flex-direction: column;
