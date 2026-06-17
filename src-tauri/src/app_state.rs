@@ -64,3 +64,40 @@ impl AppState {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn temp_state() -> AppState {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "sapphire-app-state-{}-{}",
+            std::process::id(),
+            n
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        AppState::new(dir.canonicalize().unwrap())
+    }
+
+    #[test]
+    fn recent_self_write_matches_once_then_is_consumed() {
+        let state = temp_state();
+        let p = PathBuf::from("/bundle/a.md");
+        state.note_self_write(p.clone());
+        // First check sees our own write; the entry is consumed...
+        assert!(state.is_recent_self_write(&p));
+        // ...so a subsequent genuine external edit to the same path is not swallowed.
+        assert!(!state.is_recent_self_write(&p));
+    }
+
+    #[test]
+    fn unwritten_path_is_not_a_self_write() {
+        let state = temp_state();
+        state.note_self_write(PathBuf::from("/bundle/a.md"));
+        assert!(!state.is_recent_self_write(Path::new("/bundle/other.md")));
+    }
+}

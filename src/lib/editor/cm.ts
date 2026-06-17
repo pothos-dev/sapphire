@@ -102,11 +102,6 @@ export const frontmatterField = StateField.define<Property[]>({
   },
 });
 
-/** The open Concept's current frontmatter properties. */
-export function getFrontmatter(view: EditorView): Property[] {
-  return view.state.field(frontmatterField);
-}
-
 /**
  * Unified undo (ADR 0003 / unified-body-frontmatter-undo): frontmatter lives in
  * a StateField but is mutated via `setFrontmatter` effects, which CodeMirror's

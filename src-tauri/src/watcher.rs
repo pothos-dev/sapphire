@@ -9,8 +9,6 @@
 //! Pure-ish module logic — `lib.rs` just calls `start` in setup.
 
 use std::path::{Component, Path};
-use std::sync::Arc;
-use std::time::Duration;
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -153,17 +151,59 @@ fn to_bundle_relative(root: &Path, abs: &Path) -> Option<String> {
 }
 
 /// Hold the watcher alive for the lifetime of the app. We wrap it so `lib.rs`
-/// can stash it without naming the concrete watcher type everywhere.
-pub struct WatcherHandle(#[allow(dead_code)] Arc<RecommendedWatcher>);
+/// can stash it without naming the concrete watcher type everywhere. The field
+/// is never read — owning it is what keeps the watcher (and thus watching) alive.
+pub struct WatcherHandle(#[allow(dead_code)] RecommendedWatcher);
 
 impl WatcherHandle {
     pub fn new(watcher: RecommendedWatcher) -> Self {
-        WatcherHandle(Arc::new(watcher))
+        WatcherHandle(watcher)
     }
 }
 
-/// Debounce hint (documented for the frontend; not enforced here): notify can
-/// fire multiple events per logical change. The frontend coalesces tree
-/// refreshes. Kept as a constant in case we add server-side debouncing.
-#[allow(dead_code)]
-pub const COALESCE_HINT: Duration = Duration::from_millis(50);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{AccessKind, CreateKind, ModifyKind, RemoveKind};
+    use std::path::PathBuf;
+
+    #[test]
+    fn classify_maps_the_three_ui_kinds() {
+        assert_eq!(classify(&EventKind::Create(CreateKind::Any)), Some("created"));
+        assert_eq!(
+            classify(&EventKind::Modify(ModifyKind::Any)),
+            Some("modified")
+        );
+        assert_eq!(classify(&EventKind::Remove(RemoveKind::Any)), Some("removed"));
+    }
+
+    #[test]
+    fn classify_ignores_access_and_other_events() {
+        assert_eq!(classify(&EventKind::Access(AccessKind::Any)), None);
+        assert_eq!(classify(&EventKind::Any), None);
+        assert_eq!(classify(&EventKind::Other), None);
+    }
+
+    #[test]
+    fn to_bundle_relative_strips_root_and_uses_forward_slashes() {
+        let root = PathBuf::from("/bundle");
+        assert_eq!(
+            to_bundle_relative(&root, &PathBuf::from("/bundle/a/b.md")),
+            Some("a/b.md".to_string())
+        );
+        assert_eq!(
+            to_bundle_relative(&root, &PathBuf::from("/bundle/note.md")),
+            Some("note.md".to_string())
+        );
+    }
+
+    #[test]
+    fn to_bundle_relative_rejects_outside_and_root_itself() {
+        let root = PathBuf::from("/bundle");
+        assert_eq!(to_bundle_relative(&root, &PathBuf::from("/bundle")), None);
+        assert_eq!(
+            to_bundle_relative(&root, &PathBuf::from("/elsewhere/x.md")),
+            None
+        );
+    }
+}

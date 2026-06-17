@@ -139,8 +139,10 @@ export interface Backend {
 
   /**
    * Load this Bundle's persisted session state (last-open Concept, expanded
-   * folders, ...). Robust to a missing/corrupt store: resolves to defaults
-   * (`{ lastOpenConcept: null, expandedFolders: [] }`), never rejects.
+   * folders, recent files, sidebar flags, window geometry). Robust to a
+   * missing/corrupt store: resolves to a fresh-Bundle default (core fields
+   * empty — `lastOpenConcept: null`, `expandedFolders: []` — and the optional
+   * fields defaulted on read by the session store), never rejects.
    */
   loadBundleState(): Promise<BundleState>;
 

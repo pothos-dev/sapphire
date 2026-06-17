@@ -13,6 +13,7 @@
    * Style mirrors the QuickNav palette for consistency.
    */
   import { backend } from '$lib/ipc';
+  import { splitPath } from '$lib/path';
   import type { SearchHit } from '$lib/types';
 
   interface Props {
@@ -101,11 +102,6 @@
   }
 
   /** Split a path into [dir, basename] for display. */
-  function splitPath(path: string): { dir: string; base: string } {
-    const slash = path.lastIndexOf('/');
-    if (slash === -1) return { dir: '', base: path };
-    return { dir: path.slice(0, slash + 1), base: path.slice(slash + 1) };
-  }
 
   /** Split a snippet around the (case-insensitive) match for highlighting. */
   function highlightParts(snippet: string): { text: string; match: boolean }[] {

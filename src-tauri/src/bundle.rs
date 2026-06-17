@@ -6,8 +6,9 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
-use ignore::WalkBuilder;
 use serde::Serialize;
+
+use crate::paths::{bundle_walker, to_rel_string};
 
 /// A node in the Bundle's directory tree. Matches the TS `TreeNode`.
 #[derive(Debug, Serialize)]
@@ -48,12 +49,7 @@ pub fn list_tree(root: &Path) -> Result<TreeNode, String> {
         },
     );
 
-    let walker = WalkBuilder::new(root)
-        .hidden(true)
-        .git_ignore(true)
-        .git_global(false)
-        .parents(false)
-        .build();
+    let walker = bundle_walker(root).build();
 
     for result in walker {
         let entry = result.map_err(|e| e.to_string())?;
@@ -173,8 +169,9 @@ pub fn create_folder(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
 
 /// Rename (or move, when the target is in a different folder) `from` to `to`.
 /// Both are bundle-relative; `from` must exist, `to` must not. This is a PLAIN
-/// filesystem rename — inbound links are NOT rewritten (a later slice). Works
-/// for both Concepts and folders. Returns the resolved `to` absolute path.
+/// filesystem rename — inbound link rewriting is layered on top by the
+/// `rename_and_rewrite` command (lib.rs), not by this function. Works for both
+/// Concepts and folders. Returns the resolved `to` absolute path.
 pub fn rename_path(root: &Path, from: &str, to: &str) -> Result<PathBuf, String> {
     let src = resolve(root, from)?;
     let dst = resolve_new(root, to)?;
@@ -250,34 +247,23 @@ pub fn resolve_new(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
     // is within the (canonical) root. This catches symlink escapes for the
     // existing portion while tolerating the not-yet-created tail.
     let mut existing = joined.as_path();
-    loop {
-        match existing.parent() {
-            Some(p) => {
-                if existing.exists() {
-                    break;
-                }
-                existing = p;
-            }
-            None => break,
+    while let Some(parent) = existing.parent() {
+        if existing.exists() {
+            break;
         }
+        existing = parent;
     }
-    if let Ok(canonical_ancestor) = existing.canonicalize() {
-        if !canonical_ancestor.starts_with(root) {
-            return Err(format!("path escapes the bundle: {rel_path}"));
-        }
+    // The nearest existing ancestor MUST canonicalize and stay within the root.
+    // A canonicalize failure is treated as an escape (rejected) rather than
+    // silently passed through — the root itself always exists and canonicalizes,
+    // so a failure here means something is wrong with the path; defence in depth.
+    let canonical_ancestor = existing
+        .canonicalize()
+        .map_err(|e| format!("{rel_path}: {e}"))?;
+    if !canonical_ancestor.starts_with(root) {
+        return Err(format!("path escapes the bundle: {rel_path}"));
     }
     Ok(joined)
-}
-
-/// Convert a relative `Path` to a '/'-separated bundle-relative string.
-fn to_rel_string(rel: &Path) -> String {
-    rel.components()
-        .filter_map(|c| match c {
-            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 #[cfg(test)]
@@ -355,5 +341,25 @@ mod tests {
         assert!(create_folder(&root, "../escape").is_err());
         assert!(resolve_new(&root, "/abs/path.md").is_err());
         assert!(resolve_new(&root, "").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_new_rejects_a_symlinked_escape() {
+        // A symlink inside the Bundle pointing OUTSIDE it must not let a new
+        // target be created through it: the nearest existing ancestor (the
+        // symlink) canonicalizes outside the root, so resolve_new rejects it.
+        let root = temp_root();
+        let outside = std::env::temp_dir().join(format!(
+            "sapphire-outside-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("escape_link")).unwrap();
+
+        assert!(resolve_new(&root, "escape_link/newfile.md").is_err());
+        // A normal in-bundle new target still resolves fine.
+        assert!(resolve_new(&root, "sub/newfile.md").is_ok());
     }
 }

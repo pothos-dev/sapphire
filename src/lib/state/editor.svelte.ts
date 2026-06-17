@@ -1,4 +1,6 @@
 import { backend } from '$lib/ipc';
+import { createDebouncer } from '$lib/debounce';
+import { errMessage } from '$lib/errors';
 
 /** Autosave debounce: save this long after the user stops typing. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
@@ -20,8 +22,6 @@ class EditorStore {
   path = $state<string | null>(null);
   /** raw markdown of the open Concept (source of truth while editing). */
   content = $state<string>('');
-  /** True while a Concept is loading. */
-  loading = $state<boolean>(false);
   /** Last open/save error, if any. */
   error = $state<string | null>(null);
   /** True when there are unsaved edits (a save is pending or in flight). */
@@ -42,8 +42,8 @@ class EditorStore {
   /** True when there is a forward Concept to advance to. */
   canGoForward = $derived(this.index >= 0 && this.index < this.history.length - 1);
 
-  /** Pending debounced-save timer. */
-  #saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Debounced autosave: writes the current content this long after edits stop. */
+  #autosave = createDebouncer(() => void this.#save(), AUTOSAVE_DEBOUNCE_MS);
 
   /**
    * Open a Concept by bundle-relative path and load its raw markdown. This is
@@ -86,7 +86,6 @@ class EditorStore {
     // Flush any pending edits to the previously-open Concept first.
     await this.flush();
 
-    this.loading = true;
     this.error = null;
     try {
       const content = await backend.readConcept(path);
@@ -98,9 +97,7 @@ class EditorStore {
       this.path = path;
       this.content = '';
       this.dirty = false;
-      this.error = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.loading = false;
+      this.error = errMessage(e);
     }
   }
 
@@ -117,19 +114,12 @@ class EditorStore {
   }
 
   #scheduleSave(): void {
-    if (this.#saveTimer !== null) clearTimeout(this.#saveTimer);
-    this.#saveTimer = setTimeout(() => {
-      this.#saveTimer = null;
-      void this.#save();
-    }, AUTOSAVE_DEBOUNCE_MS);
+    this.#autosave.schedule();
   }
 
   /** Write the current content to disk immediately (cancels the debounce). */
   async flush(): Promise<void> {
-    if (this.#saveTimer !== null) {
-      clearTimeout(this.#saveTimer);
-      this.#saveTimer = null;
-    }
+    this.#autosave.cancel();
     if (this.dirty) await this.#save();
   }
 
@@ -142,7 +132,7 @@ class EditorStore {
       // Only clear dirty if no newer edit arrived while the write was in flight.
       if (this.content === content) this.dirty = false;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMessage(e);
     }
   }
 
@@ -199,7 +189,7 @@ class EditorStore {
       const content = await backend.readConcept(open);
       this.content = content;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMessage(e);
     }
   }
 }

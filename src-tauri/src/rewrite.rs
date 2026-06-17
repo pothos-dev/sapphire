@@ -35,7 +35,10 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
+use crate::app_state::AppState;
+use crate::bundle;
 use crate::index::Index;
+use crate::paths::{dir_of, find_byte, is_external, resolve_internal};
 
 /// Summary of an auto-rewrite pass: how many links across how many files were
 /// changed. Matches the TS `{ linksChanged, filesChanged }`.
@@ -314,79 +317,6 @@ fn relative_path(from_dir: &str, target: &str) -> String {
     }
 }
 
-/// Directory portion of a bundle-relative path ('' for a root-level file).
-fn dir_of(path: &str) -> &str {
-    match path.rfind('/') {
-        Some(slash) => &path[..slash],
-        None => "",
-    }
-}
-
-/// Resolve an `href` (path part only — caller stripped anchor/query) to a
-/// bundle-relative internal target, or `None` for external/empty. Mirrors
-/// `resolve_internal` in `index.rs` / `resolveLink` in `links.ts`.
-fn resolve_internal(current_path: &str, path_part: &str) -> Option<String> {
-    let raw = path_part.trim();
-    if raw.is_empty() || is_external(raw) || raw.starts_with('#') {
-        return None;
-    }
-    let path = if let Some(stripped) = raw.strip_prefix('/') {
-        normalize_segments(stripped.split('/'))
-    } else {
-        let dir = dir_of(current_path);
-        let dir_segments: Vec<&str> = if dir.is_empty() {
-            Vec::new()
-        } else {
-            dir.split('/').collect()
-        };
-        normalize_segments(dir_segments.into_iter().chain(raw.split('/')))
-    };
-    if path.is_empty() {
-        None
-    } else {
-        Some(path)
-    }
-}
-
-/// True for `scheme:`-prefixed URLs. Mirrors `is_external` in `index.rs`.
-fn is_external(href: &str) -> bool {
-    let bytes = href.as_bytes();
-    if bytes.is_empty() || !bytes[0].is_ascii_alphabetic() {
-        return false;
-    }
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b':' {
-            return i > 0;
-        }
-        let ok = b.is_ascii_alphanumeric() || matches!(b, b'+' | b'.' | b'-');
-        if !ok {
-            return false;
-        }
-    }
-    false
-}
-
-/// Collapse `.`/`..` segments; leading `..` that would escape are dropped.
-fn normalize_segments<'a>(segments: impl Iterator<Item = &'a str>) -> String {
-    let mut out: Vec<&str> = Vec::new();
-    for seg in segments {
-        match seg {
-            "" | "." => continue,
-            ".." => {
-                out.pop();
-            }
-            s => out.push(s),
-        }
-    }
-    out.join("/")
-}
-
-fn find_byte(bytes: &[u8], from: usize, target: u8) -> Option<usize> {
-    bytes[from..]
-        .iter()
-        .position(|&b| b == target)
-        .map(|p| from + p)
-}
 
 /// Byte length of a UTF-8 code point from its leading byte.
 fn utf8_len(b: u8) -> usize {
@@ -443,6 +373,90 @@ pub fn inbound_sources(index: &Index, moves: &HashMap<String, String>) -> Vec<St
         }
     }
     set.into_iter().collect()
+}
+
+/// Rename/move `from` to `to`, auto-rewriting every affected link. Plans the
+/// rewrites from the CURRENT index (and reads source content) BEFORE the fs
+/// move, performs the rename, then writes the rewritten content to the new
+/// locations. Reindexes affected Concepts immediately so backlinks / broken-link
+/// queries are prompt (the watcher would also catch up asynchronously). Rewrite
+/// writes are recorded as self-writes so the watcher does not echo them back as
+/// external edits.
+pub fn rename_and_rewrite(
+    state: &AppState,
+    from: &str,
+    to: &str,
+) -> Result<RewriteSummary, String> {
+    let root = &state.bundle_root;
+
+    // 1. Plan: build the move map and read all affected source content from the
+    //    CURRENT (pre-move) locations, using a snapshot of the index.
+    let (moves, planned) = {
+        let index = state.index.read().map_err(|e| e.to_string())?;
+        let moves = build_move_map(&index, from, to);
+        let sources = inbound_sources(&index, &moves);
+        // Read content for every source we might rewrite (inbound + moved).
+        let mut seen = std::collections::BTreeSet::new();
+        let mut contents: Vec<(String, String)> = Vec::new();
+        for s in sources.iter().chain(moves.keys()) {
+            if seen.insert(s.clone()) {
+                let c = bundle::read_concept(root, s)?;
+                contents.push((s.clone(), c));
+            }
+        }
+        (moves, contents)
+    };
+
+    // 2. Perform the actual filesystem rename/move.
+    bundle::rename_path(root, from, to)?;
+
+    // 3. Compute and apply rewrites against the snapshot we read in step 1.
+    let lookup: HashMap<&str, &str> = planned
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let sources: Vec<String> = planned.iter().map(|(p, _)| p.clone()).collect();
+    let (writes, summary) = plan_rewrites(&moves, &sources, |p| {
+        lookup
+            .get(p)
+            .map(|c| c.to_string())
+            .ok_or_else(|| format!("missing source snapshot: {p}"))
+    })?;
+
+    // 4. Write rewritten content to the NEW locations, record self-writes, and
+    //    reindex so queries are immediately consistent.
+    for (new_path, content) in &writes {
+        let resolved = bundle::write_concept(root, new_path, content)?;
+        state.note_self_write(resolved);
+        if let Ok(mut index) = state.index.write() {
+            index.reindex_concept(new_path, content);
+        }
+    }
+
+    Ok(summary)
+}
+
+/// Move `from` into the folder `to_dir` (bundle-relative; '' for the root),
+/// keeping the original name, then auto-rewrite affected links. Convenience over
+/// [`rename_and_rewrite`]; errors if the source is invalid or already there.
+pub fn move_into(
+    state: &AppState,
+    from: &str,
+    to_dir: &str,
+) -> Result<RewriteSummary, String> {
+    let name = from
+        .rsplit('/')
+        .find(|s| !s.is_empty())
+        .ok_or_else(|| format!("invalid source path: {from}"))?;
+    let to = if to_dir.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}/{}", to_dir.trim_end_matches('/'), name)
+    };
+    if to == from {
+        return Err(format!("already in that folder: {from}"));
+    }
+    rename_and_rewrite(state, from, &to)
 }
 
 #[cfg(test)]

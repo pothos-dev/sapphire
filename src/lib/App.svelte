@@ -6,6 +6,7 @@
   import { editor } from '$lib/state/editor.svelte';
   import { indexStore } from '$lib/state/index.svelte';
   import { session } from '$lib/state/session.svelte';
+  import { suggestions } from '$lib/state/suggestions.svelte';
   import { theme } from '$lib/state/theme.svelte';
   import type { TreeNode } from '$lib/types';
   import {
@@ -17,8 +18,14 @@
     openSearch,
   } from '$lib/editor/cm';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
-  import { splitFrontmatter, parseProperties, type Property } from '$lib/frontmatter';
+  import {
+    splitFrontmatter,
+    parseProperties,
+    frontmatterLineCount,
+    type Property,
+  } from '$lib/frontmatter';
   import { resolveLink } from '$lib/links';
+  import { dirname, joinPath } from '$lib/path';
   import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
@@ -97,60 +104,25 @@
   // document has been loaded into the CodeMirror view.
   let searchOpen = $state(false);
   let pendingScrollLine: number | null = null;
-  let conceptPaths = $state<string[]>([]);
+
+  // Index-derived autocomplete sources (Concept paths, `type`/key/tag values)
+  // live in the `suggestions` store. Refresh them all whenever the index changes
+  // (file-changed bumps `indexStore.version`) so newly-introduced
+  // paths/types/keys/tags appear in suggestions immediately.
   $effect(() => {
     void indexStore.version;
-    void backend.listConceptPaths().then((p) => {
-      conceptPaths = p;
-    });
-  });
-
-  // Existing Bundle `type` values, for the Properties panel's `type`
-  // autocomplete. Refreshed whenever the index changes (file-changed bumps
-  // `indexStore.version`), so newly-introduced types appear in suggestions.
-  let bundleTypes = $state<string[]>([]);
-  $effect(() => {
-    void indexStore.version;
-    void backend.allTypes().then((t) => {
-      bundleTypes = t;
-    });
-  });
-
-  // OKF recommended frontmatter keys (okf-spec §4.1). Always offered for key
-  // autocomplete, even on an empty Bundle, and merged with the keys actually
-  // used elsewhere in the Bundle (deduped, OKF keys always present).
-  const OKF_KEYS = ['type', 'title', 'description', 'resource', 'tags', 'timestamp'];
-
-  // Key-name autocomplete: OKF recommended keys ∪ distinct keys used across the
-  // Bundle. Refreshed on index change so a newly-introduced key appears.
-  let bundleKeys = $state<string[]>([]);
-  $effect(() => {
-    void indexStore.version;
-    void backend.allKeys().then((k) => {
-      bundleKeys = [...new Set([...OKF_KEYS, ...k])];
-    });
-  });
-
-  // Tag-value autocomplete for `tags` (and any list) chip inputs. No OKF tag
-  // vocabulary exists, so suggestions are bundle-sourced only (allTags → tag
-  // strings). Refreshed on index change like the others.
-  let bundleTags = $state<string[]>([]);
-  $effect(() => {
-    void indexStore.version;
-    void backend.allTags().then((counts) => {
-      bundleTags = counts.map((c) => c.tag);
-    });
+    suggestions.refresh();
   });
 
   // The Tags Section is hidden entirely when the Bundle carries no tags
   // (hide-tags-section-when-empty) — an always-present empty Tags Section is
-  // noise. `bundleTags` is reactive on the index `version` signal, so the
+  // noise. `suggestions.tags` is reactive on the index `version` signal, so the
   // Section appears/disappears live as the first tag is added / last tag
   // removed. The persisted `tagsOpen` flag is left untouched while hidden
   // (gated render, no setter call), so it is preserved across hide/show. The
   // hidden Section is excluded from `expandedCount` (above) so the remaining
   // left-Sidebar Sections share height correctly.
-  const tagsVisible = $derived(bundleTags.length > 0);
+  const tagsVisible = $derived(suggestions.tags.length > 0);
   // Left-Sidebar expanded count for the `--expanded-count` CSS var: count the
   // Explorer when open, and Tags only when it is BOTH present (tags exist) and
   // open — a hidden Tags Section must not steal a share of the height.
@@ -408,14 +380,6 @@
     scrollToLine(view, line - frontmatterLineCount(editor.content));
   }
 
-  /** Number of leading lines the frontmatter block occupies (0 when none). */
-  function frontmatterLineCount(content: string): number {
-    const { hasFrontmatter, open, yaml, close } = splitFrontmatter(content);
-    if (!hasFrontmatter) return 0;
-    const newlines = (s: string) => (s.match(/\n/g) ?? []).length;
-    return newlines(open) + newlines(yaml) + newlines(close);
-  }
-
   // OKF link navigation (slice 5). A rendered-link click in the live preview is
   // routed here: external links open in a browser tab (preserving prior
   // behavior); bundle-absolute / relative links resolve against the open
@@ -456,23 +420,12 @@
   // The open modal dialog (name prompt / move picker / delete confirm), or null.
   let dialog = $state<Dialog | null>(null);
 
-  /** The folder containing `path` ('' for the Bundle root). */
-  function parentOf(path: string): string {
-    const slash = path.lastIndexOf('/');
-    return slash === -1 ? '' : path.slice(0, slash);
-  }
-
   /**
    * Folder a NEW child of `node` should live in: the node itself if it's a
    * directory, else its containing folder.
    */
   function childDirOf(node: TreeNode): string {
-    return node.isDir ? node.path : parentOf(node.path);
-  }
-
-  /** Join a folder ('' = root) and a name into a bundle-relative path. */
-  function joinPath(dir: string, name: string): string {
-    return dir === '' ? name : `${dir}/${name}`;
+    return node.isDir ? node.path : dirname(node.path);
   }
 
   /** All folder paths in the tree (for the Move picker), '' = Bundle root. */
@@ -566,7 +519,7 @@
       focusTypeForPath = null; // reserved files have no `type` to focus.
       void treeActions.createReservedFile(node.path, kind, path);
     } else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name };
-    else if (id === 'move') dialog = { kind: 'move', node, value: parentOf(node.path) };
+    else if (id === 'move') dialog = { kind: 'move', node, value: dirname(node.path) };
     else if (id === 'delete') dialog = { kind: 'delete', node };
   }
 
@@ -595,7 +548,7 @@
         closeDialog();
         return;
       }
-      await treeActions.renamePath(d.node.path, joinPath(parentOf(d.node.path), name));
+      await treeActions.renamePath(d.node.path, joinPath(dirname(d.node.path), name));
     } else if (d.kind === 'move') {
       await treeActions.movePath(d.node.path, d.value);
     } else if (d.kind === 'delete') {
@@ -834,9 +787,9 @@
       <Properties
         properties={frontmatterProps}
         path={editor.path}
-        types={bundleTypes}
-        keys={bundleKeys}
-        tags={bundleTags}
+        types={suggestions.types}
+        keys={suggestions.keys}
+        tags={suggestions.tags}
         focusType={focusTypeNow}
         onchange={onPropertiesChange}
         onUndo={doUndo}
@@ -889,7 +842,7 @@
 
   <QuickNav
     open={quickNavOpen}
-    paths={conceptPaths}
+    paths={suggestions.conceptPaths}
     recent={session.recentFiles}
     onopen={openConcept}
     onclose={() => (quickNavOpen = false)}

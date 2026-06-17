@@ -14,7 +14,7 @@
 // Kept dependency-free of Svelte/CodeMirror so the scan is a pure function over
 // a markdown string.
 
-import { splitFrontmatter } from './frontmatter';
+import { frontmatterLineCount, splitFrontmatter } from './frontmatter';
 
 /** One outline entry: a markdown heading in document order. */
 export interface OutlineHeading {
@@ -40,10 +40,10 @@ const FENCE_RE = /^\s*(`{3,}|~{3,})/;
  * offset of the frontmatter is added back to each body heading's line.
  */
 export function scanHeadings(content: string): OutlineHeading[] {
-  const { hasFrontmatter, open, yaml, close, body } = splitFrontmatter(content);
-  // Lines consumed by the frontmatter block (open + yaml + close), so body line
-  // N maps to full-document line `offset + N`.
-  const offset = hasFrontmatter ? countLines(open) + countLines(yaml) + countLines(close) : 0;
+  const { body } = splitFrontmatter(content);
+  // Lines consumed by the frontmatter block, so body line N maps to
+  // full-document line `offset + N` (the inverse of App's scrollToOutlineLine).
+  const offset = frontmatterLineCount(content);
 
   const headings: OutlineHeading[] = [];
   const lines = body.split('\n');
@@ -74,20 +74,4 @@ export function scanHeadings(content: string): OutlineHeading[] {
     });
   }
   return headings;
-}
-
-/**
- * Count the number of `\n`-separated line *starts* a chunk occupies — i.e. how
- * many lines it advances the cursor by. A chunk ending in a newline contributes
- * exactly its newline count; the frontmatter `open`/`yaml`/`close` chunks are
- * captured verbatim incl. their trailing newlines, so this sums to the lines
- * before the body begins.
- */
-function countLines(chunk: string): number {
-  if (chunk === '') return 0;
-  let n = 0;
-  for (let i = 0; i < chunk.length; i++) {
-    if (chunk[i] === '\n') n++;
-  }
-  return n;
 }

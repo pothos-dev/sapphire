@@ -9,6 +9,7 @@
    * navigation/history path (so back/forward keeps working), Escape closes.
    */
   import { fuzzyRank, type FuzzyMatch } from '$lib/fuzzy';
+  import { splitPath } from '$lib/path';
   import { isReservedFile } from '$lib/reserved';
 
   interface Props {
@@ -78,11 +79,6 @@
   });
 
   /** Split a path into [prefix, basename] for display. */
-  function splitPath(path: string): { dir: string; base: string } {
-    const slash = path.lastIndexOf('/');
-    if (slash === -1) return { dir: '', base: path };
-    return { dir: path.slice(0, slash + 1), base: path.slice(slash + 1) };
-  }
 
   function choose(path: string) {
     onopen(path);

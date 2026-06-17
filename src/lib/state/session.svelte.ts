@@ -1,4 +1,5 @@
 import { backend } from '$lib/ipc';
+import { createDebouncer } from '$lib/debounce';
 import type { BundleState } from '$lib/types';
 
 /**
@@ -14,10 +15,10 @@ import type { BundleState } from '$lib/types';
  * owned by Rust; we carry the opaque `window` field through untouched so a save
  * here never clobbers it.
  *
- * EXTENDING (slice 13 `recentFiles`): add a rune + accessor here, include it in
- * `snapshot()`, and seed it in `load()`. The Backend `BundleState` type and both
- * impls already round-trip unknown fields, so no seam change is needed beyond
- * the new field.
+ * EXTENDING (the `recentFiles` field below was added this way): add a rune +
+ * accessor here, include it in `snapshot()`, and seed it in `load()`. The
+ * Backend `BundleState` type and both impls already round-trip unknown fields,
+ * so no seam change is needed beyond the new field.
  */
 
 const SAVE_DEBOUNCE_MS = 250;
@@ -59,8 +60,6 @@ class SessionStore {
    * expanded — matching the left-Sidebar Sections' fresh-Bundle default.
    */
   outlineOpen = $state<boolean>(true);
-  /** True once `load()` has resolved (data available to render the tree). */
-  loaded = $state<boolean>(false);
   /**
    * True only after the FULL restore sequence (load + seed defaults + reopen the
    * last Concept) has completed. Persistence is gated on this so a reactive
@@ -72,8 +71,11 @@ class SessionStore {
 
   /** Opaque window geometry from Rust; carried through saves untouched. */
   #window: unknown = undefined;
-  /** Pending debounced-save timer. */
-  #saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Debounced persistence: coalesces rapid UI-state changes into one write. */
+  #persist = createDebouncer(
+    () => void backend.saveBundleState(this.#snapshot()).catch(() => {}),
+    SAVE_DEBOUNCE_MS,
+  );
 
   /** Load persisted state from the backend. Defaults on a missing/corrupt store. */
   async load(): Promise<void> {
@@ -95,8 +97,6 @@ class SessionStore {
       this.#window = state.window;
     } catch {
       // Best-effort: a failed load just means no session to restore.
-    } finally {
-      this.loaded = true;
     }
   }
 
@@ -210,11 +210,7 @@ class SessionStore {
     // Never persist before the FULL restore sequence finishes (a transient
     // default observed mid-restore must not overwrite the just-loaded state).
     if (!this.restored) return;
-    if (this.#saveTimer !== null) clearTimeout(this.#saveTimer);
-    this.#saveTimer = setTimeout(() => {
-      this.#saveTimer = null;
-      void backend.saveBundleState(this.#snapshot()).catch(() => {});
-    }, SAVE_DEBOUNCE_MS);
+    this.#persist.schedule();
   }
 }
 

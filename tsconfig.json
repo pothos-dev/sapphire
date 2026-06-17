@@ -9,7 +9,11 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    // `node` is inherited from the SvelteKit-generated config; `bun-types` adds
+    // the `bun:test` module + globals so the `*.test.ts` unit suites typecheck
+    // under `bun run check` (they run via `bun test`, separate from Playwright).
+    "types": ["node", "bun-types"]
   }
   // Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
   // except $lib which is handled by https://svelte.dev/docs/kit/configuration#files

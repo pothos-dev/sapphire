@@ -12,13 +12,14 @@
 //!
 //! Pure module logic — the `#[tauri::command]` wrapper in `lib.rs` stays thin.
 
-use std::path::{Component, Path};
+use std::path::Path;
 
 use grep_regex::RegexMatcher;
 use grep_searcher::sinks::UTF8;
 use grep_searcher::{BinaryDetection, SearcherBuilder};
-use ignore::WalkBuilder;
 use serde::Serialize;
+
+use crate::paths::{bundle_walker, to_rel_string};
 
 /// Hard cap on the number of matches returned, so a query like a single common
 /// letter over a huge Bundle cannot flood the IPC channel or the UI list. The
@@ -58,12 +59,7 @@ pub fn search(root: &Path, query: &str) -> Result<Vec<SearchHit>, String> {
 
     let mut hits: Vec<SearchHit> = Vec::new();
 
-    let walker = WalkBuilder::new(root)
-        .hidden(true)
-        .git_ignore(true)
-        .git_global(false)
-        .parents(false)
-        .build();
+    let walker = bundle_walker(root).build();
 
     'walk: for result in walker {
         let entry = match result {
@@ -135,17 +131,6 @@ fn regex_escape(s: &str) -> String {
         out.push(c);
     }
     out
-}
-
-/// Convert a relative `Path` to a '/'-separated bundle-relative string.
-fn to_rel_string(rel: &Path) -> String {
-    rel.components()
-        .filter_map(|c| match c {
-            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 #[cfg(test)]

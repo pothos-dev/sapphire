@@ -1,4 +1,5 @@
 import { backend } from '$lib/ipc';
+import { errMessage } from '$lib/errors';
 import { bundle } from '$lib/state/bundle.svelte';
 import { editor } from '$lib/state/editor.svelte';
 import { indexStore } from '$lib/state/index.svelte';
@@ -48,7 +49,7 @@ class TreeActionsStore {
       await this.#refresh();
       return true;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMessage(e);
       return false;
     }
   }
