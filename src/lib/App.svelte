@@ -19,6 +19,7 @@
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
   import { splitFrontmatter, parseProperties, type Property } from '$lib/frontmatter';
   import { resolveLink } from '$lib/links';
+  import { dirname, joinPath } from '$lib/path';
   import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
@@ -456,23 +457,12 @@
   // The open modal dialog (name prompt / move picker / delete confirm), or null.
   let dialog = $state<Dialog | null>(null);
 
-  /** The folder containing `path` ('' for the Bundle root). */
-  function parentOf(path: string): string {
-    const slash = path.lastIndexOf('/');
-    return slash === -1 ? '' : path.slice(0, slash);
-  }
-
   /**
    * Folder a NEW child of `node` should live in: the node itself if it's a
    * directory, else its containing folder.
    */
   function childDirOf(node: TreeNode): string {
-    return node.isDir ? node.path : parentOf(node.path);
-  }
-
-  /** Join a folder ('' = root) and a name into a bundle-relative path. */
-  function joinPath(dir: string, name: string): string {
-    return dir === '' ? name : `${dir}/${name}`;
+    return node.isDir ? node.path : dirname(node.path);
   }
 
   /** All folder paths in the tree (for the Move picker), '' = Bundle root. */
@@ -566,7 +556,7 @@
       focusTypeForPath = null; // reserved files have no `type` to focus.
       void treeActions.createReservedFile(node.path, kind, path);
     } else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name };
-    else if (id === 'move') dialog = { kind: 'move', node, value: parentOf(node.path) };
+    else if (id === 'move') dialog = { kind: 'move', node, value: dirname(node.path) };
     else if (id === 'delete') dialog = { kind: 'delete', node };
   }
 
@@ -595,7 +585,7 @@
         closeDialog();
         return;
       }
-      await treeActions.renamePath(d.node.path, joinPath(parentOf(d.node.path), name));
+      await treeActions.renamePath(d.node.path, joinPath(dirname(d.node.path), name));
     } else if (d.kind === 'move') {
       await treeActions.movePath(d.node.path, d.value);
     } else if (d.kind === 'delete') {

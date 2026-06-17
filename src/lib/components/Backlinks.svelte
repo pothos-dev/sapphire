@@ -13,6 +13,7 @@
   // change on disk without inventing a new refresh mechanism.
 
   import { backend } from '$lib/ipc';
+  import { stripMd } from '$lib/path';
 
   interface Props {
     /** bundle-relative path of the focused Concept, or null when none open. */
@@ -48,7 +49,7 @@
   /** Canonical Concept name: the bundle-relative path without the `.md`
    *  extension (e.g. `concepts/index.md` → `concepts/index`). */
   function canonical(p: string): string {
-    return p.replace(/\.md$/i, '');
+    return stripMd(p);
   }
 </script>
 

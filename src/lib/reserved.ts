@@ -11,6 +11,8 @@
 //
 // Operates purely on bundle-relative, forward-slash paths — no IPC dependency.
 
+import { basename } from './path';
+
 /** The OKF-defined reserved file kinds. */
 export type ReservedKind = 'index' | 'log';
 
@@ -22,12 +24,6 @@ export const RESERVED_FILES: Record<ReservedKind, string> = {
 
 /** Every reserved basename (lowercase), for membership checks. */
 const RESERVED_BASENAMES = new Set<string>(Object.values(RESERVED_FILES));
-
-/** The basename (last path segment) of a bundle-relative path. */
-function basename(path: string): string {
-  const slash = path.lastIndexOf('/');
-  return slash === -1 ? path : path.slice(slash + 1);
-}
 
 /**
  * Whether `path` names a reserved file (`index.md` or `log.md`) at any level.

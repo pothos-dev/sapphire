@@ -12,6 +12,7 @@
   // tags change on disk, without a bespoke refresh mechanism.
 
   import { backend } from '$lib/ipc';
+  import { basename, stripMd } from '$lib/path';
   import type { TagCount } from '$lib/types';
 
   interface Props {
@@ -72,8 +73,7 @@
   /** Leaf name of a bundle-relative path, sans `.md` — the same compact label
    *  the Explorer tree shows for its Concept leaves (the full path is on hover). */
   function label(p: string): string {
-    const slash = p.lastIndexOf('/');
-    return (slash === -1 ? p : p.slice(slash + 1)).replace(/\.md$/i, '');
+    return stripMd(basename(p));
   }
 </script>
 
