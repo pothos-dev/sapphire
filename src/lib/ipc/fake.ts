@@ -168,6 +168,40 @@ This Concept has no YAML frontmatter block. Adding a property must synthesize
 one from scratch.
 `,
 
+  // A Concept exercising the Outline Section (slice: outline-section): several
+  // headings at varying levels (for indentation + scroll), a `#`-prefixed line
+  // INSIDE the frontmatter (a YAML comment that must NOT become an H1), and a
+  // `#`-prefixed line INSIDE a fenced code block (a shell comment that must NOT
+  // become a heading). The Outline must list exactly the four real headings.
+  'concepts/outline-demo.md': `---
+type: concept
+title: Outline Demo
+# this YAML comment must not appear in the outline
+tags: [outline-demo]
+---
+
+# Outline Demo
+
+Intro prose under the top-level heading.
+
+## First Section
+
+Some body text.
+
+### A Subsection
+
+A fenced code block whose comment must not be read as a heading:
+
+\`\`\`sh
+# this is a shell comment, not a heading
+echo hello
+\`\`\`
+
+## Second Section
+
+Closing prose.
+`,
+
   'concepts/editor/live-preview.md': `---
 type: concept
 title: Live Preview
@@ -912,6 +946,9 @@ function loadFakeBundleState(): BundleState {
       // Right Sidebar collapse flag: passed through untouched (undefined when
       // absent, which the session store defaults to `false` on read).
       rightSidebarOpen: parsed.rightSidebarOpen,
+      // Outline section collapse flag: passed through untouched (undefined when
+      // absent, which the session store defaults to `true` on read).
+      outlineOpen: parsed.outlineOpen,
     };
   } catch {
     return defaultBundleState();

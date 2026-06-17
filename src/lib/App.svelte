@@ -25,6 +25,7 @@
   import SearchPanel from '$lib/components/SearchPanel.svelte';
   import Properties from '$lib/components/Properties.svelte';
   import Backlinks from '$lib/components/Backlinks.svelte';
+  import Outline from '$lib/components/Outline.svelte';
   import TagBrowser from '$lib/components/TagBrowser.svelte';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
@@ -47,9 +48,12 @@
     (session.explorerOpen ? 1 : 0) + (session.tagsOpen ? 1 : 0),
   );
   // Right-Sidebar expanded count: only meaningful while the right Sidebar is
-  // open. Backlinks is its sole Section for now (Outline lands later).
+  // open. Sums its expanded Sections (Outline + Backlinks) so each body's cap
+  // divides this sidebar's height independently of the left one.
   const rightExpandedCount = $derived(
-    session.rightSidebarOpen && session.backlinksOpen ? 1 : 0,
+    session.rightSidebarOpen
+      ? (session.outlineOpen ? 1 : 0) + (session.backlinksOpen ? 1 : 0)
+      : 0,
   );
 
   let editorParent = $state<HTMLDivElement | null>(null);
@@ -365,6 +369,25 @@
       pendingScrollLine = line;
       void editor.open(path);
     }
+  }
+
+  // Outline navigation (outline-section): scroll the editor to a heading's line
+  // when its Outline entry is clicked. The Outline tracks line numbers against
+  // the FULL document (frontmatter included) so the entry is unambiguous, but
+  // the CodeMirror view holds only the BODY (frontmatter is split off, ADR
+  // 0003). So convert the full-document line to a body-relative line by
+  // subtracting the frontmatter block's line count before scrolling.
+  function scrollToOutlineLine(line: number) {
+    if (!view) return;
+    scrollToLine(view, line - frontmatterLineCount(editor.content));
+  }
+
+  /** Number of leading lines the frontmatter block occupies (0 when none). */
+  function frontmatterLineCount(content: string): number {
+    const { hasFrontmatter, open, yaml, close } = splitFrontmatter(content);
+    if (!hasFrontmatter) return 0;
+    const newlines = (s: string) => (s.match(/\n/g) ?? []).length;
+    return newlines(open) + newlines(yaml) + newlines(close);
   }
 
   // OKF link navigation (slice 5). A rendered-link click in the live preview is
@@ -806,9 +829,9 @@
        fixed-width inner stays flush to the LEFT and slides out to the RIGHT edge
        when the aside's width animates to 0 (the aside uses default
        `justify-content: flex-start` and clips with `overflow: hidden`). It holds
-       Backlinks (Outline arrives in a later slice) and starts COLLAPSED. Its
-       `--expanded-count` is its own (Backlinks only), so the body cap divides
-       this sidebar's height independently of the left one. -->
+       the Outline + Backlinks Sections and starts COLLAPSED. Its
+       `--expanded-count` is its own (Outline + Backlinks), so the body cap
+       divides this sidebar's height independently of the left one. -->
   <aside
     class="side-bar right-side-bar"
     class:collapsed={!session.rightSidebarOpen}
@@ -817,6 +840,14 @@
     style="--expanded-count: {rightExpandedCount}"
   >
     <div class="side-bar-inner">
+      <SidebarSection
+        title="Outline"
+        expanded={session.outlineOpen}
+        ontoggle={() => session.setOutlineOpen(!session.outlineOpen)}
+        testid="outline-section"
+      >
+        <Outline path={editor.path} content={editor.content} onselect={scrollToOutlineLine} />
+      </SidebarSection>
       <SidebarSection
         title="Backlinks"
         expanded={session.backlinksOpen}

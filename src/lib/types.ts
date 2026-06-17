@@ -90,6 +90,12 @@ export type BundleState = {
    * `false` on read — the right Sidebar starts collapsed on a fresh Bundle.
    */
   rightSidebarOpen?: boolean;
+  /**
+   * whether the Outline section (in the right Sidebar) is expanded
+   * (outline-section). Defaults to `true` on read, so the Outline shows the
+   * moment the right Sidebar is first expanded.
+   */
+  outlineOpen?: boolean;
 };
 
 /**

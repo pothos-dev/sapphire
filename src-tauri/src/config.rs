@@ -57,6 +57,10 @@ pub struct BundleState {
     /// (right-sidebar-move-backlinks). Defaults to `false` on the frontend — the
     /// right Sidebar starts collapsed on a fresh/older Bundle.
     pub right_sidebar_open: Option<bool>,
+    /// Whether the Outline section (in the right Sidebar) is expanded
+    /// (outline-section). Defaults to `true` on the frontend — the Outline shows
+    /// the moment the right Sidebar is first expanded.
+    pub outline_open: Option<bool>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets
@@ -202,6 +206,7 @@ mod tests {
                     y: Some(20),
                 }),
                 recent_files: vec!["a/b.md".to_string(), "a/c.md".to_string()],
+                ..Default::default()
             },
         );
         let json = serde_json::to_string(&store).unwrap();

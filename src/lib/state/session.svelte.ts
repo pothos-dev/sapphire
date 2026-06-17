@@ -53,6 +53,12 @@ class SessionStore {
    * user opts in via the nav-bar right-track toggle.
    */
   rightSidebarOpen = $state<boolean>(false);
+  /**
+   * Outline section collapse state (outline-section). Defaults to `true`
+   * (expanded) so the Outline shows the moment the right Sidebar is first
+   * expanded — matching the left-Sidebar Sections' fresh-Bundle default.
+   */
+  outlineOpen = $state<boolean>(true);
   /** True once `load()` has resolved (data available to render the tree). */
   loaded = $state<boolean>(false);
   /**
@@ -82,6 +88,7 @@ class SessionStore {
       this.explorerOpen = state.explorerOpen ?? true;
       this.tagsOpen = state.tagsOpen ?? true;
       this.backlinksOpen = state.backlinksOpen ?? true;
+      this.outlineOpen = state.outlineOpen ?? true;
       // The right Sidebar defaults to COLLAPSED (`false`) when absent — a fresh
       // or older Bundle opens with the right Sidebar hidden.
       this.rightSidebarOpen = state.rightSidebarOpen ?? false;
@@ -176,6 +183,13 @@ class SessionStore {
     this.#scheduleSave();
   }
 
+  /** Record the Outline section's expanded/collapsed state and schedule a persist. */
+  setOutlineOpen(open: boolean): void {
+    if (open === this.outlineOpen) return;
+    this.outlineOpen = open;
+    this.#scheduleSave();
+  }
+
   /** Current state as a plain `BundleState` for persistence. */
   #snapshot(): BundleState {
     return {
@@ -187,6 +201,7 @@ class SessionStore {
       tagsOpen: this.tagsOpen,
       backlinksOpen: this.backlinksOpen,
       rightSidebarOpen: this.rightSidebarOpen,
+      outlineOpen: this.outlineOpen,
       window: this.#window,
     };
   }
