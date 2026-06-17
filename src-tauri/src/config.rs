@@ -2,8 +2,8 @@
 //!
 //! Sapphire NEVER writes config or session state into the Bundle (CONTEXT.md:
 //! the "no `.obsidian` equivalent" rule). Instead it keeps a single JSON file in
-//! the OS config directory — `dirs::config_dir()/emerald/state.json` (e.g.
-//! `~/.config/emerald/state.json` on Linux) — holding:
+//! the OS config directory — `dirs::config_dir()/sapphire/state.json` (e.g.
+//! `~/.config/sapphire/state.json` on Linux) — holding:
 //!
 //!   - app-level config (theme; only the OS-driven default ships now, but the
 //!     field exists so custom themes/fonts can be read from here later), and
@@ -104,10 +104,10 @@ impl Default for AppConfig {
     }
 }
 
-/// Resolve the Sapphire config directory (`<os-config-dir>/emerald`), creating it
+/// Resolve the Sapphire config directory (`<os-config-dir>/sapphire`), creating it
 /// if needed. Returns `None` if the OS config dir cannot be determined.
 fn config_dir() -> Option<PathBuf> {
-    let dir = dirs::config_dir()?.join("emerald");
+    let dir = dirs::config_dir()?.join("sapphire");
     // Best-effort create; if it fails we simply can't persist (load returns
     // defaults, save returns an error the caller may ignore).
     let _ = std::fs::create_dir_all(&dir);

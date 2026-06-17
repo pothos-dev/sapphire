@@ -264,11 +264,11 @@ fn capture_window_state(window: &tauri::WebviewWindow) -> Option<WindowState> {
 }
 
 /// Resolve the Bundle root, then canonicalize it. Resolution order:
-///   1. `EMERALD_BUNDLE` env var, if set,
+///   1. `SAPPHIRE_BUNDLE` env var, if set,
 ///   2. the first positional CLI arg, if given,
 ///   3. the per-build default (see `default_bundle_root`).
 fn resolve_bundle_root() -> PathBuf {
-    let explicit = std::env::var("EMERALD_BUNDLE")
+    let explicit = std::env::var("SAPPHIRE_BUNDLE")
         .ok()
         .filter(|s| !s.is_empty())
         .or_else(|| std::env::args().nth(1));
@@ -279,7 +279,7 @@ fn resolve_bundle_root() -> PathBuf {
 /// Default Bundle root for a DEV build: the `examples/` vault at the repo root
 /// (one level up from this crate). `tauri dev` runs the binary from `src-tauri/`,
 /// so a bare `.` would open the crate dir; pointing at the bundled example vault
-/// makes `bun tauri dev` land in a real Bundle. Override with `EMERALD_BUNDLE`
+/// makes `bun tauri dev` land in a real Bundle. Override with `SAPPHIRE_BUNDLE`
 /// or a path argument. `CARGO_MANIFEST_DIR` is the absolute `src-tauri/` path
 /// baked in at compile time.
 #[cfg(debug_assertions)]
