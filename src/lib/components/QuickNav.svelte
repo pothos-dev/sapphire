@@ -149,7 +149,7 @@
     position: fixed;
     inset: 0;
     z-index: 1200;
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(16, 22, 18, 0.4);
   }
 
   .qn-panel {
@@ -163,27 +163,30 @@
     display: flex;
     flex-direction: column;
     padding: 0.5rem;
-    border-radius: 10px;
-    background: #ffffff;
-    color: #0f0f0f;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
-  }
-
-  :global(.app[data-theme='dark']) .qn-panel {
-    background: #2a2a2a;
-    color: #e6e6e6;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
+    font-family: var(--font-ui);
   }
 
   .qn-input {
     box-sizing: border-box;
     width: 100%;
     padding: 0.55rem 0.65rem;
-    border: 1px solid rgba(127, 127, 127, 0.4);
-    border-radius: 6px;
-    background: none;
-    color: inherit;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    color: var(--text);
     font: inherit;
     font-size: 1rem;
+  }
+
+  .qn-input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
   .qn-hint {
@@ -191,7 +194,7 @@
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--text-faint);
   }
 
   .qn-results {
@@ -208,17 +211,21 @@
     width: 100%;
     padding: 0.4rem 0.55rem;
     border: none;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: none;
-    color: inherit;
+    color: var(--text);
     font: inherit;
     text-align: left;
     cursor: pointer;
   }
 
-  .qn-item:hover,
+  .qn-item:hover {
+    background: var(--hover);
+  }
+
   .qn-item.selected {
-    background: rgba(80, 140, 255, 0.22);
+    background: var(--accent-soft);
+    color: var(--tag-text);
   }
 
   .qn-base {
@@ -226,22 +233,23 @@
   }
 
   .qn-dir {
+    font-family: var(--font-mono);
     font-size: 0.78rem;
-    color: #888;
+    color: var(--text-faint);
   }
 
   .qn-badge {
     margin-left: auto;
     font-size: 0.68rem;
     padding: 0.05rem 0.35rem;
-    border-radius: 4px;
-    background: rgba(127, 127, 127, 0.25);
-    color: inherit;
+    border-radius: var(--radius-sm);
+    background: var(--tag-bg);
+    color: var(--tag-text);
   }
 
   .qn-empty {
     padding: 0.5rem 0.55rem;
-    color: #888;
+    color: var(--text-muted);
     font-size: 0.85rem;
   }
 </style>

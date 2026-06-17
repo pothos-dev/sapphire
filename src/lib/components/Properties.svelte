@@ -176,17 +176,18 @@
 <style>
   .properties {
     padding: 0.6rem 0.9rem;
-    border-bottom: 1px solid rgba(127, 127, 127, 0.3);
+    border-bottom: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+    font-family: var(--font-ui);
     font-size: 0.85rem;
-    background: rgba(127, 127, 127, 0.04);
+    background: var(--bg-sunken);
   }
 
   .empty {
     margin: 0;
-    color: #888;
+    color: var(--text-muted);
     font-style: italic;
   }
 
@@ -198,19 +199,13 @@
   }
 
   .key {
-    color: #666;
+    color: var(--text-muted);
     padding-top: 0.3rem;
     overflow-wrap: anywhere;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .key {
-      color: #aaa;
-    }
-  }
-
   .row.flagged .key {
-    color: #c0392b;
+    color: var(--danger);
     font-weight: 600;
   }
 
@@ -218,9 +213,9 @@
     display: inline-block;
     margin-left: 0.3rem;
     padding: 0 0.35rem;
-    border-radius: 0.5rem;
-    background: #c0392b;
-    color: #fff;
+    border-radius: var(--radius-pill);
+    background: var(--danger);
+    color: var(--danger-contrast);
     font-size: 0.65rem;
     font-weight: 600;
     vertical-align: middle;
@@ -233,12 +228,26 @@
   .text,
   .chip-input,
   .raw {
-    font: inherit;
-    color: inherit;
-    background: rgba(127, 127, 127, 0.08);
-    border: 1px solid rgba(127, 127, 127, 0.3);
-    border-radius: 4px;
+    font-family: var(--font-ui);
+    color: var(--text);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
     padding: 0.25rem 0.4rem;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .text:focus,
+  .chip-input:focus,
+  .raw:focus,
+  .text:focus-visible,
+  .chip-input:focus-visible,
+  .raw:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
   .text {
@@ -250,7 +259,7 @@
     width: 100%;
     box-sizing: border-box;
     resize: vertical;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     opacity: 0.85;
     white-space: pre;
@@ -268,9 +277,9 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.1rem 0.2rem 0.1rem 0.5rem;
-    border-radius: 1rem;
-    background: rgba(46, 204, 113, 0.18);
-    border: 1px solid rgba(46, 204, 113, 0.4);
+    border-radius: var(--radius-pill);
+    background: var(--tag-bg);
+    color: var(--tag-text);
   }
 
   .chip-remove {
@@ -281,6 +290,12 @@
     font-size: 1rem;
     line-height: 1;
     padding: 0 0.15rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.15s ease;
+  }
+
+  .chip-remove:hover {
+    background: var(--hover);
   }
 
   .chip-input {

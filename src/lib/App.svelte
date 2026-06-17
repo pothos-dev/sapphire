@@ -795,52 +795,56 @@
   .root-reserved {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
-    padding: 0.1rem 0.1rem 0.35rem;
-    margin-bottom: 0.25rem;
-    border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+    gap: 0.3rem;
+    padding: 0.1rem 0.1rem 0.4rem;
+    margin-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
   }
 
   .reserved-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    padding: 0.15rem 0.45rem;
-    border: 1px solid rgba(127, 127, 127, 0.3);
-    border-radius: 4px;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
     background: none;
     color: inherit;
     font: inherit;
     font-size: 0.78rem;
     cursor: pointer;
     opacity: 0.85;
+    transition: background 0.12s ease;
   }
 
   .reserved-btn:hover {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
     opacity: 1;
   }
 
   .reserved-btn.selected {
-    background: rgba(80, 140, 255, 0.25);
+    background: var(--accent-soft);
+    border-color: transparent;
+    color: var(--tag-text);
     opacity: 1;
   }
 
   .root-new {
-    margin: 0.25rem 0.1rem;
-    padding: 0.2rem 0.5rem;
-    border: 1px dashed rgba(127, 127, 127, 0.4);
-    border-radius: 4px;
+    margin: 0.3rem 0.1rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-sm);
     background: none;
     color: inherit;
     font: inherit;
     font-size: 0.8rem;
     cursor: pointer;
     opacity: 0.8;
+    transition: background 0.12s ease;
   }
 
   .root-new:hover {
-    background: rgba(127, 127, 127, 0.12);
+    background: var(--hover);
     opacity: 1;
   }
 
@@ -848,7 +852,7 @@
     position: fixed;
     inset: 0;
     z-index: 1100;
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(16, 22, 18, 0.4);
   }
 
   .dialog {
@@ -857,40 +861,42 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    min-width: 280px;
-    padding: 1rem;
-    border-radius: 8px;
-    background: #ffffff;
-    color: #0f0f0f;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-  }
-
-  :global(.app[data-theme='dark']) .dialog {
-    background: #2a2a2a;
-    color: #e6e6e6;
+    min-width: 300px;
+    padding: 1.25rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
   }
 
   .dialog-title {
     margin: 0 0 0.5rem;
-    font-weight: 600;
+    font-weight: 700;
   }
 
   .dialog-body {
     margin: 0 0 0.75rem;
     font-size: 0.85rem;
-    color: #888;
+    color: var(--text-muted);
   }
 
   .dialog-input {
     width: 100%;
     box-sizing: border-box;
-    padding: 0.4rem 0.5rem;
-    margin-bottom: 0.75rem;
-    border: 1px solid rgba(127, 127, 127, 0.4);
-    border-radius: 4px;
-    background: none;
+    padding: 0.5rem 0.65rem;
+    margin-bottom: 0.9rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
     color: inherit;
     font: inherit;
+  }
+
+  .dialog-input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
   .dialog-actions {
@@ -900,22 +906,24 @@
   }
 
   .dialog-actions button {
-    padding: 0.35rem 0.8rem;
-    border: 1px solid rgba(127, 127, 127, 0.4);
-    border-radius: 4px;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
     background: none;
     color: inherit;
     font: inherit;
+    font-weight: 600;
     cursor: pointer;
+    transition: background 0.12s ease;
   }
 
   .dialog-actions button:hover {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
   }
 
   .dialog-actions button.danger {
-    color: #fff;
-    background: #c0392b;
-    border-color: #c0392b;
+    color: var(--danger-contrast);
+    background: var(--danger);
+    border-color: var(--danger);
   }
 </style>

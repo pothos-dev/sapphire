@@ -1,0 +1,164 @@
+/*
+ * Emerald design tokens — the single source of truth for colour, type, radius,
+ * and elevation. Components reference these semantic variables (never raw hex),
+ * so re-theming is a matter of editing the blocks below.
+ *
+ * Themes are selected by `data-theme="light"|"dark"` on the app root (owned by
+ * the theme store, state/theme.svelte.ts). `:root` carries the light values as
+ * the default; the dark block overrides them. The atomic-editor inside
+ * CodeMirror reads `--atomic-editor-font*` from here too, so the note prose
+ * shares the app's typeface.
+ *
+ * Palette identity: a muted jade/emerald accent (the app's namesake) over a
+ * faint sage-tinted "paper", kept low-saturation throughout.
+ */
+
+:root,
+[data-theme='light'] {
+  /* Surfaces */
+  --bg: #f1f4ee; /* app canvas — sage-tinted paper */
+  --bg-elevated: #fbfcf9; /* panels, inputs, dialogs */
+  --bg-sunken: #e7ebe2; /* subtle wells */
+
+  /* Text */
+  --text: #2b322d; /* deep green-grey, not pure black */
+  --text-muted: #6c756d;
+  --text-faint: #99a29a;
+
+  /* Lines */
+  --border: #dce0d6;
+  --border-strong: #c8cec0;
+
+  /* Accent — muted emerald/jade */
+  --accent: #4f8a73;
+  --accent-contrast: #fbfcf9; /* text/icon sitting on a solid accent fill */
+  --accent-soft: rgba(79, 138, 115, 0.16); /* selection / active wash */
+  --accent-ring: rgba(79, 138, 115, 0.45); /* focus ring */
+
+  /* Neutral interaction wash */
+  --hover: rgba(64, 74, 66, 0.07);
+
+  /* Danger — muted clay, never vivid */
+  --danger: #b15c4f;
+  --danger-contrast: #fbfcf9;
+
+  /* Tag chips — derived from the accent */
+  --tag-bg: rgba(79, 138, 115, 0.14);
+  --tag-text: #3f7361;
+
+  /* Radius scale — smooth edges */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Elevation — soft, low-contrast */
+  --shadow-md: 0 4px 16px rgba(24, 34, 27, 0.1);
+  --shadow-lg: 0 14px 44px rgba(24, 34, 27, 0.18);
+
+  /* Type */
+  --font-ui: 'Quicksand Variable', 'Quicksand', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Code', Menlo, Consolas, monospace;
+
+  /* Wire the atomic-editor (CodeMirror live preview) to the app typeface AND
+     palette. The editor ships as a dark-only theme with near-white defaults and
+     exposes these `--atomic-editor-*` vars for consumers to override; mapping
+     them to our tokens here (in :root) means the editor tracks light/dark for
+     free — `var(--text)` etc. re-resolve in the editor's themed context. */
+  --atomic-editor-font: var(--font-ui);
+  --atomic-editor-font-mono: var(--font-mono);
+  --atomic-editor-fg: var(--text);
+  --atomic-editor-fg-muted: var(--text-muted);
+  --atomic-editor-fg-faint: var(--text-faint);
+  --atomic-editor-bg: var(--bg);
+  --atomic-editor-bg-surface: var(--bg-sunken);
+  --atomic-editor-bg-panel: var(--bg-elevated);
+  --atomic-editor-accent-bright: var(--accent);
+  --atomic-editor-link: var(--accent);
+  --atomic-editor-selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
+  --atomic-editor-search-bg: color-mix(in srgb, var(--accent) 22%, transparent);
+  --atomic-editor-search-bg-active: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* The theme attribute lives on the app root; `:has` lets the body adopt the
+   dark token values too, so the document background (overscroll) stays in step
+   without re-declaring any colours. */
+[data-theme='dark'],
+body:has([data-theme='dark']) {
+  --bg: #181d1a; /* deep emerald charcoal */
+  --bg-elevated: #202622;
+  --bg-sunken: #131714;
+
+  --text: #dce3dd;
+  --text-muted: #8d968e;
+  --text-faint: #69716a;
+
+  --border: rgba(155, 170, 155, 0.14);
+  --border-strong: rgba(155, 170, 155, 0.24);
+
+  --accent: #6fae93;
+  --accent-contrast: #11160f;
+  --accent-soft: rgba(111, 174, 147, 0.2);
+  --accent-ring: rgba(111, 174, 147, 0.5);
+
+  --hover: rgba(200, 210, 200, 0.07);
+
+  --danger: #c06d5f;
+  --danger-contrast: #11160f;
+
+  --tag-bg: rgba(111, 174, 147, 0.16);
+  --tag-text: #9ccdb4;
+
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 14px 44px rgba(0, 0, 0, 0.5);
+
+  /* Re-declare the editor colour mappings here so `var(--text)` etc. recompute
+     against the DARK tokens. Custom-property var() substitution happens at the
+     element where the property is declared, so the :root copies (above) resolve
+     to the light values and would otherwise just inherit unchanged into the
+     dark-themed editor. Font vars are theme-independent and stay in :root. */
+  --atomic-editor-fg: var(--text);
+  --atomic-editor-fg-muted: var(--text-muted);
+  --atomic-editor-fg-faint: var(--text-faint);
+  --atomic-editor-bg: var(--bg);
+  --atomic-editor-bg-surface: var(--bg-sunken);
+  --atomic-editor-bg-panel: var(--bg-elevated);
+  --atomic-editor-accent-bright: var(--accent);
+  --atomic-editor-link: var(--accent);
+  --atomic-editor-selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
+  --atomic-editor-search-bg: color-mix(in srgb, var(--accent) 22%, transparent);
+  --atomic-editor-search-bg-active: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  /* Quicksand reads light at 400; 500 is the comfortable UI baseline. */
+  font-weight: 500;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Consistent, accessible keyboard focus across the app. Mouse clicks don't
+   trigger :focus-visible, so this stays out of the way until tabbing. */
+:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

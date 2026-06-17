@@ -125,11 +125,12 @@
   .tag-browser {
     padding: 0.6rem 0.75rem;
     font-size: 0.85rem;
+    font-family: var(--font-ui);
   }
 
   .empty {
     margin: 0;
-    color: #888;
+    color: var(--text-muted);
     font-style: italic;
   }
 
@@ -148,20 +149,27 @@
     width: 100%;
     padding: 0.25rem 0.4rem;
     border: none;
-    background: none;
-    color: inherit;
+    background: var(--tag-bg);
+    color: var(--tag-text);
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
+    transition: background 0.12s ease;
   }
 
   .tag:hover {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
+  }
+
+  .tag:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: 1px;
   }
 
   .tag.active {
-    background: rgba(46, 204, 113, 0.18);
+    background: var(--accent-soft);
+    color: var(--tag-text);
   }
 
   .tag-name {
@@ -174,9 +182,9 @@
     flex: 0 0 auto;
     min-width: 1.2rem;
     padding: 0 0.35rem;
-    border-radius: 0.6rem;
-    background: rgba(127, 127, 127, 0.2);
-    color: #888;
+    border-radius: var(--radius-pill);
+    background: var(--bg-sunken);
+    color: var(--text-faint);
     font-size: 0.72rem;
     text-align: center;
   }
@@ -184,7 +192,7 @@
   .concept-list {
     margin: 0.1rem 0 0.3rem;
     padding-left: 0.6rem;
-    border-left: 2px solid rgba(127, 127, 127, 0.2);
+    border-left: 2px solid var(--border);
   }
 
   .concept {
@@ -196,17 +204,24 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    transition: background 0.12s ease;
   }
 
   .concept:hover {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
+  }
+
+  .concept:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: 1px;
   }
 
   .concept.selected {
-    background: rgba(80, 140, 255, 0.25);
+    background: var(--accent-soft);
+    color: var(--tag-text);
   }
 </style>

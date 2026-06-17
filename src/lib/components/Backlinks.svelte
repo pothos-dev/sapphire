@@ -86,7 +86,7 @@
 
   .empty {
     margin: 0;
-    color: #888;
+    color: var(--text-muted);
     font-style: italic;
   }
 
@@ -110,11 +110,17 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
+    transition: background 0.12s ease;
   }
 
   .entry:hover {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
+  }
+
+  .entry:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -2px;
   }
 
   .name {
@@ -126,7 +132,7 @@
 
   .path {
     font-size: 0.72rem;
-    color: #999;
+    color: var(--text-faint);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

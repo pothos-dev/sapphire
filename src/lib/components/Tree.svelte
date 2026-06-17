@@ -156,18 +156,25 @@
     font-size: 0.8rem;
     line-height: 1;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     opacity: 0.55;
+    transition: background 0.12s ease;
   }
 
   .reserved-btn:hover {
-    background: rgba(127, 127, 127, 0.2);
+    background: var(--hover);
     opacity: 1;
   }
 
   .reserved-btn.selected {
     opacity: 1;
-    background: rgba(80, 140, 255, 0.25);
+    background: var(--accent-soft);
+    color: var(--tag-text);
+  }
+
+  .reserved-btn:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -1px;
   }
 
   .menu-btn {
@@ -181,8 +188,9 @@
     font: inherit;
     line-height: 1;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     opacity: 0.7;
+    transition: background 0.12s ease;
   }
 
   .row:hover .menu-btn {
@@ -190,8 +198,14 @@
   }
 
   .menu-btn:hover {
-    background: rgba(127, 127, 127, 0.2);
+    background: var(--hover);
     opacity: 1;
+  }
+
+  .menu-btn:focus-visible {
+    visibility: visible;
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -1px;
   }
 
   .entry {
@@ -207,15 +221,22 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
+    transition: background 0.12s ease;
   }
 
   .entry:hover:not(:disabled) {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
+  }
+
+  .entry:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -1px;
   }
 
   .file-entry.selected {
-    background: rgba(80, 140, 255, 0.25);
+    background: var(--accent-soft);
+    color: var(--tag-text);
   }
 
   .file-entry.nonmd {
@@ -227,7 +248,7 @@
     display: inline-block;
     width: 1em;
     transition: transform 0.1s ease;
-    color: #888;
+    color: var(--text-muted);
   }
 
   .twisty.open {

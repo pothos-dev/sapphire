@@ -81,18 +81,13 @@
     z-index: 1001;
     min-width: 160px;
     padding: 0.25rem;
-    border: 1px solid rgba(127, 127, 127, 0.35);
-    border-radius: 6px;
-    background: #ffffff;
-    color: #0f0f0f;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    color: var(--text);
+    box-shadow: var(--shadow-md);
+    font-family: var(--font-ui);
     font-size: 0.85rem;
-  }
-
-  :global(.app[data-theme='dark']) .menu {
-    background: #2a2a2a;
-    color: #e6e6e6;
-    border-color: rgba(127, 127, 127, 0.45);
   }
 
   .item {
@@ -105,20 +100,31 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
+    transition: background 0.12s ease;
   }
 
   .item:hover {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
+  }
+
+  .item:focus-visible {
+    background: var(--hover);
   }
 
   .item.separated {
     margin-top: 0.25rem;
-    border-top: 1px solid rgba(127, 127, 127, 0.25);
+    border-top: 1px solid var(--border);
     padding-top: 0.4rem;
   }
 
   .item.danger {
-    color: #c0392b;
+    color: var(--danger);
+  }
+
+  .item.danger:hover,
+  .item.danger:focus-visible {
+    background: var(--danger);
+    color: var(--danger-contrast);
   }
 </style>

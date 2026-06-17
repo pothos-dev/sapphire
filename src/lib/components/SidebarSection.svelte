@@ -52,7 +52,7 @@
     flex-direction: column;
     flex: 0 1 auto;
     min-height: 0;
-    border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+    border-bottom: 1px solid var(--border);
   }
 
   .header {
@@ -66,18 +66,25 @@
     padding: 0 0.6rem;
     border: none;
     background: none;
-    color: #888;
-    font: inherit;
+    color: var(--text-muted);
+    font-family: var(--font-ui);
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     text-align: left;
     cursor: pointer;
+    transition: background 0.12s ease;
   }
 
   .header:hover {
-    background: rgba(127, 127, 127, 0.1);
+    background: var(--hover);
+  }
+
+  .header:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -2px;
+    border-radius: var(--radius-sm);
   }
 
   .chevron {

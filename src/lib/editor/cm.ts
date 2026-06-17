@@ -98,8 +98,8 @@ const brokenLinkMark = Decoration.mark({ class: 'cm-broken-link' });
 /** Distinct styling for broken internal links: dashed, red. Clickable still. */
 const brokenLinkTheme = EditorView.theme({
   '.cm-broken-link': {
-    color: '#c0392b',
-    textDecoration: 'underline dashed #c0392b',
+    color: 'var(--danger)',
+    textDecoration: 'underline dashed var(--danger)',
     textUnderlineOffset: '2px',
   },
 });
