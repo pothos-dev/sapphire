@@ -59,8 +59,6 @@ class SessionStore {
    * expanded — matching the left-Sidebar Sections' fresh-Bundle default.
    */
   outlineOpen = $state<boolean>(true);
-  /** True once `load()` has resolved (data available to render the tree). */
-  loaded = $state<boolean>(false);
   /**
    * True only after the FULL restore sequence (load + seed defaults + reopen the
    * last Concept) has completed. Persistence is gated on this so a reactive
@@ -95,8 +93,6 @@ class SessionStore {
       this.#window = state.window;
     } catch {
       // Best-effort: a failed load just means no session to restore.
-    } finally {
-      this.loaded = true;
     }
   }
 

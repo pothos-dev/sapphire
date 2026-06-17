@@ -20,8 +20,6 @@ class EditorStore {
   path = $state<string | null>(null);
   /** raw markdown of the open Concept (source of truth while editing). */
   content = $state<string>('');
-  /** True while a Concept is loading. */
-  loading = $state<boolean>(false);
   /** Last open/save error, if any. */
   error = $state<string | null>(null);
   /** True when there are unsaved edits (a save is pending or in flight). */
@@ -86,7 +84,6 @@ class EditorStore {
     // Flush any pending edits to the previously-open Concept first.
     await this.flush();
 
-    this.loading = true;
     this.error = null;
     try {
       const content = await backend.readConcept(path);
@@ -99,8 +96,6 @@ class EditorStore {
       this.content = '';
       this.dirty = false;
       this.error = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.loading = false;
     }
   }
 
