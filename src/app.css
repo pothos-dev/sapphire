@@ -9,42 +9,43 @@
  * CodeMirror reads `--atomic-editor-font*` from here too, so the note prose
  * shares the app's typeface.
  *
- * Palette identity: a muted jade/emerald accent (the app's namesake) over a
- * faint sage-tinted "paper", kept low-saturation throughout.
+ * Palette identity: a muted sapphire-blue accent (matching the app icon) over a
+ * cool blue-grey "paper", kept low-saturation throughout — a sophisticated,
+ * understated blue rather than a loud primary.
  */
 
 :root,
 [data-theme='light'] {
   /* Surfaces */
-  --bg: #f1f4ee; /* app canvas — sage-tinted paper */
-  --bg-elevated: #fbfcf9; /* panels, inputs, dialogs */
-  --bg-sunken: #e7ebe2; /* subtle wells */
+  --bg: #eef1f5; /* app canvas — cool blue-grey paper */
+  --bg-elevated: #f9fafc; /* panels, inputs, dialogs */
+  --bg-sunken: #e3e8ef; /* subtle wells */
 
   /* Text */
-  --text: #2b322d; /* deep green-grey, not pure black */
-  --text-muted: #6c756d;
-  --text-faint: #99a29a;
+  --text: #2b303a; /* deep blue-grey, not pure black */
+  --text-muted: #6b7280;
+  --text-faint: #99a0ac;
 
   /* Lines */
-  --border: #dce0d6;
-  --border-strong: #c8cec0;
+  --border: #d7dde6;
+  --border-strong: #c2cad6;
 
-  /* Accent — muted emerald/jade */
-  --accent: #4f8a73;
-  --accent-contrast: #fbfcf9; /* text/icon sitting on a solid accent fill */
-  --accent-soft: rgba(79, 138, 115, 0.16); /* selection / active wash */
-  --accent-ring: rgba(79, 138, 115, 0.45); /* focus ring */
+  /* Accent — muted sapphire blue */
+  --accent: #45699c;
+  --accent-contrast: #f9fafc; /* text/icon sitting on a solid accent fill */
+  --accent-soft: rgba(69, 105, 156, 0.16); /* selection / active wash */
+  --accent-ring: rgba(69, 105, 156, 0.45); /* focus ring */
 
   /* Neutral interaction wash */
-  --hover: rgba(64, 74, 66, 0.07);
+  --hover: rgba(62, 70, 84, 0.07);
 
   /* Danger — muted clay, never vivid */
   --danger: #b15c4f;
-  --danger-contrast: #fbfcf9;
+  --danger-contrast: #f9fafc;
 
   /* Tag chips — derived from the accent */
-  --tag-bg: rgba(79, 138, 115, 0.14);
-  --tag-text: #3f7361;
+  --tag-bg: rgba(69, 105, 156, 0.14);
+  --tag-text: #3a5d8e;
 
   /* Radius scale — smooth edges */
   --radius-sm: 6px;
@@ -53,8 +54,8 @@
   --radius-pill: 999px;
 
   /* Elevation — soft, low-contrast */
-  --shadow-md: 0 4px 16px rgba(24, 34, 27, 0.1);
-  --shadow-lg: 0 14px 44px rgba(24, 34, 27, 0.18);
+  --shadow-md: 0 4px 16px rgba(24, 31, 45, 0.1);
+  --shadow-lg: 0 14px 44px rgba(24, 31, 45, 0.18);
 
   /* Type */
   --font-ui: 'Quicksand Variable', 'Quicksand', system-ui, -apple-system, sans-serif;
@@ -96,29 +97,29 @@
    without re-declaring any colours. */
 [data-theme='dark'],
 body:has([data-theme='dark']) {
-  --bg: #181d1a; /* deep emerald charcoal */
-  --bg-elevated: #202622;
-  --bg-sunken: #131714;
+  --bg: #171b22; /* deep sapphire charcoal */
+  --bg-elevated: #1f242e;
+  --bg-sunken: #12151b;
 
-  --text: #dce3dd;
-  --text-muted: #8d968e;
-  --text-faint: #69716a;
+  --text: #dbe1ea;
+  --text-muted: #8b929e;
+  --text-faint: #676e7a;
 
-  --border: rgba(155, 170, 155, 0.14);
-  --border-strong: rgba(155, 170, 155, 0.24);
+  --border: rgba(157, 170, 190, 0.14);
+  --border-strong: rgba(157, 170, 190, 0.24);
 
-  --accent: #6fae93;
-  --accent-contrast: #11160f;
-  --accent-soft: rgba(111, 174, 147, 0.2);
-  --accent-ring: rgba(111, 174, 147, 0.5);
+  --accent: #7da3cf;
+  --accent-contrast: #0f131a;
+  --accent-soft: rgba(125, 163, 207, 0.2);
+  --accent-ring: rgba(125, 163, 207, 0.5);
 
-  --hover: rgba(200, 210, 200, 0.07);
+  --hover: rgba(200, 208, 222, 0.07);
 
   --danger: #c06d5f;
-  --danger-contrast: #11160f;
+  --danger-contrast: #0f131a;
 
-  --tag-bg: rgba(111, 174, 147, 0.16);
-  --tag-text: #9ccdb4;
+  --tag-bg: rgba(125, 163, 207, 0.16);
+  --tag-text: #a7c4e6;
 
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 14px 44px rgba(0, 0, 0, 0.5);
