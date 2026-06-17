@@ -1,0 +1,654 @@
+//! Automatic link rewriting on Concept / folder rename + move.
+//!
+//! When a Concept (or a whole folder of Concepts) is relocated, every markdown
+//! link that resolved to a moved Concept would otherwise break. This module
+//! rewrites those links so they keep pointing at the moved target, in both
+//! directions and PATH-AWARE:
+//!
+//!   * INBOUND links — other Concepts that link TO a moved Concept. Found via the
+//!     index reverse map. An ABSOLUTE link (`/old.md`) becomes the new absolute
+//!     path; a RELATIVE link (`./old.md`, `../old.md`, bare `old.md`) is
+//!     recomputed relative to that source's OWN directory so it still resolves —
+//!     the relative STYLE is preserved (a relative author keeps a relative link).
+//!   * OUTBOUND links — a moved Concept's OWN relative links. Because the file's
+//!     base directory changed, its relative links must be recomputed against the
+//!     NEW directory so they still resolve to the same targets. Its absolute
+//!     links are unaffected and left untouched.
+//!   * FOLDER moves apply both rules to every contained Concept. Links BETWEEN
+//!     two files that move together stay valid: each moved file is resolved from
+//!     its new location, and a target that also moved is mapped to its new path,
+//!     so such links are recomputed once (never double-broken).
+//!
+//! Everything else about a link is preserved byte-for-byte: the link TEXT, the
+//! `(...)` delimiters, a trailing `#anchor`, a `?query`, and a `"title"`. Only
+//! the path portion of the target is rewritten, and only for links whose
+//! resolved target IS a moved Concept. External (`scheme:`) and pure-anchor
+//! links are never touched.
+//!
+//! Path math mirrors `src/lib/links.ts` / `index.rs` EXACTLY (bundle-relative,
+//! '/'-separated; `.`/`..` collapse with leading-`..` escapes dropped). The fake
+//! backend ports the same logic so the behaviour is testable in Chromium.
+//!
+//! Pure module logic — `#[tauri::command]` wrappers in `lib.rs` stay thin.
+
+use std::collections::HashMap;
+
+use serde::Serialize;
+
+use crate::index::Index;
+
+/// Summary of an auto-rewrite pass: how many links across how many files were
+/// changed. Matches the TS `{ linksChanged, filesChanged }`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RewriteSummary {
+    pub links_changed: usize,
+    pub files_changed: usize,
+}
+
+/// Compute the rewritten content for every Concept affected by a set of moves.
+///
+/// `moves` maps each moved Concept's OLD bundle-relative path to its NEW one
+/// (one entry for a single Concept; every descendant `.md` for a folder move).
+/// `read` loads a Concept's current content by its CURRENT (pre-move) path.
+///
+/// Returns, for each Concept that actually changed, the NEW path to write to and
+/// the rewritten content, plus the aggregate summary. A moved Concept is keyed
+/// by its NEW path (its content is written at the new location); an inbound
+/// source that did not move is keyed by its unchanged path.
+///
+/// This is pure: it performs no IO itself (the caller does the fs move + writes),
+/// so it is exhaustively unit-testable.
+pub fn plan_rewrites<F>(
+    moves: &HashMap<String, String>,
+    affected_sources: &[String],
+    mut read: F,
+) -> Result<(Vec<(String, String)>, RewriteSummary), String>
+where
+    F: FnMut(&str) -> Result<String, String>,
+{
+    let mut writes: Vec<(String, String)> = Vec::new();
+    let mut summary = RewriteSummary::default();
+
+    // Process a stable, de-duplicated set of source paths. A source is either a
+    // moved Concept (rewrite its own relative outbound links) or an external
+    // inbound linker (rewrite links that point at a moved Concept). The two sets
+    // overlap when a moved Concept also links to another moved Concept.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut sources: Vec<&str> = Vec::new();
+    for s in affected_sources.iter().chain(moves.keys()) {
+        if seen.insert(s.as_str()) {
+            sources.push(s.as_str());
+        }
+    }
+    sources.sort_unstable();
+
+    for old_source in sources {
+        // The source content lives at its current (old) path on disk.
+        let content = read(old_source)?;
+        // For resolution + relative recomputation, a moved source uses its NEW
+        // directory as the base; an unmoved source uses its own path.
+        let new_source = moves
+            .get(old_source)
+            .map(String::as_str)
+            .unwrap_or(old_source);
+
+        let (rewritten, count) = rewrite_links_in(old_source, new_source, &content, moves);
+        if count > 0 {
+            summary.links_changed += count;
+            summary.files_changed += 1;
+            writes.push((new_source.to_string(), rewritten));
+        } else if new_source != old_source {
+            // Moved but no link changes: the content is still written at the new
+            // path by the caller's fs move; we don't emit a write here.
+        }
+    }
+
+    Ok((writes, summary))
+}
+
+/// Rewrite every link in `content` whose resolved target is a moved Concept.
+///
+/// `old_source` is the path the link resolution base would use BEFORE the move
+/// (used to resolve relative links as the author wrote them). `new_source` is the
+/// path the file will live at AFTER the move (used both to RE-RESOLVE relative
+/// links — since the file's directory changed — and to compute new relative
+/// targets from). For an unmoved inbound source the two are equal.
+///
+/// Returns the rewritten content and the number of links changed.
+fn rewrite_links_in(
+    old_source: &str,
+    new_source: &str,
+    content: &str,
+    moves: &HashMap<String, String>,
+) -> (String, usize) {
+    let moved = old_source != new_source;
+    let mut out = String::with_capacity(content.len());
+    let mut count = 0usize;
+    let bytes = content.as_bytes();
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        if bytes[i] == b'[' {
+            let is_image = i > 0 && bytes[i - 1] == b'!';
+            if let Some(close) = find_byte(bytes, i + 1, b']') {
+                if close + 1 < bytes.len() && bytes[close + 1] == b'(' {
+                    if let Some(paren) = find_byte(bytes, close + 2, b')') {
+                        // The whole `(...)` inner text (target + optional title).
+                        let inner = &content[close + 2..paren];
+                        let new_inner = if is_image {
+                            None
+                        } else {
+                            rewrite_target(old_source, new_source, moved, inner, moves)
+                        };
+                        // Emit `[...]( ` then the (possibly rewritten) inner.
+                        out.push_str(&content[i..close + 2]);
+                        match new_inner {
+                            Some(replacement) => {
+                                out.push_str(&replacement);
+                                count += 1;
+                            }
+                            None => out.push_str(inner),
+                        }
+                        out.push(')');
+                        i = paren + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        // Default: copy this byte through.
+        let ch_len = utf8_len(bytes[i]);
+        out.push_str(&content[i..i + ch_len]);
+        i += ch_len;
+    }
+
+    (out, count)
+}
+
+/// Given the inside of a link's parens (`target "title"`), decide whether the
+/// target resolves to a moved Concept and, if so, return the rewritten inner
+/// text (new target, original anchor/query/title preserved). `None` means leave
+/// the link unchanged.
+fn rewrite_target(
+    old_source: &str,
+    new_source: &str,
+    moved: bool,
+    inner: &str,
+    moves: &HashMap<String, String>,
+) -> Option<String> {
+    // Split off leading whitespace and an optional `<...>` / trailing title so we
+    // only touch the URL itself. Mirrors `extract_href`.
+    let leading_ws_len = inner.len() - inner.trim_start().len();
+    let leading = &inner[..leading_ws_len];
+    let rest = &inner[leading_ws_len..];
+
+    // The URL is up to the first whitespace; everything after is the title.
+    let (url_raw, title) = match rest.find(char::is_whitespace) {
+        Some(p) => (&rest[..p], &rest[p..]),
+        None => (rest, ""),
+    };
+    if url_raw.is_empty() {
+        return None;
+    }
+
+    // Strip optional angle brackets around the URL (preserve to re-apply).
+    let (angle_open, url_core, angle_close) = if url_raw.starts_with('<') && url_raw.ends_with('>') {
+        ("<", &url_raw[1..url_raw.len() - 1], ">")
+    } else {
+        ("", url_raw, "")
+    };
+
+    if is_external(url_core) || url_core.starts_with('#') {
+        return None;
+    }
+
+    // Separate path | anchor | query, preserving order/content of the suffix.
+    let (path_part, suffix) = split_suffix(url_core);
+    if path_part.is_empty() {
+        return None;
+    }
+
+    let is_absolute = path_part.starts_with('/');
+
+    // Resolve as the author wrote it, from the source's ORIGINAL location.
+    let resolved = resolve_internal(old_source, path_part)?;
+    // The target's NEW location: if the target itself moved, its mapped path;
+    // otherwise it stays where it is.
+    let target_moved = moves.contains_key(&resolved);
+    let new_target = moves.get(&resolved).cloned().unwrap_or(resolved);
+
+    // Decide whether this link needs rewriting at all:
+    //   * ABSOLUTE links only change when their TARGET moved (a moved source's
+    //     own absolute links are unaffected).
+    //   * RELATIVE links change when the target moved OR the source moved (its
+    //     base directory changed, so the relative string must be recomputed).
+    if is_absolute {
+        if !target_moved {
+            return None;
+        }
+    } else if !target_moved && !moved {
+        return None;
+    }
+
+    let new_path = if is_absolute {
+        // Absolute links always point from the root: use the new absolute path.
+        format!("/{new_target}")
+    } else {
+        // Relative: recompute from the SOURCE's new directory to the target's new
+        // location, preserving the relative style.
+        relative_path(dir_of(new_source), &new_target)
+    };
+
+    if new_path == path_part {
+        // No textual change (e.g. recomputed to the identical relative string).
+        return None;
+    }
+
+    Some(format!(
+        "{leading}{angle_open}{new_path}{suffix}{angle_close}{title}"
+    ))
+}
+
+/// Split a URL into its path part and the `#anchor`/`?query` suffix (preserved
+/// verbatim, including the leading `#` or `?`). The suffix begins at the first
+/// `#` or `?`, whichever comes first.
+fn split_suffix(url: &str) -> (&str, &str) {
+    let hash = url.find('#');
+    let query = url.find('?');
+    let cut = match (hash, query) {
+        (Some(h), Some(q)) => Some(h.min(q)),
+        (Some(h), None) => Some(h),
+        (None, Some(q)) => Some(q),
+        (None, None) => None,
+    };
+    match cut {
+        Some(c) => (&url[..c], &url[c..]),
+        None => (url, ""),
+    }
+}
+
+/// Compute the relative path string FROM `from_dir` TO the bundle-relative
+/// `target`, preferring an explicit `./` for a same-directory target and `../`
+/// for ancestors (the Obsidian/markdown convention authors expect). Both inputs
+/// are bundle-relative, '/'-separated; `from_dir` is '' for the bundle root.
+fn relative_path(from_dir: &str, target: &str) -> String {
+    let from: Vec<&str> = if from_dir.is_empty() {
+        Vec::new()
+    } else {
+        from_dir.split('/').collect()
+    };
+    let to: Vec<&str> = if target.is_empty() {
+        Vec::new()
+    } else {
+        target.split('/').collect()
+    };
+
+    // Drop the common leading prefix.
+    let mut common = 0usize;
+    while common < from.len() && common < to.len() && from[common] == to[common] {
+        common += 1;
+    }
+
+    let ups = from.len() - common;
+    let downs = &to[common..];
+
+    let mut parts: Vec<String> = Vec::new();
+    for _ in 0..ups {
+        parts.push("..".to_string());
+    }
+    for d in downs {
+        parts.push((*d).to_string());
+    }
+
+    if parts.is_empty() {
+        // target == from_dir (a directory) — should not happen for a Concept.
+        return ".".to_string();
+    }
+    // Prefix with `./` when the path does not already start with `..` so the
+    // link is unambiguously relative (matches how `./x.md` is authored).
+    if parts[0] == ".." {
+        parts.join("/")
+    } else {
+        format!("./{}", parts.join("/"))
+    }
+}
+
+/// Directory portion of a bundle-relative path ('' for a root-level file).
+fn dir_of(path: &str) -> &str {
+    match path.rfind('/') {
+        Some(slash) => &path[..slash],
+        None => "",
+    }
+}
+
+/// Resolve an `href` (path part only — caller stripped anchor/query) to a
+/// bundle-relative internal target, or `None` for external/empty. Mirrors
+/// `resolve_internal` in `index.rs` / `resolveLink` in `links.ts`.
+fn resolve_internal(current_path: &str, path_part: &str) -> Option<String> {
+    let raw = path_part.trim();
+    if raw.is_empty() || is_external(raw) || raw.starts_with('#') {
+        return None;
+    }
+    let path = if let Some(stripped) = raw.strip_prefix('/') {
+        normalize_segments(stripped.split('/'))
+    } else {
+        let dir = dir_of(current_path);
+        let dir_segments: Vec<&str> = if dir.is_empty() {
+            Vec::new()
+        } else {
+            dir.split('/').collect()
+        };
+        normalize_segments(dir_segments.into_iter().chain(raw.split('/')))
+    };
+    if path.is_empty() {
+        None
+    } else {
+        Some(path)
+    }
+}
+
+/// True for `scheme:`-prefixed URLs. Mirrors `is_external` in `index.rs`.
+fn is_external(href: &str) -> bool {
+    let bytes = href.as_bytes();
+    if bytes.is_empty() || !bytes[0].is_ascii_alphabetic() {
+        return false;
+    }
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b':' {
+            return i > 0;
+        }
+        let ok = b.is_ascii_alphanumeric() || matches!(b, b'+' | b'.' | b'-');
+        if !ok {
+            return false;
+        }
+    }
+    false
+}
+
+/// Collapse `.`/`..` segments; leading `..` that would escape are dropped.
+fn normalize_segments<'a>(segments: impl Iterator<Item = &'a str>) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for seg in segments {
+        match seg {
+            "" | "." => continue,
+            ".." => {
+                out.pop();
+            }
+            s => out.push(s),
+        }
+    }
+    out.join("/")
+}
+
+fn find_byte(bytes: &[u8], from: usize, target: u8) -> Option<usize> {
+    bytes[from..]
+        .iter()
+        .position(|&b| b == target)
+        .map(|p| from + p)
+}
+
+/// Byte length of a UTF-8 code point from its leading byte.
+fn utf8_len(b: u8) -> usize {
+    if b < 0x80 {
+        1
+    } else if b >> 5 == 0b110 {
+        2
+    } else if b >> 4 == 0b1110 {
+        3
+    } else if b >> 3 == 0b11110 {
+        4
+    } else {
+        1
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Move-set construction (single Concept or whole folder) from the index.
+// ---------------------------------------------------------------------------
+
+/// Build the `old -> new` move map for relocating `from` to `to`, where both are
+/// bundle-relative. If `from` is a Concept (in the index), the map has one entry.
+/// If `from` is a folder, every `.md` Concept under it is remapped under `to`.
+///
+/// `index` provides the set of Concept paths. Folder detection: any indexed path
+/// with the `from/` prefix means `from` is a folder. A `from` that is itself a
+/// `.md` path is treated as a single Concept move.
+pub fn build_move_map(index: &Index, from: &str, to: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    // A `.md` source is a single Concept move (whether or not it is already in
+    // the index — a freshly-created Concept still has its own outbound links to
+    // recompute). A non-`.md` source is a folder: remap every Concept under it.
+    if from.ends_with(".md") {
+        map.insert(from.to_string(), to.to_string());
+        return map;
+    }
+    let from_prefix = format!("{from}/");
+    for path in index.concept_paths() {
+        if let Some(rest) = path.strip_prefix(&from_prefix) {
+            map.insert(path.clone(), format!("{to}/{rest}"));
+        }
+    }
+    map
+}
+
+/// The set of source Concepts that link INTO any moved Concept (the inbound
+/// linkers), from the index reverse map. Includes moved Concepts that link to
+/// other moved Concepts; the caller de-dupes against the move set anyway.
+pub fn inbound_sources(index: &Index, moves: &HashMap<String, String>) -> Vec<String> {
+    let mut set = std::collections::BTreeSet::new();
+    for old_target in moves.keys() {
+        for source in index.backlinks(old_target) {
+            set.insert(source);
+        }
+    }
+    set.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn moves(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    }
+
+    /// Run plan_rewrites over an in-memory file map, returning the resulting map
+    /// (new path -> content) merged onto the originals, plus the summary.
+    fn run(
+        files: &[(&str, &str)],
+        moves_map: &HashMap<String, String>,
+    ) -> (HashMap<String, String>, RewriteSummary) {
+        let store: HashMap<String, String> = files
+            .iter()
+            .map(|(p, c)| (p.to_string(), c.to_string()))
+            .collect();
+
+        // Inbound sources = every file linking to a moved target. For the unit
+        // tests we just pass ALL files as candidate sources; plan_rewrites only
+        // emits writes for files that actually change.
+        let sources: Vec<String> = store.keys().cloned().collect();
+
+        let store_ref = &store;
+        let (writes, summary) = plan_rewrites(moves_map, &sources, |p| {
+            store_ref
+                .get(p)
+                .cloned()
+                .ok_or_else(|| format!("no such file: {p}"))
+        })
+        .unwrap();
+
+        let mut result = store.clone();
+        // Apply the move (rename keys) first.
+        for (old, new) in moves_map {
+            if let Some(c) = result.remove(old) {
+                result.insert(new.clone(), c);
+            }
+        }
+        // Then overlay rewritten content.
+        for (path, content) in writes {
+            result.insert(path, content);
+        }
+        (result, summary)
+    }
+
+    #[test]
+    fn inbound_absolute_link_is_rewritten_to_new_absolute_path() {
+        // A links to B with an ABSOLUTE link. B moves; A's link follows.
+        let files = &[
+            ("a.md", "See [B](/b.md) here."),
+            ("b.md", "# B"),
+        ];
+        let m = moves(&[("b.md", "folder/b.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["a.md"], "See [B](/folder/b.md) here.");
+        assert_eq!(summary.links_changed, 1);
+        assert_eq!(summary.files_changed, 1);
+    }
+
+    #[test]
+    fn inbound_relative_link_from_different_dir_is_recomputed() {
+        // C (in sub/) links to B with a RELATIVE link. B moves to folder/.
+        // The recomputed relative path must point from sub/ to folder/b.md.
+        let files = &[
+            ("sub/c.md", "Link to [B](../b.md)."),
+            ("b.md", "# B"),
+        ];
+        let m = moves(&[("b.md", "folder/b.md")]);
+        let (result, summary) = run(files, &m);
+        // From sub/ to folder/b.md: ../folder/b.md
+        assert_eq!(result["sub/c.md"], "Link to [B](../folder/b.md).");
+        assert_eq!(summary.links_changed, 1);
+        // Verify it still resolves correctly.
+        assert_eq!(
+            resolve_internal("sub/c.md", "../folder/b.md").as_deref(),
+            Some("folder/b.md")
+        );
+    }
+
+    #[test]
+    fn moved_files_own_relative_outbound_is_rewritten() {
+        // B has a relative link to D. B moves into folder/; the relative link to
+        // D must be recomputed so it still resolves to d.md at the root.
+        let files = &[
+            ("b.md", "Out to [D](./d.md)."),
+            ("d.md", "# D"),
+        ];
+        // Only B moves; D stays put. A moved file's relative outbound links must
+        // still be recomputed (its base directory changed) even though the target
+        // did not move — no identity move-map entry needed.
+        let m = moves(&[("b.md", "folder/b.md")]);
+        let (result, summary) = run(files, &m);
+        // From folder/ to d.md (root): ../d.md
+        assert_eq!(result["folder/b.md"], "Out to [D](../d.md).");
+        assert_eq!(summary.links_changed, 1);
+        assert_eq!(
+            resolve_internal("folder/b.md", "../d.md").as_deref(),
+            Some("d.md")
+        );
+    }
+
+    #[test]
+    fn moved_files_own_absolute_outbound_is_untouched() {
+        let files = &[("b.md", "Out to [D](/d.md)."), ("d.md", "# D")];
+        let m = moves(&[("b.md", "folder/b.md")]);
+        let (result, summary) = run(files, &m);
+        // Absolute link unaffected by the source move.
+        assert_eq!(result["folder/b.md"], "Out to [D](/d.md).");
+        assert_eq!(summary.links_changed, 0);
+    }
+
+    #[test]
+    fn folder_move_keeps_internal_links_valid_without_double_break() {
+        // folder/ contains x.md and y.md; x links to y relatively. Move folder/
+        // to dest/. The internal x->y link must remain valid (recomputed once).
+        let files = &[
+            ("folder/x.md", "[Y](./y.md)"),
+            ("folder/y.md", "# Y"),
+        ];
+        let m = moves(&[
+            ("folder/x.md", "dest/x.md"),
+            ("folder/y.md", "dest/y.md"),
+        ]);
+        let (result, summary) = run(files, &m);
+        // x and y both moved to dest/; ./y.md is still correct -> NO change.
+        assert_eq!(result["dest/x.md"], "[Y](./y.md)");
+        // No links changed: the relative link between two co-moved siblings is
+        // identical before and after.
+        assert_eq!(summary.links_changed, 0);
+        assert_eq!(
+            resolve_internal("dest/x.md", "./y.md").as_deref(),
+            Some("dest/y.md")
+        );
+    }
+
+    #[test]
+    fn folder_move_recomputes_inbound_from_outside() {
+        // outside.md links to folder/x.md absolutely; folder moves to dest/.
+        let files = &[
+            ("outside.md", "[X](/folder/x.md)"),
+            ("folder/x.md", "# X"),
+        ];
+        let m = moves(&[("folder/x.md", "dest/x.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["outside.md"], "[X](/dest/x.md)");
+        assert_eq!(summary.links_changed, 1);
+    }
+
+    #[test]
+    fn preserves_anchor_query_and_title_and_text() {
+        let files = &[
+            ("a.md", "[B link](/b.md#section?x=1 \"My Title\")"),
+            ("b.md", "# B"),
+        ];
+        let m = moves(&[("b.md", "folder/b.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(
+            result["a.md"],
+            "[B link](/folder/b.md#section?x=1 \"My Title\")"
+        );
+        assert_eq!(summary.links_changed, 1);
+    }
+
+    #[test]
+    fn never_touches_external_or_unrelated_links() {
+        let files = &[
+            (
+                "a.md",
+                "[ext](https://example.com) and [other](/keep.md) and [B](/b.md)",
+            ),
+            ("b.md", "# B"),
+            ("keep.md", "# Keep"),
+        ];
+        let m = moves(&[("b.md", "folder/b.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(
+            result["a.md"],
+            "[ext](https://example.com) and [other](/keep.md) and [B](/folder/b.md)"
+        );
+        assert_eq!(summary.links_changed, 1);
+    }
+
+    #[test]
+    fn images_are_not_rewritten() {
+        let files = &[("a.md", "![img](/b.md)"), ("b.md", "# B")];
+        let m = moves(&[("b.md", "folder/b.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["folder/b.md"], "# B"); // moved
+        assert_eq!(result["a.md"], "![img](/b.md)"); // image left alone
+        assert_eq!(summary.links_changed, 0);
+    }
+
+    #[test]
+    fn relative_path_helper_cases() {
+        assert_eq!(relative_path("", "b.md"), "./b.md");
+        assert_eq!(relative_path("sub", "folder/b.md"), "../folder/b.md");
+        assert_eq!(relative_path("folder", "d.md"), "../d.md");
+        assert_eq!(relative_path("a/b", "a/c.md"), "../c.md");
+        assert_eq!(relative_path("a", "a/c.md"), "./c.md");
+        assert_eq!(relative_path("a/b/c", "x.md"), "../../../x.md");
+    }
+}

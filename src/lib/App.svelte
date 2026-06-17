@@ -425,6 +425,16 @@
     }
     closeDialog();
   }
+
+  // Auto-dismiss the link-rewrite notice a few seconds after it appears. Keyed
+  // on the notice `id` so each new move restarts the timer (and re-shows even an
+  // identical message). Kept unobtrusive — it never blocks interaction.
+  $effect(() => {
+    const notice = treeActions.notice;
+    if (notice === null) return;
+    const timer = setTimeout(() => treeActions.dismissNotice(), 4000);
+    return () => clearTimeout(timer);
+  });
 </script>
 
 <div class="app" data-testid="app-root" bind:this={appRoot}>
@@ -622,6 +632,12 @@
       {/if}
     </div>
   {/if}
+
+  {#if treeActions.notice}
+    <div class="toast" role="status" aria-live="polite" data-testid="rewrite-toast">
+      {treeActions.notice.message}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -730,6 +746,23 @@
 
   .status.error {
     color: #c0392b;
+  }
+
+  /* Unobtrusive bottom-centre toast: confirms auto-rewritten links after a
+     move without blocking interaction. Auto-dismisses (see the $effect). */
+  .toast {
+    position: fixed;
+    bottom: 1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    padding: 0.5rem 0.9rem;
+    border-radius: 6px;
+    background: rgba(30, 30, 30, 0.92);
+    color: #f4f4f4;
+    font-size: 0.82rem;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+    pointer-events: none;
   }
 
   .root-reserved {

@@ -190,27 +190,6 @@ pub fn rename_path(root: &Path, from: &str, to: &str) -> Result<PathBuf, String>
     Ok(dst)
 }
 
-/// Move `from` into the folder `to_dir` (both bundle-relative; `to_dir` is ''
-/// for the Bundle root), keeping the original file/folder name. Convenience over
-/// `rename_path` for the tree's "move into folder" action. Returns the resolved
-/// destination absolute path.
-pub fn move_path(root: &Path, from: &str, to_dir: &str) -> Result<PathBuf, String> {
-    let name = from
-        .rsplit('/')
-        .next()
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| format!("invalid source path: {from}"))?;
-    let to = if to_dir.is_empty() {
-        name.to_string()
-    } else {
-        format!("{}/{}", to_dir.trim_end_matches('/'), name)
-    };
-    if to == from {
-        return Err(format!("already in that folder: {from}"));
-    }
-    rename_path(root, from, &to)
-}
-
 /// Delete `rel_path` (a Concept or a folder, recursively). The path must exist
 /// and stay within the Bundle. The frontend confirms before calling this.
 pub fn delete_path(root: &Path, rel_path: &str) -> Result<(), String> {
@@ -354,18 +333,6 @@ mod tests {
 
         create_concept(&root, "c.md").unwrap();
         assert!(rename_path(&root, "b.md", "c.md").is_err());
-    }
-
-    #[test]
-    fn move_into_folder_keeps_name() {
-        let root = temp_root();
-        create_folder(&root, "folder").unwrap();
-        create_concept(&root, "a.md").unwrap();
-        move_path(&root, "a.md", "folder").unwrap();
-        assert!(root.join("folder/a.md").exists());
-        // Moving back to root works too.
-        move_path(&root, "folder/a.md", "").unwrap();
-        assert!(root.join("a.md").exists());
     }
 
     #[test]

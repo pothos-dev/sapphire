@@ -2,6 +2,7 @@ mod app_state;
 mod bundle;
 mod config;
 mod index;
+mod rewrite;
 mod search;
 mod watcher;
 
@@ -11,6 +12,7 @@ use app_state::AppState;
 use bundle::TreeNode;
 use config::{BundleState, WindowState};
 use index::TagCount;
+use rewrite::RewriteSummary;
 use search::SearchHit;
 use tauri::{LogicalPosition, LogicalSize, Manager, State, WindowEvent};
 
@@ -57,20 +59,103 @@ fn create_folder(state: State<'_, AppState>, path: String) -> Result<(), String>
     Ok(())
 }
 
-/// Rename/move `from` to `to` (both bundle-relative). Plain filesystem rename —
-/// inbound links are NOT rewritten (a later slice). Works for Concepts + folders.
+/// Rename/move `from` to `to` (both bundle-relative). Performs the filesystem
+/// rename AND automatically rewrites every link affected by the move (inbound
+/// links from other Concepts, plus the moved Concept's own relative outbound
+/// links — folder moves apply this to every contained Concept). Works for both
+/// Concepts and folders. Returns a summary of how many links across how many
+/// files were rewritten.
 #[tauri::command]
-fn rename_path(state: State<'_, AppState>, from: String, to: String) -> Result<(), String> {
-    bundle::rename_path(&state.bundle_root, &from, &to)?;
-    Ok(())
+fn rename_path(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> Result<RewriteSummary, String> {
+    rename_and_rewrite(&state, &from, &to)
 }
 
 /// Move `from` into the folder `toDir` (bundle-relative; '' for the root),
-/// keeping the original name. Convenience over `rename_path`.
+/// keeping the original name, then auto-rewrite affected links. Convenience over
+/// `rename_path`; returns the same rewrite summary.
 #[tauri::command]
-fn move_path(state: State<'_, AppState>, from: String, to_dir: String) -> Result<(), String> {
-    bundle::move_path(&state.bundle_root, &from, &to_dir)?;
-    Ok(())
+fn move_path(
+    state: State<'_, AppState>,
+    from: String,
+    to_dir: String,
+) -> Result<RewriteSummary, String> {
+    let name = from
+        .rsplit('/')
+        .find(|s| !s.is_empty())
+        .ok_or_else(|| format!("invalid source path: {from}"))?;
+    let to = if to_dir.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}/{}", to_dir.trim_end_matches('/'), name)
+    };
+    if to == from {
+        return Err(format!("already in that folder: {from}"));
+    }
+    rename_and_rewrite(&state, &from, &to)
+}
+
+/// Shared implementation for rename + move: plan link rewrites from the CURRENT
+/// index (and read source content) BEFORE the fs move, perform the fs rename,
+/// then write the rewritten content to the new locations. Reindexes affected
+/// Concepts immediately so backlinks / broken-link queries are prompt (the
+/// watcher would also catch up asynchronously). Rewrite writes are recorded as
+/// self-writes so the watcher does not echo them back as external edits.
+fn rename_and_rewrite(
+    state: &AppState,
+    from: &str,
+    to: &str,
+) -> Result<RewriteSummary, String> {
+    let root = &state.bundle_root;
+
+    // 1. Plan: build the move map and read all affected source content from the
+    //    CURRENT (pre-move) locations, using a snapshot of the index.
+    let (moves, planned) = {
+        let index = state.index.read().map_err(|e| e.to_string())?;
+        let moves = rewrite::build_move_map(&index, from, to);
+        let sources = rewrite::inbound_sources(&index, &moves);
+        // Read content for every source we might rewrite (inbound + moved).
+        let mut seen = std::collections::BTreeSet::new();
+        let mut contents: Vec<(String, String)> = Vec::new();
+        for s in sources.iter().chain(moves.keys()) {
+            if seen.insert(s.clone()) {
+                let c = bundle::read_concept(root, s)?;
+                contents.push((s.clone(), c));
+            }
+        }
+        (moves, contents)
+    };
+
+    // 2. Perform the actual filesystem rename/move.
+    bundle::rename_path(root, from, to)?;
+
+    // 3. Compute and apply rewrites against the snapshot we read in step 1.
+    let lookup: std::collections::HashMap<&str, &str> = planned
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let sources: Vec<String> = planned.iter().map(|(p, _)| p.clone()).collect();
+    let (writes, summary) = rewrite::plan_rewrites(&moves, &sources, |p| {
+        lookup
+            .get(p)
+            .map(|c| c.to_string())
+            .ok_or_else(|| format!("missing source snapshot: {p}"))
+    })?;
+
+    // 4. Write rewritten content to the NEW locations, record self-writes, and
+    //    reindex so queries are immediately consistent.
+    for (new_path, content) in &writes {
+        let resolved = bundle::write_concept(root, new_path, content)?;
+        state.note_self_write(resolved);
+        if let Ok(mut index) = state.index.write() {
+            index.reindex_concept(new_path, content);
+        }
+    }
+
+    Ok(summary)
 }
 
 /// Delete `path` (a Concept or a folder, recursively). The frontend confirms

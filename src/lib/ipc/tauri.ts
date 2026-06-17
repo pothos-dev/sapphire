@@ -1,7 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { Backend } from './backend';
-import type { TreeNode, FileChange, TagCount, BundleState, SearchHit } from '$lib/types';
+import type {
+  TreeNode,
+  FileChange,
+  TagCount,
+  BundleState,
+  SearchHit,
+  RewriteSummary,
+} from '$lib/types';
 
 /** Tauri event name emitted by the Rust watcher (matches watcher.rs). */
 const FILE_CHANGED_EVENT = 'file-changed';
@@ -59,13 +66,13 @@ export const tauriBackend: Backend = {
     return invoke<void>('create_folder', { path });
   },
 
-  renamePath(from: string, to: string): Promise<void> {
-    return invoke<void>('rename_path', { from, to });
+  renamePath(from: string, to: string): Promise<RewriteSummary> {
+    return invoke<RewriteSummary>('rename_path', { from, to });
   },
 
-  movePath(from: string, toDir: string): Promise<void> {
+  movePath(from: string, toDir: string): Promise<RewriteSummary> {
     // Tauri command arg names are snake_case; `to_dir` matches lib.rs.
-    return invoke<void>('move_path', { from, toDir });
+    return invoke<RewriteSummary>('move_path', { from, toDir });
   },
 
   deletePath(path: string): Promise<void> {

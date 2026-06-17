@@ -89,6 +89,19 @@ export type SearchHit = {
 };
 
 /**
+ * Summary of an automatic link-rewrite pass after a Concept/folder rename or
+ * move: how many links across how many files were rewritten to stay valid.
+ * Matches the Rust `RewriteSummary` (`serde rename_all = "camelCase"`).
+ * Returned by `Backend.renamePath()` / `Backend.movePath()`.
+ */
+export type RewriteSummary = {
+  /** total number of individual links rewritten */
+  linksChanged: number;
+  /** number of distinct Concept files whose content was changed */
+  filesChanged: number;
+};
+
+/**
  * Parsed YAML frontmatter on a Concept. Only `type` is required; other keys
  * are recommended and unknown keys must be preserved. Filled in by later
  * index slices; defined here so the vocabulary is stable.

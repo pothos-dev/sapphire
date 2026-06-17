@@ -5,6 +5,7 @@ import { indexStore } from '$lib/state/index.svelte';
 import { session } from '$lib/state/session.svelte';
 import { isReservedFile, reservedStub, type ReservedKind } from '$lib/reserved';
 import { scaffoldConcept } from '$lib/frontmatter';
+import type { RewriteSummary } from '$lib/types';
 
 /**
  * Orchestrates the document-tree CRUD operations (slice: tree-crud).
@@ -23,6 +24,16 @@ import { scaffoldConcept } from '$lib/frontmatter';
 class TreeActionsStore {
   /** Last failed operation's message, if any (cleared on the next attempt). */
   error = $state<string | null>(null);
+
+  /**
+   * A transient notice surfaced after a rename/move that auto-rewrote links
+   * (slice: link-auto-rewrite). The UI shows it briefly so the user knows links
+   * were updated on files they did not explicitly open. `null` when there is
+   * nothing to show; a monotonic `id` lets the UI re-trigger its auto-dismiss
+   * timer even when two consecutive moves produce the same message.
+   */
+  notice = $state<{ id: number; message: string } | null>(null);
+  #noticeSeq = 0;
 
   /** Refresh the tree + index after a structural change. */
   async #refresh(): Promise<void> {
@@ -99,7 +110,10 @@ class TreeActionsStore {
   async renamePath(from: string, to: string): Promise<boolean> {
     const before = editor.path;
     this.#followRename(from, to);
-    const ok = await this.#run(() => backend.renamePath(from, to));
+    const ok = await this.#run(async () => {
+      const summary = await backend.renamePath(from, to);
+      this.#showRewriteNotice(summary);
+    });
     if (!ok && before !== null) this.#followRename(to, before);
     return ok;
   }
@@ -110,9 +124,31 @@ class TreeActionsStore {
     const to = toDir === '' ? name : `${toDir.replace(/\/+$/, '')}/${name}`;
     const before = editor.path;
     this.#followRename(from, to);
-    const ok = await this.#run(() => backend.movePath(from, toDir));
+    const ok = await this.#run(async () => {
+      const summary = await backend.movePath(from, toDir);
+      this.#showRewriteNotice(summary);
+    });
     if (!ok && before !== null) this.#followRename(to, before);
     return ok;
+  }
+
+  /**
+   * Surface a brief notice when a move auto-rewrote links. Nothing is shown when
+   * no links changed (the common case), keeping it unobtrusive.
+   */
+  #showRewriteNotice(summary: RewriteSummary): void {
+    if (summary.linksChanged === 0) return;
+    const links = summary.linksChanged === 1 ? 'link' : 'links';
+    const files = summary.filesChanged === 1 ? 'file' : 'files';
+    this.notice = {
+      id: ++this.#noticeSeq,
+      message: `Updated ${summary.linksChanged} ${links} in ${summary.filesChanged} ${files}`,
+    };
+  }
+
+  /** Dismiss the rewrite notice (the UI calls this on its auto-dismiss timer). */
+  dismissNotice(): void {
+    this.notice = null;
   }
 
   /** Delete `path` (file or folder). A deleted open Concept clears the editor. */

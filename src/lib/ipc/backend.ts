@@ -1,4 +1,11 @@
-import type { TreeNode, FileChange, TagCount, BundleState, SearchHit } from '$lib/types';
+import type {
+  TreeNode,
+  FileChange,
+  TagCount,
+  BundleState,
+  SearchHit,
+  RewriteSummary,
+} from '$lib/types';
 
 /**
  * The Backend interface is the ONLY boundary between the frontend and Rust.
@@ -42,9 +49,13 @@ export interface Backend {
   // are bundle-relative, forward-slash; the backend validates them against the
   // Bundle root and rejects escapes / invalid targets. These are NOT recorded
   // as self-writes: structural changes SHOULD refresh the tree + index via the
-  // watcher's `file-changed` event. Move/rename is a plain filesystem operation
-  // here — inbound links are NOT rewritten (a later slice); broken links are
-  // tolerated.
+  // watcher's `file-changed` event.
+  //
+  // Rename/move ALSO automatically rewrites links so they stay valid (slice:
+  // link-auto-rewrite): inbound links from other Concepts AND the moved
+  // Concept's own relative outbound links (folder moves apply this to every
+  // contained Concept). They resolve to a `RewriteSummary` so the UI can report
+  // how many links/files changed.
 
   /**
    * Create a new, empty Concept (`.md`) at `path`. The minimal stub is an empty
@@ -57,17 +68,20 @@ export interface Backend {
   createFolder(path: string): Promise<void>;
 
   /**
-   * Rename or move `from` to `to` (both bundle-relative). Plain filesystem
-   * rename: works for both Concepts and folders; rejects an existing target or
-   * a missing target folder. Links are NOT rewritten.
+   * Rename or move `from` to `to` (both bundle-relative). Works for both
+   * Concepts and folders; rejects an existing target or a missing target
+   * folder. Links affected by the move are automatically rewritten to stay
+   * valid; resolves to a summary of how many links across how many files
+   * changed.
    */
-  renamePath(from: string, to: string): Promise<void>;
+  renamePath(from: string, to: string): Promise<RewriteSummary>;
 
   /**
    * Move `from` into the folder `toDir` (bundle-relative; '' for the Bundle
-   * root), keeping the original name. Convenience over `renamePath`.
+   * root), keeping the original name. Convenience over `renamePath`; auto
+   * rewrites affected links and resolves to the same summary shape.
    */
-  movePath(from: string, toDir: string): Promise<void>;
+  movePath(from: string, toDir: string): Promise<RewriteSummary>;
 
   /**
    * Delete `path` (a Concept or a folder, recursively). The frontend confirms
