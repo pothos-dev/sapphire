@@ -6,6 +6,7 @@
   import { editor } from '$lib/state/editor.svelte';
   import { indexStore } from '$lib/state/index.svelte';
   import { session } from '$lib/state/session.svelte';
+  import { suggestions } from '$lib/state/suggestions.svelte';
   import { theme } from '$lib/state/theme.svelte';
   import type { TreeNode } from '$lib/types';
   import {
@@ -103,60 +104,25 @@
   // document has been loaded into the CodeMirror view.
   let searchOpen = $state(false);
   let pendingScrollLine: number | null = null;
-  let conceptPaths = $state<string[]>([]);
+
+  // Index-derived autocomplete sources (Concept paths, `type`/key/tag values)
+  // live in the `suggestions` store. Refresh them all whenever the index changes
+  // (file-changed bumps `indexStore.version`) so newly-introduced
+  // paths/types/keys/tags appear in suggestions immediately.
   $effect(() => {
     void indexStore.version;
-    void backend.listConceptPaths().then((p) => {
-      conceptPaths = p;
-    });
-  });
-
-  // Existing Bundle `type` values, for the Properties panel's `type`
-  // autocomplete. Refreshed whenever the index changes (file-changed bumps
-  // `indexStore.version`), so newly-introduced types appear in suggestions.
-  let bundleTypes = $state<string[]>([]);
-  $effect(() => {
-    void indexStore.version;
-    void backend.allTypes().then((t) => {
-      bundleTypes = t;
-    });
-  });
-
-  // OKF recommended frontmatter keys (okf-spec §4.1). Always offered for key
-  // autocomplete, even on an empty Bundle, and merged with the keys actually
-  // used elsewhere in the Bundle (deduped, OKF keys always present).
-  const OKF_KEYS = ['type', 'title', 'description', 'resource', 'tags', 'timestamp'];
-
-  // Key-name autocomplete: OKF recommended keys ∪ distinct keys used across the
-  // Bundle. Refreshed on index change so a newly-introduced key appears.
-  let bundleKeys = $state<string[]>([]);
-  $effect(() => {
-    void indexStore.version;
-    void backend.allKeys().then((k) => {
-      bundleKeys = [...new Set([...OKF_KEYS, ...k])];
-    });
-  });
-
-  // Tag-value autocomplete for `tags` (and any list) chip inputs. No OKF tag
-  // vocabulary exists, so suggestions are bundle-sourced only (allTags → tag
-  // strings). Refreshed on index change like the others.
-  let bundleTags = $state<string[]>([]);
-  $effect(() => {
-    void indexStore.version;
-    void backend.allTags().then((counts) => {
-      bundleTags = counts.map((c) => c.tag);
-    });
+    suggestions.refresh();
   });
 
   // The Tags Section is hidden entirely when the Bundle carries no tags
   // (hide-tags-section-when-empty) — an always-present empty Tags Section is
-  // noise. `bundleTags` is reactive on the index `version` signal, so the
+  // noise. `suggestions.tags` is reactive on the index `version` signal, so the
   // Section appears/disappears live as the first tag is added / last tag
   // removed. The persisted `tagsOpen` flag is left untouched while hidden
   // (gated render, no setter call), so it is preserved across hide/show. The
   // hidden Section is excluded from `expandedCount` (above) so the remaining
   // left-Sidebar Sections share height correctly.
-  const tagsVisible = $derived(bundleTags.length > 0);
+  const tagsVisible = $derived(suggestions.tags.length > 0);
   // Left-Sidebar expanded count for the `--expanded-count` CSS var: count the
   // Explorer when open, and Tags only when it is BOTH present (tags exist) and
   // open — a hidden Tags Section must not steal a share of the height.
@@ -821,9 +787,9 @@
       <Properties
         properties={frontmatterProps}
         path={editor.path}
-        types={bundleTypes}
-        keys={bundleKeys}
-        tags={bundleTags}
+        types={suggestions.types}
+        keys={suggestions.keys}
+        tags={suggestions.tags}
         focusType={focusTypeNow}
         onchange={onPropertiesChange}
         onUndo={doUndo}
@@ -876,7 +842,7 @@
 
   <QuickNav
     open={quickNavOpen}
-    paths={conceptPaths}
+    paths={suggestions.conceptPaths}
     recent={session.recentFiles}
     onopen={openConcept}
     onclose={() => (quickNavOpen = false)}
