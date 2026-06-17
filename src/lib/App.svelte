@@ -857,7 +857,7 @@
      We match `.cm-editor .cm-content` (specificity `(0,3,0)`) so this
      `padding-inline` longhand wins over the theme's `padding` shorthand. */
   .editor-host :global(.cm-editor .cm-content) {
-    padding-inline: 2.5rem;
+    padding-inline: 1.5rem;
   }
 
   .placeholder,
