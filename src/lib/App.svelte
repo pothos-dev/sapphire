@@ -734,7 +734,7 @@
     {#if !editor.path && !editor.error}
       <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
     {/if}
-    {#if editor.path}
+    {#if editor.path && !isReservedFile(editor.path)}
       <Properties
         properties={frontmatterProps}
         path={editor.path}

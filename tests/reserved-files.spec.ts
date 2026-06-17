@@ -40,39 +40,62 @@ test('reserved files: stripped from leaves, opened via folder affordances', asyn
   await expect(rootReserved.locator('[data-reserved-path="log.md"]')).toBeVisible();
 
   await rootReserved.locator('[data-reserved-path="index.md"]').click();
-  // It opens as a normal Concept (Properties panel shows its frontmatter).
-  await expect(page.getByTestId('properties')).toBeVisible();
-  await expect(page.getByTestId('scalar-type')).toHaveValue('index');
+  // It opens body-only — reserved files hide the Properties panel entirely
+  // (slice: hide-properties-for-reserved-files). The body still renders.
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+  await expect(page.getByTestId('editor')).toContainText('Knowledge Base');
 
   // --- Subfolder affordance: concepts/ has index.md surfaced on its folder row ---
   await expect(
     tree.locator('[data-reserved-path="concepts/index.md"]'),
   ).toHaveCount(1);
   await tree.locator('[data-reserved-path="concepts/index.md"]').click({ force: true });
-  await expect(page.getByTestId('scalar-title')).toHaveValue('Concepts');
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+  await expect(page.getByTestId('editor')).toContainText('Concepts');
 
   await page.screenshot({ path: 'tests/screenshots/reserved-files.png', fullPage: true });
 });
 
-test('reserved files: exempt from the missing-type flag', async ({ page }) => {
+test('reserved files: no Properties panel, body editing still works', async ({ page }) => {
   await page.goto('/');
 
-  // log.md frontmatter has `type: log`, but the exemption must hold even with no
-  // type. Open the root log.md via its affordance.
+  // Open the root log.md via its affordance — body only, no Properties panel
+  // (slice: hide-properties-for-reserved-files).
   await page.getByTestId('root-reserved').locator('[data-reserved-path="log.md"]').click();
-  await expect(page.getByTestId('properties')).toBeVisible();
-  // No missing-type flag on a reserved file.
-  await expect(page.getByTestId('type-missing')).toHaveCount(0);
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await expect(page.getByTestId('properties')).toHaveCount(0);
 
-  // Strip the frontmatter entirely from a reserved file and reopen: still no
-  // flag, no crash (a reserved file with NO frontmatter is valid).
+  // The body remains fully editable and autosaves to the backend.
+  const content = editor.locator('.cm-content');
+  await expect(content).toHaveAttribute('contenteditable', 'true');
+  const marker = 'RESERVED_BODY_MARKER';
+  await content.click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type(`\n\n${marker}`);
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        (m) =>
+          (window as unknown as { __emeraldFake: { files: Record<string, string> } })
+            .__emeraldFake.files['log.md'].includes(m),
+        marker,
+      ),
+    )
+    .toBe(true);
+
+  // Stripping the frontmatter entirely keeps the panel hidden (no crash).
   await page.evaluate(() => {
     const fake = (window as unknown as {
       __emeraldFake: { simulateExternalChange: (k: string, p: string, c?: string) => void };
     }).__emeraldFake;
     fake.simulateExternalChange('modified', 'log.md', '# Just a heading\n');
   });
-  await expect.poll(async () => page.getByTestId('type-missing').count()).toBe(0);
+  await expect(editor).toContainText('Just a heading');
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+
+  // A normal Concept STILL shows the Properties panel.
+  await page.getByTestId('tree').locator('[data-path="concepts/bundle.md"]').click();
   await expect(page.getByTestId('properties')).toBeVisible();
 });
 
@@ -99,9 +122,9 @@ test('reserved files: right-click a folder offers to create the missing one', as
     tree.locator('[data-reserved-path="concepts/log.md"]'),
   ).toHaveCount(1);
 
-  // Created reserved file opened and is NOT flagged for a missing type.
-  await expect(page.getByTestId('properties')).toBeVisible();
-  await expect(page.getByTestId('type-missing')).toHaveCount(0);
+  // Created reserved file opened body-only — no Properties panel.
+  await expect(page.getByTestId('editor')).toBeVisible();
+  await expect(page.getByTestId('properties')).toHaveCount(0);
 
   // The created log.md has a minimal stub (a heading), no `type` field.
   const content = await page.evaluate(
