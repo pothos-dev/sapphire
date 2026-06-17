@@ -254,12 +254,34 @@ fn capture_window_state(window: &tauri::WebviewWindow) -> Option<WindowState> {
     })
 }
 
-/// Resolve the Bundle root from the first positional CLI arg (default `.`),
-/// then canonicalize it.
+/// Resolve the Bundle root, then canonicalize it. Resolution order:
+///   1. `EMERALD_BUNDLE` env var, if set,
+///   2. the first positional CLI arg, if given,
+///   3. the per-build default (see `default_bundle_root`).
 fn resolve_bundle_root() -> PathBuf {
-    let arg = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
-    let path = PathBuf::from(arg);
+    let explicit = std::env::var("EMERALD_BUNDLE")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::args().nth(1));
+    let path = explicit.map(PathBuf::from).unwrap_or_else(default_bundle_root);
     path.canonicalize().unwrap_or(path)
+}
+
+/// Default Bundle root for a DEV build: the `examples/` vault at the repo root
+/// (one level up from this crate). `tauri dev` runs the binary from `src-tauri/`,
+/// so a bare `.` would open the crate dir; pointing at the bundled example vault
+/// makes `bun tauri dev` land in a real Bundle. Override with `EMERALD_BUNDLE`
+/// or a path argument. `CARGO_MANIFEST_DIR` is the absolute `src-tauri/` path
+/// baked in at compile time.
+#[cfg(debug_assertions)]
+fn default_bundle_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples")
+}
+
+/// Default Bundle root for a RELEASE build: the current working directory.
+#[cfg(not(debug_assertions))]
+fn default_bundle_root() -> PathBuf {
+    PathBuf::from(".")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
