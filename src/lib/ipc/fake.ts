@@ -202,6 +202,53 @@ echo hello
 Closing prose.
 `,
 
+  // A Concept whose body contains MANY lines sharing one distinctive word
+  // (`pomegranate`), so a single full-text query returns far more hits than the
+  // Search panel's capped result list can show at once. This is what lets the
+  // search-scroll-into-view spec exercise keyboard navigation past the bottom of
+  // the scroll viewport. Its tag (`searchdemo`) and type (`concept`) are chosen
+  // so it does NOT perturb the exact tag/type counts other specs assert on.
+  'concepts/search-overflow.md': `---
+type: concept
+title: Search Overflow
+description: Many matching lines to overflow the search results list.
+tags: [searchdemo]
+---
+
+# Search Overflow
+
+The word pomegranate line 01 exists so full-text search returns many hits.
+The word pomegranate line 02 exists so full-text search returns many hits.
+The word pomegranate line 03 exists so full-text search returns many hits.
+The word pomegranate line 04 exists so full-text search returns many hits.
+The word pomegranate line 05 exists so full-text search returns many hits.
+The word pomegranate line 06 exists so full-text search returns many hits.
+The word pomegranate line 07 exists so full-text search returns many hits.
+The word pomegranate line 08 exists so full-text search returns many hits.
+The word pomegranate line 09 exists so full-text search returns many hits.
+The word pomegranate line 10 exists so full-text search returns many hits.
+The word pomegranate line 11 exists so full-text search returns many hits.
+The word pomegranate line 12 exists so full-text search returns many hits.
+The word pomegranate line 13 exists so full-text search returns many hits.
+The word pomegranate line 14 exists so full-text search returns many hits.
+The word pomegranate line 15 exists so full-text search returns many hits.
+The word pomegranate line 16 exists so full-text search returns many hits.
+The word pomegranate line 17 exists so full-text search returns many hits.
+The word pomegranate line 18 exists so full-text search returns many hits.
+The word pomegranate line 19 exists so full-text search returns many hits.
+The word pomegranate line 20 exists so full-text search returns many hits.
+The word pomegranate line 21 exists so full-text search returns many hits.
+The word pomegranate line 22 exists so full-text search returns many hits.
+The word pomegranate line 23 exists so full-text search returns many hits.
+The word pomegranate line 24 exists so full-text search returns many hits.
+The word pomegranate line 25 exists so full-text search returns many hits.
+The word pomegranate line 26 exists so full-text search returns many hits.
+The word pomegranate line 27 exists so full-text search returns many hits.
+The word pomegranate line 28 exists so full-text search returns many hits.
+The word pomegranate line 29 exists so full-text search returns many hits.
+The word pomegranate line 30 exists so full-text search returns many hits.
+`,
+
   'concepts/editor/live-preview.md': `---
 type: concept
 title: Live Preview

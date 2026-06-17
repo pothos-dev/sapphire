@@ -34,6 +34,7 @@
   let selected = $state(0);
   let searching = $state(false);
   let input = $state<HTMLInputElement | null>(null);
+  let list = $state<HTMLUListElement | null>(null);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   // Monotonic token so a slow earlier search cannot overwrite a newer one.
@@ -42,6 +43,17 @@
   const activeIndex = $derived(
     results.length === 0 ? 0 : Math.min(selected, results.length - 1),
   );
+
+  // Keep the highlighted result within the scrollable viewport as the selection
+  // moves with ↑/↓ (and wraps at the ends). Without this, the selection can move
+  // past the bottom/top of the capped-height list and scroll off-screen.
+  $effect(() => {
+    // Track activeIndex (and results, so it re-runs after a new search renders).
+    void activeIndex;
+    void results;
+    const el = list?.querySelector<HTMLElement>('.fts-item.selected');
+    el?.scrollIntoView({ block: 'nearest' });
+  });
 
   // Reset + focus each time the panel transitions to open. Tracks `open` only.
   let wasOpen = false;
@@ -163,7 +175,7 @@
       </p>
     {/if}
 
-    <ul class="fts-results" role="listbox" data-testid="search-results">
+    <ul bind:this={list} class="fts-results" role="listbox" data-testid="search-results">
       {#each results as r, i (`${r.path}:${r.line}`)}
         {@const sp = splitPath(r.path)}
         <li role="option" aria-selected={i === activeIndex}>

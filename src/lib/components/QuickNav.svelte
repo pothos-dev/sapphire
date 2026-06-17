@@ -29,6 +29,7 @@
   let query = $state('');
   let selected = $state(0);
   let input = $state<HTMLInputElement | null>(null);
+  let list = $state<HTMLUListElement | null>(null);
 
   // Results: ranked fuzzy matches while typing, else the recent-files list (kept
   // only to existing Concept paths so a deleted file never lingers in the list).
@@ -51,6 +52,16 @@
   const activeIndex = $derived(
     results.length === 0 ? 0 : Math.min(selected, results.length - 1),
   );
+
+  // Keep the highlighted result within the scrollable viewport as the selection
+  // moves with ↑/↓ (and wraps at the ends), matching the Search panel.
+  $effect(() => {
+    // Track activeIndex (and results, so it re-runs after the list changes).
+    void activeIndex;
+    void results;
+    const el = list?.querySelector<HTMLElement>('.qn-item.selected');
+    el?.scrollIntoView({ block: 'nearest' });
+  });
 
   // Reset + focus each time the palette transitions to open. Tracks `open` only
   // (NOT query/selected) so it doesn't re-run on every keystroke.
@@ -119,7 +130,7 @@
       <p class="qn-hint" data-testid="quick-nav-hint">Recent files</p>
     {/if}
 
-    <ul class="qn-results" role="listbox" data-testid="quick-nav-results">
+    <ul bind:this={list} class="qn-results" role="listbox" data-testid="quick-nav-results">
       {#each results as r, i (r.path)}
         {@const sp = splitPath(r.path)}
         <li role="option" aria-selected={i === activeIndex}>
