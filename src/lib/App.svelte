@@ -857,7 +857,7 @@
      the 70ch measure. Selector mirrors the package's `.atomic-cm-editor
      .cm-content` for matching specificity, plus our scoped class to win. */
   .editor-host :global(.atomic-cm-editor .cm-content) {
-    padding-inline: 1.25rem;
+    padding-inline: 2.5rem;
   }
 
   .placeholder,
