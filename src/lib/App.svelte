@@ -32,16 +32,19 @@
   // Left-sidebar accordion: the Bundle tree plus the Backlinks and Tags panes
   // are collapsible sections (VSCode-style). Each expanded body is capped to its
   // share of the viewport — the cap is driven by `--expanded-count` (see below
-  // and SidebarSection.svelte). Default: Explorer open; Backlinks and Tags collapsed.
-  let treeOpen = $state(true);
-  let backlinksOpen = $state(false);
-  let tagsOpen = $state(false);
-  // Whole-sidebar collapse (toggled from the editor header). Independent of the
-  // per-section accordion state above — collapsing hides the sidebar entirely
-  // and reclaims its grid column; expanding restores the prior section state.
-  let sidebarOpen = $state(true);
+  // and SidebarSection.svelte).
+  //
+  // All collapse state is persisted per-Bundle in the session store
+  // (persist-sidebar-collapse-state): the whole-sidebar collapse plus each
+  // Section's expanded flag survive a reload. Reads come from the store's runes
+  // and toggles funnel through its setters, which are gated on `restored` (a
+  // toggle firing mid-restore is a no-op persistence-wise, so it can't clobber
+  // stored state — exactly how `setExpanded` is guarded). All Sections default
+  // to expanded for a fresh Bundle.
   const expandedCount = $derived(
-    (treeOpen ? 1 : 0) + (backlinksOpen ? 1 : 0) + (tagsOpen ? 1 : 0),
+    (session.explorerOpen ? 1 : 0) +
+      (session.backlinksOpen ? 1 : 0) +
+      (session.tagsOpen ? 1 : 0),
   );
 
   let editorParent = $state<HTMLDivElement | null>(null);
@@ -560,7 +563,7 @@
 
 <div
   class="app"
-  class:sidebar-collapsed={!sidebarOpen}
+  class:sidebar-collapsed={!session.leftSidebarOpen}
   data-testid="app-root"
   bind:this={appRoot}
 >
@@ -577,8 +580,8 @@
     <div class="side-bar-inner">
     <SidebarSection
       title="Explorer"
-      expanded={treeOpen}
-      ontoggle={() => (treeOpen = !treeOpen)}
+      expanded={session.explorerOpen}
+      ontoggle={() => session.setExplorerOpen(!session.explorerOpen)}
       testid="explorer-section"
     >
       {#snippet actions()}
@@ -645,8 +648,8 @@
          through `openConcept` (editor navigation) for back/forward history. -->
     <SidebarSection
       title="Backlinks"
-      expanded={backlinksOpen}
-      ontoggle={() => (backlinksOpen = !backlinksOpen)}
+      expanded={session.backlinksOpen}
+      ontoggle={() => session.setBacklinksOpen(!session.backlinksOpen)}
       testid="backlinks-section"
     >
       <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
@@ -654,8 +657,8 @@
 
     <SidebarSection
       title="Tags"
-      expanded={tagsOpen}
-      ontoggle={() => (tagsOpen = !tagsOpen)}
+      expanded={session.tagsOpen}
+      ontoggle={() => session.setTagsOpen(!session.tagsOpen)}
       testid="tags-section"
     >
       <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
@@ -670,10 +673,10 @@
           type="button"
           class="nav-btn"
           data-testid="sidebar-toggle"
-          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          aria-pressed={sidebarOpen}
-          onclick={() => (sidebarOpen = !sidebarOpen)}
+          title={session.leftSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-label={session.leftSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-pressed={session.leftSidebarOpen}
+          onclick={() => session.setLeftSidebarOpen(!session.leftSidebarOpen)}
         >
           <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
             <rect
@@ -701,7 +704,7 @@
               height="11"
               rx="1.5"
               fill="currentColor"
-              opacity={sidebarOpen ? 0.5 : 0}
+              opacity={session.leftSidebarOpen ? 0.5 : 0}
               stroke="none"
             />
           </svg>

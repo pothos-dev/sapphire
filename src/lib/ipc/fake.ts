@@ -903,6 +903,12 @@ function loadFakeBundleState(): BundleState {
       expandedFolders: Array.isArray(parsed.expandedFolders) ? parsed.expandedFolders : [],
       recentFiles: Array.isArray(parsed.recentFiles) ? parsed.recentFiles : [],
       window: parsed.window,
+      // Sidebar collapse flags: passed through untouched (undefined when absent,
+      // which the session store defaults to `true` on read).
+      leftSidebarOpen: parsed.leftSidebarOpen,
+      explorerOpen: parsed.explorerOpen,
+      tagsOpen: parsed.tagsOpen,
+      backlinksOpen: parsed.backlinksOpen,
     };
   } catch {
     return defaultBundleState();

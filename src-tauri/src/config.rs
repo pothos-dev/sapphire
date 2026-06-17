@@ -42,6 +42,17 @@ pub struct BundleState {
     /// Deduped and capped by the frontend; round-tripped here so the quick-nav
     /// palette's recent-files list survives a relaunch.
     pub recent_files: Vec<String>,
+    /// Sidebar collapse state, restored on relaunch (persist-sidebar-collapse-state).
+    /// Optional so older files (lacking them) tolerate the missing fields and the
+    /// frontend defaults them to `true` on read (a fresh Bundle opens expanded).
+    /// Whether the left Sidebar is expanded (vs collapsed entirely).
+    pub left_sidebar_open: Option<bool>,
+    /// Whether the Explorer section is expanded.
+    pub explorer_open: Option<bool>,
+    /// Whether the Tags section is expanded.
+    pub tags_open: Option<bool>,
+    /// Whether the Backlinks section is expanded.
+    pub backlinks_open: Option<bool>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets

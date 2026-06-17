@@ -71,6 +71,19 @@ export type BundleState = {
    * Persisted per-Bundle in the OS config folder, never in the Bundle.
    */
   recentFiles?: string[];
+  /**
+   * Sidebar collapse state (persist-sidebar-collapse-state). All optional and
+   * tolerated when missing; the session store defaults each to `true` on read,
+   * so a fresh Bundle opens with the left Sidebar and every Section expanded.
+   */
+  /** whether the left Sidebar is expanded (vs collapsed entirely) */
+  leftSidebarOpen?: boolean;
+  /** whether the Explorer section is expanded */
+  explorerOpen?: boolean;
+  /** whether the Tags section is expanded */
+  tagsOpen?: boolean;
+  /** whether the Backlinks section is expanded */
+  backlinksOpen?: boolean;
 };
 
 /**

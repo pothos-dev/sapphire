@@ -35,6 +35,17 @@ class SessionStore {
    * Deduped and capped (~15). Powers the quick-nav palette's empty-input view.
    */
   recentFiles = $state<string[]>([]);
+  /**
+   * Sidebar collapse state (persist-sidebar-collapse-state). Each defaults to
+   * `true` (expanded) on a fresh/older Bundle — `load()` seeds them from the
+   * stored value, falling back to `true` when the field is absent, so no special
+   * seeding is needed for a brand-new Bundle. `App.svelte` reads/writes these
+   * through the accessors below instead of holding its own ephemeral `$state`.
+   */
+  leftSidebarOpen = $state<boolean>(true);
+  explorerOpen = $state<boolean>(true);
+  tagsOpen = $state<boolean>(true);
+  backlinksOpen = $state<boolean>(true);
   /** True once `load()` has resolved (data available to render the tree). */
   loaded = $state<boolean>(false);
   /**
@@ -58,6 +69,12 @@ class SessionStore {
       this.lastOpenConcept = state.lastOpenConcept ?? null;
       this.expandedFolders = new Set(state.expandedFolders ?? []);
       this.recentFiles = state.recentFiles ?? [];
+      // Sidebar collapse flags default to `true` (expanded) when absent — a fresh
+      // or older Bundle opens with the left Sidebar and every Section expanded.
+      this.leftSidebarOpen = state.leftSidebarOpen ?? true;
+      this.explorerOpen = state.explorerOpen ?? true;
+      this.tagsOpen = state.tagsOpen ?? true;
+      this.backlinksOpen = state.backlinksOpen ?? true;
       this.#window = state.window;
     } catch {
       // Best-effort: a failed load just means no session to restore.
@@ -114,12 +131,44 @@ class SessionStore {
     this.#scheduleSave();
   }
 
+  /** Record the left Sidebar's expanded/collapsed state and schedule a persist. */
+  setLeftSidebarOpen(open: boolean): void {
+    if (open === this.leftSidebarOpen) return;
+    this.leftSidebarOpen = open;
+    this.#scheduleSave();
+  }
+
+  /** Record the Explorer section's expanded/collapsed state and schedule a persist. */
+  setExplorerOpen(open: boolean): void {
+    if (open === this.explorerOpen) return;
+    this.explorerOpen = open;
+    this.#scheduleSave();
+  }
+
+  /** Record the Tags section's expanded/collapsed state and schedule a persist. */
+  setTagsOpen(open: boolean): void {
+    if (open === this.tagsOpen) return;
+    this.tagsOpen = open;
+    this.#scheduleSave();
+  }
+
+  /** Record the Backlinks section's expanded/collapsed state and schedule a persist. */
+  setBacklinksOpen(open: boolean): void {
+    if (open === this.backlinksOpen) return;
+    this.backlinksOpen = open;
+    this.#scheduleSave();
+  }
+
   /** Current state as a plain `BundleState` for persistence. */
   #snapshot(): BundleState {
     return {
       lastOpenConcept: this.lastOpenConcept,
       expandedFolders: [...this.expandedFolders],
       recentFiles: [...this.recentFiles],
+      leftSidebarOpen: this.leftSidebarOpen,
+      explorerOpen: this.explorerOpen,
+      tagsOpen: this.tagsOpen,
+      backlinksOpen: this.backlinksOpen,
       window: this.#window,
     };
   }
