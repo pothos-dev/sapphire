@@ -275,6 +275,41 @@ export function serializeFrontmatter(props: Property[]): string {
 }
 
 /**
+ * Return a copy of `prop` with its key changed to `newKey`.
+ *
+ * For `scalar`/`list` the serializer emits the key from `prop.key`, so changing
+ * the field is enough. For `complex` the serializer re-emits the verbatim
+ * `entry` source — which embeds the OLD key in its first line — so we must
+ * rebuild `entry` with the new key while preserving the value text byte-for-byte
+ * (ADR 0003). We splice only the key portion of the first line (everything up to
+ * and including the first `:`), leaving the value and any following block lines
+ * untouched. If the entry shape is unexpected (no `:` on the first line), we
+ * clear `entry` and fall back to the structured/raw form so the rename still
+ * applies without corrupting output.
+ */
+export function renameProperty(prop: Property, newKey: string): Property {
+  if (prop.kind !== 'complex') {
+    return { ...prop, key: newKey };
+  }
+  const entry = prop.entry ?? '';
+  // Find the first `:` that terminates the key on the entry's first line.
+  const nl = entry.indexOf('\n');
+  const firstLineEnd = nl === -1 ? entry.length : nl;
+  const colon = entry.indexOf(':');
+  if (colon === -1 || colon > firstLineEnd) {
+    // No usable key separator — drop the verbatim entry and let the serializer
+    // re-emit from `raw` instead (degrades gracefully; value still preserved).
+    const value = prop.raw ?? '';
+    const rebuilt = `${serializeKey(newKey)}: ${value}`.replace(/\n*$/, '\n');
+    return { ...prop, key: newKey, entry: rebuilt };
+  }
+  // Replace the key text (everything before the colon) with the new key,
+  // keeping the colon and the rest of the entry (value + block lines) verbatim.
+  const rest = entry.slice(colon); // starts at `:`
+  return { ...prop, key: newKey, entry: `${serializeKey(newKey)}${rest}` };
+}
+
+/**
  * Recombine structured frontmatter with a body into the full Concept markdown.
  * The inverse of splitting a Concept into `parseProperties` + `splitFrontmatter`
  * `body`. With no properties this is just the body (no frontmatter block).

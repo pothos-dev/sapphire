@@ -12,7 +12,7 @@
   // it through `onchange`; the app shell dispatches it into the field and the
   // editor recombines `serialize(props) + body` for autosave.
 
-  import { isTypeMissing, type Property } from '$lib/frontmatter';
+  import { isTypeMissing, renameProperty, type Property } from '$lib/frontmatter';
   import { isReservedFile } from '$lib/reserved';
 
   interface Props {
@@ -38,6 +38,10 @@
   // in `isTypeMissing`; the exemption is applied here, at the caller.
   const reserved = $derived(path !== null && isReservedFile(path));
   const typeMissing = $derived(!reserved && isTypeMissing(properties));
+  // Whether a `type` property exists at all (it may have been renamed/deleted).
+  // When `type` is missing AND there is no row to host the inline flag, we show
+  // a panel-level banner so the required-`type` warning still appears.
+  const hasTypeRow = $derived(properties.some((p) => p.key === 'type'));
 
   // The `type` input element, focused when a new Concept opens so the user
   // lands in `type` (the field they must fill to make the Concept OKF-valid).
@@ -52,8 +56,60 @@
     }
   });
 
+  // Stable per-row view-models. Rows are keyed by a positional `id` rather than
+  // by `prop.key`, so editing a key char-by-char (a LOCAL draft, committed only
+  // on blur/Enter) never re-keys the row and steals focus. Position is stable
+  // across re-parse (the serializer preserves document order) and the array is
+  // rebuilt wholesale on every change, so the id never desyncs from its prop.
+  const rows = $derived(properties.map((prop, id) => ({ id, prop })));
+
   // Draft text for the per-list "add chip" inputs, keyed by property key.
   let chipDrafts = $state<Record<string, string>>({});
+
+  // Local draft text for the key inputs, keyed by row id. `undefined` means the
+  // input shows the live key; a string means the user is mid-edit. We reset a
+  // draft once it matches the (possibly newly-committed) live key again.
+  let keyDrafts = $state<Record<number, string>>({});
+
+  function keyDraftValue(id: number, liveKey: string): string {
+    const d = keyDrafts[id];
+    return d === undefined ? liveKey : d;
+  }
+
+  /** Commit a key rename for the row at `id` (blur / Enter). */
+  function commitKey(id: number) {
+    const prop = properties[id];
+    if (!prop) return;
+    const next = (keyDrafts[id] ?? prop.key).trim();
+    // Clear the draft regardless of outcome (revert reverts to the live key).
+    delete keyDrafts[id];
+    if (next === '' || next === prop.key) return; // empty or no-op -> revert
+    const duplicate = properties.some((p, i) => i !== id && p.key === next);
+    if (duplicate) return; // duplicate key -> revert
+    onchange(properties.map((p, i) => (i === id ? renameProperty(p, next) : p)));
+  }
+
+  /** Abandon an in-progress key edit (Escape), reverting to the live key. */
+  function cancelKey(id: number) {
+    delete keyDrafts[id];
+  }
+
+  function onKeyKeydown(event: KeyboardEvent, id: number) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      (event.currentTarget as HTMLInputElement).blur(); // triggers commit
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelKey(id);
+      (event.currentTarget as HTMLInputElement).blur();
+    }
+  }
+
+  /** Remove the property at row `id`. */
+  function deleteProperty(id: number) {
+    delete keyDrafts[id];
+    onchange(properties.filter((_, i) => i !== id));
+  }
 
   /** Replace the value of the scalar property `key`. */
   function editScalar(key: string, value: string) {
@@ -91,17 +147,39 @@
     <p class="empty" data-testid="properties-empty">No frontmatter.</p>
   {/if}
 
-  {#each properties as prop (prop.key)}
+  {#if typeMissing && !hasTypeRow}
+    <p class="banner" data-testid="type-missing" role="alert">
+      The required <code>type</code> field is missing.
+    </p>
+  {/if}
+
+  {#each rows as { id, prop } (id)}
     {@const isType = prop.key === 'type'}
     <div class="row" class:flagged={isType && typeMissing} data-key={prop.key}>
-      <label class="key" for={`prop-${prop.key}`}>
-        {prop.key}
+      <div class="key">
+        <input
+          class="key-input"
+          type="text"
+          aria-label={`Property name: ${prop.key}`}
+          data-testid={`key-${prop.key}`}
+          value={keyDraftValue(id, prop.key)}
+          oninput={(e) => (keyDrafts[id] = (e.currentTarget as HTMLInputElement).value)}
+          onblur={() => commitKey(id)}
+          onkeydown={(e) => onKeyKeydown(e, id)}
+        />
         {#if isType && typeMissing}
           <span class="flag" data-testid="type-missing" title="The required `type` field is missing or empty"
             >required</span
           >
         {/if}
-      </label>
+        <button
+          type="button"
+          class="row-remove"
+          aria-label={`Delete ${prop.key}`}
+          data-testid={`delete-${prop.key}`}
+          onclick={() => deleteProperty(id)}>×</button
+        >
+      </div>
 
       <div class="value">
         {#if prop.kind === 'scalar' && isType}
@@ -190,6 +268,20 @@
     font-style: italic;
   }
 
+  .banner {
+    margin: 0;
+    padding: 0.3rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--danger);
+    color: var(--danger-contrast);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .banner code {
+    font-family: var(--font-mono);
+  }
+
   .row {
     display: grid;
     grid-template-columns: 9rem 1fr;
@@ -198,14 +290,73 @@
   }
 
   .key {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
     color: var(--text-muted);
-    padding-top: 0.3rem;
     overflow-wrap: anywhere;
+    min-width: 0;
   }
 
-  .row.flagged .key {
+  .key-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--font-ui);
+    font-size: inherit;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.3rem;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  .key-input:hover {
+    border-color: var(--border-strong);
+  }
+
+  .key-input:focus,
+  .key-input:focus-visible {
+    outline: none;
+    color: var(--text);
+    background: var(--bg-elevated);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .row.flagged .key,
+  .row.flagged .key-input {
     color: var(--danger);
     font-weight: 600;
+  }
+
+  .row-remove {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    transition:
+      background-color 0.15s ease,
+      opacity 0.15s ease;
+  }
+
+  .row:hover .row-remove,
+  .row:focus-within .row-remove {
+    opacity: 1;
+  }
+
+  .row-remove:hover {
+    background: var(--hover);
+    color: var(--danger);
   }
 
   .flag {
