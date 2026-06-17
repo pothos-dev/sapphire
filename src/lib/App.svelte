@@ -44,9 +44,6 @@
   // persistence-wise, so it can't clobber stored state — exactly how
   // `setExpanded` is guarded). Left Sections default to expanded for a fresh
   // Bundle; the right Sidebar starts COLLAPSED.
-  const expandedCount = $derived(
-    (session.explorerOpen ? 1 : 0) + (session.tagsOpen ? 1 : 0),
-  );
   // Right-Sidebar expanded count: only meaningful while the right Sidebar is
   // open. Sums its expanded Sections (Outline + Backlinks) so each body's cap
   // divides this sidebar's height independently of the left one.
@@ -143,6 +140,22 @@
       bundleTags = counts.map((c) => c.tag);
     });
   });
+
+  // The Tags Section is hidden entirely when the Bundle carries no tags
+  // (hide-tags-section-when-empty) — an always-present empty Tags Section is
+  // noise. `bundleTags` is reactive on the index `version` signal, so the
+  // Section appears/disappears live as the first tag is added / last tag
+  // removed. The persisted `tagsOpen` flag is left untouched while hidden
+  // (gated render, no setter call), so it is preserved across hide/show. The
+  // hidden Section is excluded from `expandedCount` (above) so the remaining
+  // left-Sidebar Sections share height correctly.
+  const tagsVisible = $derived(bundleTags.length > 0);
+  // Left-Sidebar expanded count for the `--expanded-count` CSS var: count the
+  // Explorer when open, and Tags only when it is BOTH present (tags exist) and
+  // open — a hidden Tags Section must not steal a share of the height.
+  const expandedCount = $derived(
+    (session.explorerOpen ? 1 : 0) + (tagsVisible && session.tagsOpen ? 1 : 0),
+  );
 
   // When a NEW Concept is created from the tree it opens focused on the `type`
   // field (the one the user must fill for OKF validity). This holds the path we
@@ -674,14 +687,16 @@
          file-changed) — the same mechanism the broken-link cache uses, so no
          bespoke refresh path. Selecting an entry routes through `openConcept`
          (editor navigation) for back/forward history. -->
-    <SidebarSection
-      title="Tags"
-      expanded={session.tagsOpen}
-      ontoggle={() => session.setTagsOpen(!session.tagsOpen)}
-      testid="tags-section"
-    >
-      <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
-    </SidebarSection>
+    {#if tagsVisible}
+      <SidebarSection
+        title="Tags"
+        expanded={session.tagsOpen}
+        ontoggle={() => session.setTagsOpen(!session.tagsOpen)}
+        testid="tags-section"
+      >
+        <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
+      </SidebarSection>
+    {/if}
     </div>
   </aside>
 

@@ -721,9 +721,53 @@ function deleteInternal(path: string): string[] {
   return removed;
 }
 
+/**
+ * Test hook: strip the `tags` frontmatter from EVERY Concept so the Bundle
+ * carries no tags, then notify subscribers (one `modified` per affected file).
+ * Drives the empty-Bundle case for hide-tags-section-when-empty, where the
+ * default fixture otherwise always has tags. Mirrors the real index refresh:
+ * the tag-removal arrives as ordinary file-changed events, bumping the index
+ * `version`.
+ */
+function clearAllTags(): void {
+  for (const path of conceptPaths()) {
+    const content = FILES[path];
+    // Remove a `tags:` line (inline `[...]`) and any following block-list items.
+    const lines = content.split('\n');
+    const out: string[] = [];
+    let stripping = false;
+    let changed = false;
+    for (const line of lines) {
+      if (stripping) {
+        // Drop block-list items belonging to the removed `tags:` key.
+        if (/^\s*-\s+/.test(line)) {
+          changed = true;
+          continue;
+        }
+        stripping = false;
+      }
+      if (/^tags:\s*\[.*\]\s*$/.test(line)) {
+        changed = true;
+        continue;
+      }
+      if (/^tags:\s*$/.test(line)) {
+        stripping = true;
+        changed = true;
+        continue;
+      }
+      out.push(line);
+    }
+    if (changed) {
+      FILES[path] = out.join('\n');
+      notifyFsChange('modified', path);
+    }
+  }
+}
+
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__emeraldFake = {
     simulateExternalChange,
+    clearAllTags,
     files: FILES,
   };
 }
