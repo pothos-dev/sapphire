@@ -32,20 +32,34 @@
 </script>
 
 <section class="section" data-testid={testid} aria-label={title}>
+  <!-- Chevron and title are split into two toggle controls so optional header
+       `actions` (e.g. the Explorer's root index/log icons) can sit between them,
+       directly in front of the label. The chevron button is the accessible
+       control (testid + aria state); the title button is a redundant click
+       target hidden from assistive tech to avoid a duplicate announcement. -->
   <div class="header">
     <button
       type="button"
-      class="header-toggle"
+      class="header-toggle chevron-toggle"
       aria-expanded={expanded}
+      aria-label={title}
       data-testid={testid ? `${testid}-header` : undefined}
       onclick={ontoggle}
     >
       <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
-      <span class="title">{title}</span>
     </button>
     {#if actions}
       <div class="header-actions">{@render actions()}</div>
     {/if}
+    <button
+      type="button"
+      class="header-toggle title-toggle"
+      tabindex="-1"
+      aria-hidden="true"
+      onclick={ontoggle}
+    >
+      <span class="title">{title}</span>
+    </button>
   </div>
   {#if expanded}
     <div class="body" data-testid={testid ? `${testid}-body` : undefined}>
@@ -70,17 +84,18 @@
     box-sizing: border-box;
     width: 100%;
     height: 2rem;
+    transition: background 0.12s ease;
+  }
+
+  .header:hover {
+    background: var(--hover);
   }
 
   .header-toggle {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    flex: 1 1 auto;
-    min-width: 0;
     box-sizing: border-box;
     height: 100%;
-    padding: 0 0.6rem;
     border: none;
     background: none;
     color: var(--text-muted);
@@ -91,14 +106,20 @@
     text-transform: uppercase;
     text-align: left;
     cursor: pointer;
-    transition: background 0.12s ease;
   }
 
-  .header-toggle:hover {
-    background: var(--hover);
+  .chevron-toggle {
+    flex: none;
+    padding: 0 0.2rem 0 0.6rem;
   }
 
-  .header-toggle:focus-visible {
+  .title-toggle {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 0.6rem 0 0.15rem;
+  }
+
+  .chevron-toggle:focus-visible {
     outline: 2px solid var(--accent-ring);
     outline-offset: -2px;
     border-radius: var(--radius-sm);
@@ -109,7 +130,6 @@
     align-items: center;
     flex: none;
     gap: 0.15rem;
-    padding-right: 0.4rem;
   }
 
   .chevron {

@@ -75,6 +75,13 @@
   --atomic-editor-bg-panel: var(--bg-elevated);
   --atomic-editor-accent-bright: var(--accent);
   --atomic-editor-link: var(--accent);
+  /* Code-block / inline-code fill. The editor sets its theme attribute directly
+     on the CodeMirror root rather than an ancestor, so the library's own
+     `[data-theme=light] .atomic-cm-editor` override (a descendant selector)
+     never reaches it — only our attribute-on-the-element rules do. Map it to a
+     token here or the fenced-code background falls back to the library's
+     hardcoded dark default even in light mode. */
+  --atomic-editor-code-bg: var(--bg-sunken);
   --atomic-editor-selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
   --atomic-editor-search-bg: color-mix(in srgb, var(--accent) 22%, transparent);
   --atomic-editor-search-bg-active: color-mix(in srgb, var(--accent) 45%, transparent);
@@ -125,6 +132,7 @@ body:has([data-theme='dark']) {
   --atomic-editor-bg-panel: var(--bg-elevated);
   --atomic-editor-accent-bright: var(--accent);
   --atomic-editor-link: var(--accent);
+  --atomic-editor-code-bg: var(--bg-sunken);
   --atomic-editor-selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
   --atomic-editor-search-bg: color-mix(in srgb, var(--accent) 22%, transparent);
   --atomic-editor-search-bg-active: color-mix(in srgb, var(--accent) 45%, transparent);
