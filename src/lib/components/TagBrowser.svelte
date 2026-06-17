@@ -77,7 +77,6 @@
 </script>
 
 <section class="tag-browser" aria-label="Tags" data-testid="tag-browser">
-  <h2 class="heading">Tags</h2>
   {#if tags.length === 0}
     <p class="empty" data-testid="tags-empty">No tags</p>
   {:else}
@@ -125,16 +124,7 @@
 <style>
   .tag-browser {
     padding: 0.6rem 0.75rem;
-    border-top: 1px solid rgba(127, 127, 127, 0.3);
     font-size: 0.85rem;
-  }
-
-  .heading {
-    margin: 0 0 0.4rem;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #888;
   }
 
   .empty {

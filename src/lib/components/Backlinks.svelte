@@ -53,7 +53,6 @@
 </script>
 
 <section class="backlinks" aria-label="Backlinks" data-testid="backlinks">
-  <h2 class="heading">Backlinks</h2>
   {#if path === null}
     <p class="empty" data-testid="backlinks-empty">No Concept open.</p>
   {:else if sources.length === 0}
@@ -83,14 +82,6 @@
   .backlinks {
     padding: 0.6rem 0.75rem;
     font-size: 0.85rem;
-  }
-
-  .heading {
-    margin: 0 0 0.4rem;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #888;
   }
 
   .empty {

@@ -18,7 +18,19 @@
   import Properties from '$lib/components/Properties.svelte';
   import Backlinks from '$lib/components/Backlinks.svelte';
   import TagBrowser from '$lib/components/TagBrowser.svelte';
+  import SidebarSection from '$lib/components/SidebarSection.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
+
+  // Left-sidebar accordion: the Bundle tree plus the Backlinks and Tags panes
+  // are collapsible sections (VSCode-style). Each expanded body is capped to its
+  // share of the viewport — the cap is driven by `--expanded-count` (see below
+  // and SidebarSection.svelte). Default: everything open.
+  let treeOpen = $state(true);
+  let backlinksOpen = $state(true);
+  let tagsOpen = $state(true);
+  const expandedCount = $derived(
+    (treeOpen ? 1 : 0) + (backlinksOpen ? 1 : 0) + (tagsOpen ? 1 : 0),
+  );
 
   let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
@@ -440,7 +452,19 @@
 </script>
 
 <div class="app" data-testid="app-root" bind:this={appRoot}>
-  <aside class="tree-pane" aria-label="Bundle tree">
+  <aside
+    class="side-bar"
+    aria-label="Sidebar"
+    data-testid="side-bar"
+    style="--expanded-count: {expandedCount}"
+  >
+    <SidebarSection
+      title="Explorer"
+      expanded={treeOpen}
+      ontoggle={() => (treeOpen = !treeOpen)}
+      testid="explorer-section"
+    >
+      <div class="tree-pane">
     {#if bundle.loading}
       <p class="status">Loading…</p>
     {:else if bundle.error}
@@ -489,6 +513,31 @@
     {#if treeActions.error}
       <p class="status error" data-testid="tree-error">{treeActions.error}</p>
     {/if}
+      </div>
+    </SidebarSection>
+
+    <!-- Backlinks + Tags now live in the left sidebar as collapsible sections
+         (no right sidebar). Both refresh via the shared index `version` signal
+         (bumped on every file-changed) — the same mechanism the broken-link
+         cache uses, so no bespoke refresh path. Selecting an entry routes
+         through `openConcept` (editor navigation) for back/forward history. -->
+    <SidebarSection
+      title="Backlinks"
+      expanded={backlinksOpen}
+      ontoggle={() => (backlinksOpen = !backlinksOpen)}
+      testid="backlinks-section"
+    >
+      <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
+    </SidebarSection>
+
+    <SidebarSection
+      title="Tags"
+      expanded={tagsOpen}
+      ontoggle={() => (tagsOpen = !tagsOpen)}
+      testid="tags-section"
+    >
+      <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
+    </SidebarSection>
   </aside>
 
   <main class="editor-pane" aria-label="Concept">
@@ -534,16 +583,6 @@
       bind:this={editorParent}
     ></div>
   </main>
-
-  <!-- Right-hand sidebar: Backlinks for the open Concept + the Tag browser.
-       Both refresh via the shared index `version` signal (bumped on every
-       file-changed), the same mechanism the broken-link cache uses — so no
-       bespoke refresh path. Selecting an entry routes through `openConcept`
-       (editor navigation), so it participates in back/forward history. -->
-  <aside class="side-pane" aria-label="Backlinks and tags" data-testid="side-pane">
-    <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
-    <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
-  </aside>
 
   <QuickNav
     open={quickNavOpen}
@@ -643,51 +682,35 @@
 </div>
 
 <style>
-  :global(html, body) {
-    margin: 0;
-    height: 100%;
-  }
-
-  :global(body) {
-    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  }
-
   /* Theme is driven by `data-theme` on the app root (set by the theme store,
-     state/theme.svelte.ts — OS-driven default). The attribute is the single
-     source of truth so the app UI and the atomic-editor stay consistent. */
+     state/theme.svelte.ts — OS-driven default). The attribute selects the token
+     block in app.css; the app UI and atomic-editor both read from it, so they
+     stay consistent. Base resets + the body typeface live in app.css. */
   .app {
     display: grid;
-    grid-template-columns: 280px 1fr 260px;
+    grid-template-columns: 280px 1fr;
     height: 100vh;
     overflow: hidden;
-    color: #0f0f0f;
-    background: #f6f6f6;
+    color: var(--text);
+    background: var(--bg);
   }
 
-  /* `:global` because the attribute is set at runtime by the theme store, so
-     Svelte's static analysis cannot see it (would flag the selector unused). */
-  :global(.app[data-theme='dark']) {
-    color: #e6e6e6;
-    background: #1e1e1e;
-  }
-
-  /* Keep the document background in step with the app theme (covers overscroll
-     and the area outside the grid). */
-  :global(body:has(.app[data-theme='dark'])) {
-    background: #1e1e1e;
-    color: #e6e6e6;
-  }
-
-  .side-pane {
-    overflow: auto;
-    border-left: 1px solid rgba(127, 127, 127, 0.3);
-  }
-
-  .tree-pane {
-    overflow: auto;
-    border-right: 1px solid rgba(127, 127, 127, 0.3);
-    padding: 0.5rem;
+  /* Left sidebar: a vertical stack of collapsible accordion sections. Fixed to
+     the viewport height with its own overflow hidden; each section's body caps
+     and scrolls itself (see SidebarSection.svelte). */
+  .side-bar {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    background: var(--bg-elevated);
     font-size: 0.9rem;
+  }
+
+  /* Padding wrapper for the tree inside the Explorer section body. */
+  .tree-pane {
+    padding: 0.5rem;
   }
 
   .editor-pane {
@@ -700,25 +723,26 @@
 
   .nav-bar {
     display: flex;
-    gap: 0.25rem;
-    padding: 0.35rem 0.5rem;
-    border-bottom: 1px solid rgba(127, 127, 127, 0.2);
+    gap: 0.35rem;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border);
   }
 
   .nav-btn {
-    width: 1.8rem;
-    height: 1.8rem;
-    border: 1px solid rgba(127, 127, 127, 0.3);
-    border-radius: 4px;
+    width: 1.9rem;
+    height: 1.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     background: none;
     color: inherit;
     font: inherit;
     cursor: pointer;
     line-height: 1;
+    transition: background 0.12s ease;
   }
 
   .nav-btn:hover:not(:disabled) {
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--hover);
   }
 
   .nav-btn:disabled {
@@ -743,11 +767,11 @@
   .placeholder,
   .status {
     padding: 1rem;
-    color: #888;
+    color: var(--text-muted);
   }
 
   .status.error {
-    color: #c0392b;
+    color: var(--danger);
   }
 
   /* Unobtrusive bottom-centre toast: confirms auto-rewritten links after a
@@ -758,12 +782,13 @@
     left: 50%;
     transform: translateX(-50%);
     z-index: 50;
-    padding: 0.5rem 0.9rem;
-    border-radius: 6px;
-    background: rgba(30, 30, 30, 0.92);
-    color: #f4f4f4;
+    padding: 0.55rem 0.95rem;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    color: var(--accent-contrast);
     font-size: 0.82rem;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+    font-weight: 600;
+    box-shadow: var(--shadow-md);
     pointer-events: none;
   }
 
