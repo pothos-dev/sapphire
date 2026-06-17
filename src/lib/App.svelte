@@ -28,6 +28,10 @@
   let treeOpen = $state(true);
   let backlinksOpen = $state(false);
   let tagsOpen = $state(false);
+  // Whole-sidebar collapse (toggled from the editor header). Independent of the
+  // per-section accordion state above — collapsing hides the sidebar entirely
+  // and reclaims its grid column; expanding restores the prior section state.
+  let sidebarOpen = $state(true);
   const expandedCount = $derived(
     (treeOpen ? 1 : 0) + (backlinksOpen ? 1 : 0) + (tagsOpen ? 1 : 0),
   );
@@ -451,7 +455,12 @@
   });
 </script>
 
-<div class="app" data-testid="app-root" bind:this={appRoot}>
+<div
+  class="app"
+  class:sidebar-collapsed={!sidebarOpen}
+  data-testid="app-root"
+  bind:this={appRoot}
+>
   <aside
     class="side-bar"
     aria-label="Sidebar"
@@ -547,24 +556,68 @@
 
   <main class="editor-pane" aria-label="Concept">
     <nav class="nav-bar" aria-label="Navigation history">
-      <button
-        type="button"
-        class="nav-btn"
-        data-testid="nav-back"
-        title="Back (Alt+Left)"
-        aria-label="Back"
-        disabled={!editor.canGoBack}
-        onclick={() => void editor.back()}>←</button
-      >
-      <button
-        type="button"
-        class="nav-btn"
-        data-testid="nav-forward"
-        title="Forward (Alt+Right)"
-        aria-label="Forward"
-        disabled={!editor.canGoForward}
-        onclick={() => void editor.forward()}>→</button
-      >
+      <div class="nav-left">
+        <button
+          type="button"
+          class="nav-btn"
+          data-testid="sidebar-toggle"
+          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-pressed={sidebarOpen}
+          onclick={() => (sidebarOpen = !sidebarOpen)}
+        >
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+            <rect
+              x="1.5"
+              y="2.5"
+              width="13"
+              height="11"
+              rx="1.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+            <line
+              x1="6"
+              y1="2.5"
+              x2="6"
+              y2="13.5"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+            <rect
+              x="1.5"
+              y="2.5"
+              width="4.5"
+              height="11"
+              rx="1.5"
+              fill="currentColor"
+              opacity={sidebarOpen ? 0.5 : 0}
+              stroke="none"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="nav-center">
+        <button
+          type="button"
+          class="nav-btn"
+          data-testid="nav-back"
+          title="Back (Alt+Left)"
+          aria-label="Back"
+          disabled={!editor.canGoBack}
+          onclick={() => void editor.back()}>←</button
+        >
+        <button
+          type="button"
+          class="nav-btn"
+          data-testid="nav-forward"
+          title="Forward (Alt+Right)"
+          aria-label="Forward"
+          disabled={!editor.canGoForward}
+          onclick={() => void editor.forward()}>→</button
+        >
+      </div>
     </nav>
     {#if editor.error}
       <p class="status error">{editor.error}</p>
@@ -700,6 +753,15 @@
     background: var(--bg);
   }
 
+  /* Collapsed sidebar: reclaim its grid column and hide the aside entirely. */
+  .app.sidebar-collapsed {
+    grid-template-columns: 0 1fr;
+  }
+
+  .app.sidebar-collapsed .side-bar {
+    display: none;
+  }
+
   /* Left sidebar: a vertical stack of collapsible accordion sections. Fixed to
      the viewport height with its own overflow hidden; each section's body caps
      and scrolls itself (see SidebarSection.svelte). */
@@ -726,14 +788,31 @@
     min-width: 0;
   }
 
+  /* Three-track header: the toggle sits at the left, the back/forward group is
+     centred in the pane regardless of the toggle's width (empty right track
+     balances the left). */
   .nav-bar {
-    display: flex;
-    gap: 0.35rem;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
     padding: 0.4rem 0.6rem;
     border-bottom: 1px solid var(--border);
   }
 
+  .nav-left {
+    justify-self: start;
+  }
+
+  .nav-center {
+    display: flex;
+    gap: 0.35rem;
+    justify-self: center;
+  }
+
   .nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 1.9rem;
     height: 1.9rem;
     border: 1px solid var(--border);
@@ -767,6 +846,15 @@
 
   .editor-host :global(.cm-editor) {
     height: 100%;
+  }
+
+  /* Breathing room on both sides of the editor column. The atomic-editor
+     package sets `padding-inline: 0.5rem` on `.cm-content`; nudge it up so the
+     prose isn't flush against the pane edge when the window is narrower than
+     the 70ch measure. Selector mirrors the package's `.atomic-cm-editor
+     .cm-content` for matching specificity, plus our scoped class to win. */
+  .editor-host :global(.atomic-cm-editor .cm-content) {
+    padding-inline: 1.25rem;
   }
 
   .placeholder,
