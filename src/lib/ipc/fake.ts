@@ -247,6 +247,10 @@ src 404s under the fake backend — there is no static file server here):
 ![diagram](./assets/diagram.png)
 
 Built on [CodeMirror](../codemirror.md).
+
+# Citations
+
+- https://example.com/bare-autolink
 `,
 };
 

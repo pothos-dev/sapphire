@@ -1,0 +1,36 @@
+diff --git a/dist/inline-preview.js b/dist/inline-preview.js
+index 94d48d196e21fac09a774cd97b61ed5274ab48b9..438f0cd9fba3f5a414dbcab2b7eaaec8c50188a3 100644
+--- a/dist/inline-preview.js
++++ b/dist/inline-preview.js
+@@ -392,6 +392,15 @@ function buildInlineDecorations(view) {
+                     if (parent && parent.name === 'Link') {
+                         shouldHide = !activeLinkStarts.has(parent.from);
+                     }
++                    else if (node.name === 'URL') {
++                        // A bare/GFM-autolinked URL (`https://…` in running
++                        // text) parses as a standalone URL node with no Link
++                        // parent — its text IS the visible content, so hiding it
++                        // would blank the line. Keep it visible and style it as a
++                        // link (the click handler resolves bare URLs too).
++                        shouldHide = false;
++                        ranges.push(Decoration.mark({ class: INLINE_MARK_CLASS.Link }).range(node.from, node.to));
++                    }
+                     else {
+                         shouldHide = !activeLines.has(lineNum);
+                     }
+@@ -796,11 +805,13 @@ function makeLinkClickHandler(onLinkClick) {
+                 return false;
+             const tree = syntaxTree(view.state);
+             let node = tree.resolveInner(pos, 1);
+-            while (node && node.name !== 'Link')
++            // Bare/autolinked URLs render as a standalone URL node with no Link
++            // parent; resolve those directly. Otherwise walk up to the Link.
++            while (node && node.name !== 'Link' && node.name !== 'URL')
+                 node = node.parent;
+             if (!node)
+                 return false;
+-            const urlNode = node.getChild('URL');
++            const urlNode = node.name === 'URL' ? node : node.getChild('URL');
+             if (!urlNode)
+                 return false;
+             const url = view.state.doc.sliceString(urlNode.from, urlNode.to);

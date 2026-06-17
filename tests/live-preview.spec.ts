@@ -80,3 +80,47 @@ test('live preview: rich markdown renders, cursor line shows raw markup', async 
     fullPage: true,
   });
 });
+
+/**
+ * Regression (patched @atomic-editor/editor): a bare/GFM-autolinked URL — a
+ * `https://…` standalone in running text, as OKF `# Citations` sections use —
+ * parses as a `URL` node with NO `Link` parent. Upstream atomic-editor treated
+ * every `URL` node as the href half of `[text](url)` and HID it on inactive
+ * lines, leaving the line blank and only showing the URL when the cursor landed
+ * on it. The patch keeps bare URLs visible and styles them as links. This guards
+ * that fix: the autolink text is present on an inactive line and carries the
+ * link class (so it's clickable), without the cursor being on it.
+ */
+test('live preview: bare/autolinked URLs render styled on inactive lines', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+  await tree.locator('[data-path="concepts/editor/live-preview.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('Obsidian-style hybrid editing');
+
+  // The Citations section sits at the bottom of the doc. CodeMirror virtualizes
+  // off-screen lines, so scroll the scroller (NOT the cursor — focusing would
+  // mark the line active and mask the inactive-line render path that had the
+  // bug) to bring the bare URL into the DOM.
+  await editor.locator('.cm-scroller').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+
+  // The bare URL must be visible (not hidden) even though the cursor is not on
+  // it — the bug rendered it as a blank line until clicked.
+  const url = editor.locator('.cm-atomic-link', {
+    hasText: 'https://example.com/bare-autolink',
+  });
+  await expect(url).toBeVisible();
+
+  // It carries the link class but is NOT on the active line — proving the
+  // inactive-line render path (where the bug blanked it) now keeps it visible.
+  const onActiveLine = url.locator('xpath=ancestor::*[contains(@class, "cm-activeLine")]');
+  await expect(onActiveLine).toHaveCount(0);
+});
