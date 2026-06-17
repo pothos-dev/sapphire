@@ -247,26 +247,25 @@ pub fn resolve_new(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
     // is within the (canonical) root. This catches symlink escapes for the
     // existing portion while tolerating the not-yet-created tail.
     let mut existing = joined.as_path();
-    loop {
-        match existing.parent() {
-            Some(p) => {
-                if existing.exists() {
-                    break;
-                }
-                existing = p;
-            }
-            None => break,
+    while let Some(parent) = existing.parent() {
+        if existing.exists() {
+            break;
         }
+        existing = parent;
     }
-    if let Ok(canonical_ancestor) = existing.canonicalize() {
-        if !canonical_ancestor.starts_with(root) {
-            return Err(format!("path escapes the bundle: {rel_path}"));
-        }
+    // The nearest existing ancestor MUST canonicalize and stay within the root.
+    // A canonicalize failure is treated as an escape (rejected) rather than
+    // silently passed through — the root itself always exists and canonicalizes,
+    // so a failure here means something is wrong with the path; defence in depth.
+    let canonical_ancestor = existing
+        .canonicalize()
+        .map_err(|e| format!("{rel_path}: {e}"))?;
+    if !canonical_ancestor.starts_with(root) {
+        return Err(format!("path escapes the bundle: {rel_path}"));
     }
     Ok(joined)
 }
 
-/// Convert a relative `Path` to a '/'-separated bundle-relative string.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,5 +341,25 @@ mod tests {
         assert!(create_folder(&root, "../escape").is_err());
         assert!(resolve_new(&root, "/abs/path.md").is_err());
         assert!(resolve_new(&root, "").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_new_rejects_a_symlinked_escape() {
+        // A symlink inside the Bundle pointing OUTSIDE it must not let a new
+        // target be created through it: the nearest existing ancestor (the
+        // symlink) canonicalizes outside the root, so resolve_new rejects it.
+        let root = temp_root();
+        let outside = std::env::temp_dir().join(format!(
+            "sapphire-outside-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("escape_link")).unwrap();
+
+        assert!(resolve_new(&root, "escape_link/newfile.md").is_err());
+        // A normal in-bundle new target still resolves fine.
+        assert!(resolve_new(&root, "sub/newfile.md").is_ok());
     }
 }
