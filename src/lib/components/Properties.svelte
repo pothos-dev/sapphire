@@ -1,29 +1,23 @@
 <script lang="ts">
-  // Frontmatter Properties panel (ADR 0002, flat key/value model).
+  // Frontmatter Properties panel (ADR 0003, structured frontmatter model).
   //
-  // Renders the focused Concept's leading YAML frontmatter as typed inputs above
-  // the editor body:
+  // Renders the focused Concept's frontmatter as typed inputs above the editor
+  // body:
   //   - scalar  -> single text input
   //   - list    -> chip input (add/remove)
   //   - complex -> read-only raw textarea, preserved verbatim
   //
-  // Editing produces a new full markdown string (via the frontmatter module's
-  // verbatim-preserving splice) and reports it through `onchange`, which the app
-  // shell feeds into the existing autosave path. We never re-serialize the whole
-  // YAML doc, so complex/unknown values and the body round-trip byte-for-byte.
+  // The structured `properties` are the single source of truth (held in the
+  // editor's `frontmatterField`). Editing produces a NEW `Property[]` and reports
+  // it through `onchange`; the app shell dispatches it into the field and the
+  // editor recombines `serialize(props) + body` for autosave.
 
-  import {
-    parseProperties,
-    isTypeMissing,
-    setScalar,
-    setList,
-    type Property,
-  } from '$lib/frontmatter';
+  import { isTypeMissing, type Property } from '$lib/frontmatter';
   import { isReservedFile } from '$lib/reserved';
 
   interface Props {
-    /** Raw markdown of the open Concept (source of truth). */
-    content: string;
+    /** The open Concept's frontmatter properties (source of truth). */
+    properties: Property[];
     /** Bundle-relative path of the open Concept (for the reserved-file exemption). */
     path: string | null;
     /** Existing Bundle `type` values, for the `type` field's autocomplete. */
@@ -33,13 +27,12 @@
      * shell right after a NEW Concept is created so the user lands in `type`.
      */
     focusType?: boolean;
-    /** Called with new full markdown after a property edit. */
-    onchange: (content: string) => void;
+    /** Called with the new properties after an edit. */
+    onchange: (props: Property[]) => void;
   }
 
-  let { content, path, types = [], focusType = false, onchange }: Props = $props();
+  let { properties, path, types = [], focusType = false, onchange }: Props = $props();
 
-  const properties = $derived<Property[]>(parseProperties(content));
   // Reserved files (`index.md`/`log.md`) are EXEMPT from the required-`type`
   // rule (OKF): never flag a missing/empty `type` on them. The raw check lives
   // in `isTypeMissing`; the exemption is applied here, at the caller.
@@ -62,21 +55,27 @@
   // Draft text for the per-list "add chip" inputs, keyed by property key.
   let chipDrafts = $state<Record<string, string>>({});
 
+  /** Replace the value of the scalar property `key`. */
   function editScalar(key: string, value: string) {
-    onchange(setScalar(content, key, value));
+    onchange(properties.map((p) => (p.key === key ? { ...p, scalar: value } : p)));
+  }
+
+  /** Set the items of the list property `key`. */
+  function setListItems(key: string, items: string[]) {
+    onchange(properties.map((p) => (p.key === key ? { ...p, list: items } : p)));
   }
 
   function addChip(key: string, current: string[]) {
     const draft = (chipDrafts[key] ?? '').trim();
     if (draft === '') return;
-    onchange(setList(content, key, [...current, draft]));
+    setListItems(key, [...current, draft]);
     chipDrafts[key] = '';
   }
 
   function removeChip(key: string, current: string[], index: number) {
     const next = current.slice();
     next.splice(index, 1);
-    onchange(setList(content, key, next));
+    setListItems(key, next);
   }
 
   function onChipKeydown(event: KeyboardEvent, key: string, current: string[]) {

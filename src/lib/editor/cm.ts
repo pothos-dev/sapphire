@@ -10,6 +10,7 @@ import {
 } from '@codemirror/view';
 import {
   EditorState,
+  StateField,
   Annotation,
   StateEffect,
   RangeSetBuilder,
@@ -21,6 +22,7 @@ import { indentOnInput } from '@codemirror/language';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { resolveLink } from '$lib/links';
+import { joinConcept, serializeFrontmatter, type Property } from '$lib/frontmatter';
 import {
   inlinePreview,
   imageBlocks,
@@ -64,6 +66,38 @@ import '@atomic-editor/editor/styles.css';
  * NOT treat it as something to autosave back to disk.
  */
 const programmatic = Annotation.define<boolean>();
+
+// ---------------------------------------------------------------------------
+// Frontmatter as editor state (ADR 0003)
+//
+// The CodeMirror document holds ONLY the markdown body. The Concept's
+// frontmatter lives as a structured `Property[]` in `frontmatterField` — the
+// single source of truth for frontmatter while a Concept is open. The Properties
+// panel reads it (mirrored out via `onFrontmatterChange`) and writes it by
+// dispatching `setFrontmatter`. On any change we recombine `serialize(props) +
+// body` and report it through `onChange` for autosave.
+//
+// Dispatching frontmatter through a StateEffect (rather than rewriting the whole
+// document string) is what lets the unified-undo slice layer `invertedEffects`
+// on top to put frontmatter edits into the editor's history.
+// ---------------------------------------------------------------------------
+
+/** Replace the open Concept's structured frontmatter. */
+export const setFrontmatter = StateEffect.define<Property[]>();
+
+/** Holds the open Concept's frontmatter properties (body lives in the doc). */
+export const frontmatterField = StateField.define<Property[]>({
+  create: () => [],
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setFrontmatter)) value = e.value;
+    return value;
+  },
+});
+
+/** The open Concept's current frontmatter properties. */
+export function getFrontmatter(view: EditorView): Property[] {
+  return view.state.field(frontmatterField);
+}
 
 // ---------------------------------------------------------------------------
 // Broken-link decoration (slice: bundle-index-broken-links)
@@ -169,10 +203,21 @@ function brokenLinks(ctx: BrokenLinkContext): Extension {
 
 export interface BuildEditorOptions {
   parent: HTMLElement;
+  /** The markdown BODY (no frontmatter) to seed the document with. */
   doc: string;
+  /** The Concept's initial frontmatter properties (ADR 0003). */
+  frontmatter?: Property[];
   readOnly?: boolean;
-  /** called with the new document text after a user edit */
-  onChange?: (doc: string) => void;
+  /**
+   * Called with the new FULL Concept markdown (`serialize(frontmatter) + body`)
+   * after a user edit to either the body or the frontmatter, for autosave.
+   */
+  onChange?: (content: string) => void;
+  /**
+   * Called whenever the frontmatter field changes (user edit, Concept switch, or
+   * external reload), so the Properties panel can render the current properties.
+   */
+  onFrontmatterChange?: (props: Property[]) => void;
   /** called when the editor loses focus */
   onBlur?: () => void;
   /**
@@ -245,19 +290,30 @@ function livePreviewExtensions(onLinkClick: (url: string) => void): Extension[] 
 export function buildEditor({
   parent,
   doc,
+  frontmatter = [],
   readOnly = false,
   onChange,
+  onFrontmatterChange,
   onBlur,
   onLinkClick,
   brokenLinkContext,
 }: BuildEditorOptions): EditorView {
-  // Notify on user edits (doc changes), debouncing happens in the store.
+  // Notify on user edits to the body OR the frontmatter. Frontmatter edits are
+  // carried by `setFrontmatter` effects (no doc change), so we watch for both.
+  // Debouncing happens in the store.
   const changeListener = EditorView.updateListener.of((update) => {
-    if (!update.docChanged || !onChange) return;
+    const fmChanged = update.transactions.some((tr) =>
+      tr.effects.some((e) => e.is(setFrontmatter)),
+    );
+    if (!update.docChanged && !fmChanged) return;
+    // Mirror the frontmatter out on every field change (incl. programmatic
+    // Concept switches / reloads) so the Properties panel stays in sync.
+    if (fmChanged) onFrontmatterChange?.(update.state.field(frontmatterField));
+    if (!onChange) return;
     // Skip programmatic replacements (Concept switch / external reload).
     const isProgrammatic = update.transactions.some((tr) => tr.annotation(programmatic));
     if (isProgrammatic) return;
-    onChange(update.state.doc.toString());
+    onChange(joinConcept(update.state.field(frontmatterField), update.state.doc.toString()));
   });
 
   // Save-on-blur: flush any pending autosave when focus leaves the editor.
@@ -271,6 +327,8 @@ export function buildEditor({
   const state = EditorState.create({
     doc,
     extensions: [
+      // Seed the frontmatter field with the open Concept's properties.
+      frontmatterField.init(() => frontmatter),
       ...livePreviewExtensions(onLinkClick ?? defaultLinkClick),
       // Broken-link styling (only when the index context is provided). Placed
       // after the live-preview extensions so its mark class layers on top of
@@ -309,15 +367,22 @@ export function buildEditor({
 }
 
 /**
- * Replace the document of an existing view (switching Concepts, or reloading
- * after an external change). Marked programmatic so it is NOT autosaved back.
- * No-op when the doc already matches, to avoid pointless transactions and
- * cursor disruption on a reload of identical content.
+ * Replace an existing view's body + frontmatter (switching Concepts, or
+ * reloading after an external change). Marked programmatic so it is NOT
+ * autosaved back. Each half is updated only when it actually changed, to avoid
+ * pointless transactions and cursor disruption on a reload of identical content
+ * (and so a body-only self-edit never resets the cursor via this path).
  */
-export function setEditorDoc(view: EditorView, doc: string): void {
-  if (view.state.doc.toString() === doc) return;
+export function setEditorConcept(view: EditorView, body: string, props: Property[]): void {
+  const docChanged = view.state.doc.toString() !== body;
+  const fmChanged =
+    serializeFrontmatter(view.state.field(frontmatterField)) !== serializeFrontmatter(props);
+  if (!docChanged && !fmChanged) return;
   view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: doc },
+    changes: docChanged
+      ? { from: 0, to: view.state.doc.length, insert: body }
+      : undefined,
+    effects: fmChanged ? [setFrontmatter.of(props)] : [],
     annotations: programmatic.of(true),
   });
 }

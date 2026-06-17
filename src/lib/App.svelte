@@ -8,7 +8,14 @@
   import { session } from '$lib/state/session.svelte';
   import { theme } from '$lib/state/theme.svelte';
   import type { TreeNode } from '$lib/types';
-  import { buildEditor, setEditorDoc, refreshBrokenLinkDecorations, scrollToLine } from '$lib/editor/cm';
+  import {
+    buildEditor,
+    setEditorConcept,
+    setFrontmatter,
+    refreshBrokenLinkDecorations,
+    scrollToLine,
+  } from '$lib/editor/cm';
+  import { splitFrontmatter, parseProperties, type Property } from '$lib/frontmatter';
   import { resolveLink } from '$lib/links';
   import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
@@ -39,6 +46,11 @@
   let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
+
+  // The open Concept's frontmatter, mirrored out of the editor's frontmatter
+  // field (the single source of truth — ADR 0003) so the Properties panel can
+  // render it. Updated by the editor's `onFrontmatterChange` callback.
+  let frontmatterProps = $state<Property[]>([]);
 
   // Quick-nav palette (Ctrl+K). `quickNavOpen` toggles the overlay; the Concept
   // path list is refreshed from the index whenever it changes so newly-created
@@ -197,16 +209,24 @@
   });
 
   // Build / update the CodeMirror view whenever the open Concept content changes.
+  // The editor holds only the BODY; the frontmatter is split off into the
+  // editor's frontmatter field (ADR 0003). On a self-edit the recombined content
+  // matches what the view already holds, so `setEditorConcept` is a no-op.
   $effect(() => {
     const content = editor.content;
     if (!editorParent) return;
 
+    const { body } = splitFrontmatter(content);
+    const props = parseProperties(content);
+
     if (!view) {
       view = buildEditor({
         parent: editorParent,
-        doc: content,
+        doc: body,
+        frontmatter: props,
         readOnly: false,
-        onChange: (doc) => editor.edit(doc),
+        onChange: (full) => editor.edit(full),
+        onFrontmatterChange: (p) => (frontmatterProps = p),
         onBlur: () => void editor.flush(),
         onLinkClick: handleLinkClick,
         brokenLinkContext: {
@@ -214,9 +234,11 @@
           exists: (path) => indexStore.exists(path),
         },
       });
+      frontmatterProps = props;
     } else {
-      // No-op when content is unchanged (guards against feedback from edits).
-      setEditorDoc(view, content);
+      // No-op when body + frontmatter are unchanged (guards against feedback
+      // from edits); updates the field on Concept switch / external reload.
+      setEditorConcept(view, body, props);
     }
 
     // Full-text search: after the matching Concept's document is in the view,
@@ -276,11 +298,13 @@
     // 'none' (pure anchor / empty): no navigation.
   }
 
-  // A frontmatter property edit produces new full markdown; route it through the
-  // same edit/autosave path as editor typing. The build $effect above syncs the
-  // CodeMirror view from `editor.content`, so the body view stays consistent.
-  function onPropertiesChange(content: string) {
-    editor.edit(content);
+  // A frontmatter property edit: dispatch the new properties into the editor's
+  // frontmatter field. The editor's change listener recombines `serialize(props)
+  // + body` and routes it through `editor.edit` (autosave); we then flush so
+  // frontmatter edits persist immediately (matching the prior behavior).
+  function onPropertiesChange(props: Property[]) {
+    if (!view) return;
+    view.dispatch({ effects: setFrontmatter.of(props) });
     void editor.flush();
   }
 
@@ -633,7 +657,7 @@
     {/if}
     {#if editor.path}
       <Properties
-        content={editor.content}
+        properties={frontmatterProps}
         path={editor.path}
         types={bundleTypes}
         focusType={focusTypeNow}

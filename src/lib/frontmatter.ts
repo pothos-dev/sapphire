@@ -1,21 +1,23 @@
-// Frontmatter parsing + verbatim-preserving serialization for the Properties
-// panel. Implements ADR 0002 (flat key/value model): scalars and flat lists are
-// editable; everything else is preserved VERBATIM and round-tripped untouched.
+// Frontmatter parsing + serialization for the Properties panel.
 //
-// The crux is the round-trip guarantee: editing a simple scalar must not
-// reformat or corrupt any other part of the frontmatter (nested maps,
-// multi-line blocks, comments, anchors, key ordering, quoting style) nor the
-// markdown body. We achieve this by NEVER re-serializing the whole YAML
-// document. Instead we parse with `yaml`'s CST/AST (which carries byte ranges),
-// and on edit we splice a freshly-serialized value into the exact source span
-// of the key being changed, leaving all other bytes identical.
+// ADR 0003 (structured, re-serialized frontmatter — supersedes ADR 0002): the
+// Properties panel holds frontmatter as a structured `Property[]` (the single
+// source of truth, owned by a CodeMirror StateField) and re-serializes the
+// WHOLE YAML block from that structure on every change. Scalars and flat lists
+// are re-emitted from their parsed form; `complex` entries (nested maps,
+// non-flat sequences, multi-line/block scalars) and unknown keys are re-emitted
+// VERBATIM from their captured source `entry` text, so OKF conformance holds
+// (required `type` preserved; unknown keys round-trip untouched — OKF §9). The
+// trade-off vs ADR 0002: comments and the original quoting/formatting of edited
+// simple values are normalized, not preserved byte-for-byte.
 //
 // Kept dependency-free of the IPC seam: operates purely on raw markdown strings.
-// The index slice can reuse `parseConcept` / `splitFrontmatter`.
+// `splitFrontmatter` / `parseProperties` split a Concept into body + properties;
+// `serializeFrontmatter` / `joinConcept` recombine them.
 
 import { parseDocument, isScalar, isSeq, isMap, isNode, Scalar, type Document } from 'yaml';
 
-/** Classification of a top-level frontmatter value (ADR 0002). */
+/** Classification of a top-level frontmatter value (ADR 0003). */
 export type PropertyKind = 'scalar' | 'list' | 'complex';
 
 /** One top-level frontmatter entry, in document order. */
@@ -28,8 +30,15 @@ export interface Property {
   boolean?: boolean;
   /** Flat list items as strings. Only for `list`. */
   list?: string[];
-  /** Verbatim source text of the value (used for `complex`, kept untouched). */
+  /** Verbatim source text of the VALUE (shown read-only for `complex`). */
   raw?: string;
+  /**
+   * Verbatim source of the WHOLE entry (`key:` + value + trailing newline) for
+   * `complex` properties. Re-emitted unchanged during whole-block
+   * re-serialization so nested maps, block scalars, and unknown keys round-trip
+   * byte-for-byte (ADR 0003).
+   */
+  entry?: string;
 }
 
 /** Result of splitting a Concept into its frontmatter block and body. */
@@ -120,10 +129,41 @@ export function parseProperties(content: string): Property[] {
   for (const item of doc.contents.items) {
     const key = scalarKeyString(item.key);
     if (key === null) continue;
-    const value = item.value;
-    props.push(classify(key, value, yaml));
+    const prop = classify(key, item.value, yaml);
+    // For `complex` entries, also capture the WHOLE entry source so the
+    // serializer can re-emit it verbatim (ADR 0003).
+    if (prop.kind === 'complex') {
+      prop.entry = entryText(item.key, item.value, yaml);
+    }
+    props.push(prop);
   }
   return props;
+}
+
+/**
+ * Capture the verbatim source of a whole frontmatter entry — from the start of
+ * its key to the end of the entry's last line (including the trailing newline).
+ * Used to round-trip `complex`/unknown entries unchanged during re-serialization.
+ */
+function entryText(keyNode: unknown, valueNode: unknown, yamlSrc: string): string {
+  const keyRange = isNode(keyNode) ? keyNode.range : undefined;
+  if (!keyRange) return '';
+  const start = keyRange[0];
+  const valueRange = (valueNode as { range?: [number, number, number] } | null)?.range;
+  let end: number;
+  if (valueRange) {
+    end = valueRange[1];
+  } else {
+    const nl = yamlSrc.indexOf('\n', keyRange[1]);
+    end = nl === -1 ? yamlSrc.length : nl;
+  }
+  // Extend to include the rest of the current line + its newline, unless the
+  // value range already ended exactly on a line break (block constructs do).
+  if (end > 0 && yamlSrc[end - 1] !== '\n') {
+    const nl = yamlSrc.indexOf('\n', end);
+    end = nl === -1 ? yamlSrc.length : nl + 1;
+  }
+  return yamlSrc.slice(start, end);
 }
 
 /**
@@ -202,89 +242,45 @@ function rangeText(node: unknown, yamlSrc: string): string {
 }
 
 /**
- * Update one top-level scalar property's value in the raw markdown, preserving
- * everything else byte-for-byte. The body and all other frontmatter values
- * (including complex/unknown ones) are untouched.
- */
-export function setScalar(content: string, key: string, newValue: string): string {
-  return spliceValue(content, key, (prop) => serializeScalar(newValue, prop.boolean ?? false));
-}
-
-/**
- * Update one top-level flat-list property (e.g. `tags`) to the given items,
- * preserving everything else byte-for-byte.
- */
-export function setList(content: string, key: string, items: string[]): string {
-  return spliceValue(content, key, () => serializeList(items));
-}
-
-/**
- * Core splice: locate `key`'s entry in the frontmatter and replace just that
- * one `key: value` entry with a freshly serialized single-line form, leaving
- * every other byte — other entries (incl. complex/unknown), the delimiters, and
- * the body — untouched. This is the round-trip guarantee from ADR 0002.
+ * Re-serialize a list of Properties into a complete frontmatter block, INCLUDING
+ * the `---` fences and the trailing newline after the closing fence. Returns the
+ * empty string when there are no properties, so a Concept with no frontmatter
+ * emits no block at all (and deleting the last property drops the block).
  *
- * We replace the whole entry span (key start .. value node end) rather than
- * only the value, so that an original block construct (block sequence or block
- * scalar) collapses cleanly to `key: <value>` without leaving stray
- * indentation. The key text and any inline comment after the value are
- * re-emitted from the key string + serialized value; trailing structure is
- * dropped only for the edited key, never for others.
+ * Scalars and flat lists are serialized from their structured form; `complex`
+ * entries are re-emitted verbatim from their captured `entry` source (ADR 0003).
+ * Properties are emitted in array order, so document order is preserved.
  */
-function spliceValue(
-  content: string,
-  key: string,
-  makeValue: (prop: Property) => string,
-): string {
-  const split = splitFrontmatter(content);
-  if (!split.hasFrontmatter) return content;
-
-  let doc: Document.Parsed;
-  try {
-    doc = parseDocument(split.yaml, { keepSourceTokens: true });
-  } catch {
-    return content;
-  }
-  if (!isMap(doc.contents)) return content;
-
-  for (const item of doc.contents.items) {
-    const keyNode = item.key;
-    const k = scalarKeyString(keyNode);
-    if (k === null || k !== key) continue;
-
-    const prop = classify(key, item.value, split.yaml);
-    const replacement = makeValue(prop);
-
-    const keyRange = isNode(keyNode) ? keyNode.range : undefined;
-    if (!keyRange) return content;
-    const entryStart = keyRange[0];
-
-    // End of the entry: prefer the value node's end-of-content (range[1]),
-    // which excludes the trailing newline so we keep the original line break.
-    // Fall back to the end of the key's line for null/empty values.
-    const valueRange = (item.value as { range?: [number, number, number] } | null)?.range;
-    let entryEnd: number;
-    if (valueRange) {
-      entryEnd = valueRange[1];
+export function serializeFrontmatter(props: Property[]): string {
+  if (props.length === 0) return '';
+  let yaml = '';
+  for (const p of props) {
+    if (p.kind === 'complex') {
+      let e = p.entry ?? '';
+      if (e !== '' && !e.endsWith('\n')) e += '\n';
+      yaml += e;
+      continue;
+    }
+    const key = serializeKey(p.key);
+    if (p.kind === 'list') {
+      yaml += `${key}: ${serializeList(p.list ?? [])}\n`;
     } else {
-      const nl = split.yaml.indexOf('\n', keyRange[1]);
-      entryEnd = nl === -1 ? split.yaml.length : nl;
+      const v = p.scalar ?? '';
+      // Empty scalar -> bare `key:` (matches the new-Concept scaffold and reads
+      // cleaner than `key: ''`); both parse back to an empty/flagged value.
+      yaml += v === '' ? `${key}:\n` : `${key}: ${serializeScalar(v, p.boolean ?? false)}\n`;
     }
-
-    const keyText = serializeKey(k);
-    let entryText = `${keyText}: ${replacement}`;
-    // Block constructs (sequences/scalars) include their trailing newline in the
-    // value range, so the replaced span eats the line break. Re-add one so the
-    // following entry stays on its own line.
-    if (entryEnd > 0 && split.yaml[entryEnd - 1] === '\n' && entryEnd < split.yaml.length) {
-      entryText += '\n';
-    }
-    const newYaml = split.yaml.slice(0, entryStart) + entryText + split.yaml.slice(entryEnd);
-
-    return split.open + newYaml + split.close + split.body;
   }
+  return `---\n${yaml}---\n`;
+}
 
-  return content;
+/**
+ * Recombine structured frontmatter with a body into the full Concept markdown.
+ * The inverse of splitting a Concept into `parseProperties` + `splitFrontmatter`
+ * `body`. With no properties this is just the body (no frontmatter block).
+ */
+export function joinConcept(props: Property[], body: string): string {
+  return serializeFrontmatter(props) + body;
 }
 
 /** Serialize a mapping key (quote only when needed). */
