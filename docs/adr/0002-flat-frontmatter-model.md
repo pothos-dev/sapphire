@@ -1,5 +1,10 @@
 # Flat key/value frontmatter model
 
+> **Status: Superseded by [ADR-0003](0003-structured-frontmatter-reserialization.md).**
+> The flat map is retained, but the in-place verbatim-splicing round-trip described below is
+> replaced by holding frontmatter as structured `Property[]` and re-serializing the whole block.
+> The verbatim-preservation rule no longer holds.
+
 The frontmatter Properties editor treats frontmatter as a **flat, ordered map of key →
 value**, deliberately *not* modeling YAML's full complexity. Scalar values are edited as plain
 text inputs; flat lists (notably `tags`) are edited as chips. Any value we cannot represent
