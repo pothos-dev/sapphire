@@ -74,6 +74,10 @@
   --atomic-editor-bg-surface: var(--bg-sunken);
   --atomic-editor-bg-panel: var(--bg-elevated);
   --atomic-editor-accent-bright: var(--accent);
+  /* The fenced-code left rail is a mix of accent + border; map both or it
+     falls back to the library's off-brand purple in every theme. */
+  --atomic-editor-accent: var(--accent);
+  --atomic-editor-border: var(--border);
   --atomic-editor-link: var(--accent);
   /* Code-block / inline-code fill. The editor sets its theme attribute directly
      on the CodeMirror root rather than an ancestor, so the library's own
@@ -131,6 +135,8 @@ body:has([data-theme='dark']) {
   --atomic-editor-bg-surface: var(--bg-sunken);
   --atomic-editor-bg-panel: var(--bg-elevated);
   --atomic-editor-accent-bright: var(--accent);
+  --atomic-editor-accent: var(--accent);
+  --atomic-editor-border: var(--border);
   --atomic-editor-link: var(--accent);
   --atomic-editor-code-bg: var(--bg-sunken);
   --atomic-editor-selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
