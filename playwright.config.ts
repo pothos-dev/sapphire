@@ -30,13 +30,6 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:1420',
     trace: 'on-first-retry',
-    // Emulate reduced motion so the app shell's fade-in (App.svelte) — and any
-    // other transition — resolves instantly. The fade is timing-dependent, so
-    // without this a screenshot could be captured mid-fade, making the committed
-    // screenshot artifacts non-deterministic. app.css already zeroes transition
-    // durations under `prefers-reduced-motion`, so the UI snaps straight to its
-    // settled state.
-    reducedMotion: 'reduce',
   },
   projects: [
     {

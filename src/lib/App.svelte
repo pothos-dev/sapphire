@@ -57,11 +57,6 @@
   let appRoot = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
 
-  // Gates the UI fade-in: the app shell renders at opacity 0 and transitions to
-  // 1 once the Bundle + session have loaded (set in `onMount` below), so the
-  // first frame is the themed canvas rather than half-built chrome popping in.
-  let ready = $state(false);
-
   // The open Concept's frontmatter, mirrored out of the editor's frontmatter
   // field (the single source of truth — ADR 0003) so the Properties panel can
   // render it. Updated by the editor's `onFrontmatterChange` callback.
@@ -188,34 +183,28 @@
     // expanded folders + last-open Concept. Both must wait for their data
     // (the tree, the session) before applying.
     void (async () => {
-      try {
-        await Promise.all([bundle.load(), session.load()]);
+      await Promise.all([bundle.load(), session.load()]);
 
-        // Seed the default-open folders (depth < 2) for a FRESH Bundle (no stored
-        // session). Otherwise honour exactly what was restored.
-        if (
-          bundle.tree &&
-          session.expandedFolders.size === 0 &&
-          session.lastOpenConcept === null
-        ) {
-          const defaults: string[] = [];
-          // Root is depth -1 here so its direct children (folders) are depth 0.
-          defaultOpenFolders(bundle.tree, -1, 2, defaults);
-          for (const p of defaults) session.setExpanded(p, true);
-        }
-
-        // Restore the last-open Concept, then mark restoration complete so the
-        // persistence effect/seeded defaults begin saving (gated until now so a
-        // transient `editor.path === null` mid-restore cannot wipe stored state).
-        if (session.lastOpenConcept) {
-          await editor.open(session.lastOpenConcept);
-        }
-        session.endRestore();
-      } finally {
-        // Reveal the UI once the Bundle + session are in (or even if loading
-        // failed — never leave the app permanently invisible). CSS fades it in.
-        ready = true;
+      // Seed the default-open folders (depth < 2) for a FRESH Bundle (no stored
+      // session). Otherwise honour exactly what was restored.
+      if (
+        bundle.tree &&
+        session.expandedFolders.size === 0 &&
+        session.lastOpenConcept === null
+      ) {
+        const defaults: string[] = [];
+        // Root is depth -1 here so its direct children (folders) are depth 0.
+        defaultOpenFolders(bundle.tree, -1, 2, defaults);
+        for (const p of defaults) session.setExpanded(p, true);
       }
+
+      // Restore the last-open Concept, then mark restoration complete so the
+      // persistence effect/seeded defaults begin saving (gated until now so a
+      // transient `editor.path === null` mid-restore cannot wipe stored state).
+      if (session.lastOpenConcept) {
+        await editor.open(session.lastOpenConcept);
+      }
+      session.endRestore();
     })();
 
     // Seed the broken-link existence cache from the Bundle index.
@@ -616,7 +605,6 @@
 <div
   class="app"
   class:sidebar-collapsed={!session.leftSidebarOpen}
-  class:ready
   data-testid="app-root"
   bind:this={appRoot}
 >
@@ -1001,16 +989,6 @@
     overflow: hidden;
     color: var(--text);
     background: var(--bg);
-    /* Fade in once `ready` flips (Bundle + session loaded). The themed canvas
-       behind it (html background, app.css) is already correct, so this fades
-       the chrome in over a steady background rather than flashing it in.
-       Reduced-motion users get an instant reveal (global rule in app.css). */
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-
-  .app.ready {
-    opacity: 1;
   }
 
   /* Left sidebar: a fixed-width box clipping a vertical stack of collapsible
