@@ -753,9 +753,12 @@
     background: var(--bg);
   }
 
-  /* Collapsed sidebar: reclaim its grid column and hide the aside entirely. */
+  /* Collapsed sidebar: hide the aside and collapse to a single column. The
+     aside is `display: none` so it leaves the grid — the editor pane becomes
+     the sole item and fills the one remaining 1fr track. (A `0 1fr` two-track
+     layout would instead drop the editor into the zero-width first track.) */
   .app.sidebar-collapsed {
-    grid-template-columns: 0 1fr;
+    grid-template-columns: 1fr;
   }
 
   .app.sidebar-collapsed .side-bar {
