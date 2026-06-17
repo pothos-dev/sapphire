@@ -464,6 +464,27 @@
       ontoggle={() => (treeOpen = !treeOpen)}
       testid="explorer-section"
     >
+      {#snippet actions()}
+        {#if rootReservedSorted.length > 0}
+          <!-- Bundle-root reserved files (index.md / log.md) surface as icon
+               buttons on the Explorer header rather than as tree rows, so the
+               root listing shows only ordinary Concepts and folders. -->
+          <div class="root-reserved" data-testid="root-reserved">
+            {#each rootReservedSorted as r (r.path)}
+              <button
+                type="button"
+                class="reserved-btn"
+                class:selected={editor.path === r.path}
+                title={`Open ${RESERVED_FILES[r.kind]} (Bundle root)`}
+                aria-label={`Open ${RESERVED_FILES[r.kind]}`}
+                data-reserved-path={r.path}
+                data-reserved-kind={r.kind}
+                onclick={() => openConcept(r.path)}
+              >{ROOT_RESERVED_GLYPH[r.kind]}</button>
+            {/each}
+          </div>
+        {/if}
+      {/snippet}
       <div class="tree-pane">
     {#if bundle.loading}
       <p class="status">Loading…</p>
@@ -483,22 +504,6 @@
         role="tree"
         tabindex="-1"
       >
-        {#if rootReservedSorted.length > 0}
-          <div class="root-reserved" data-testid="root-reserved">
-            {#each rootReservedSorted as r (r.path)}
-              <button
-                type="button"
-                class="reserved-btn"
-                class:selected={editor.path === r.path}
-                title={`Open ${RESERVED_FILES[r.kind]} (Bundle root)`}
-                aria-label={`Open ${RESERVED_FILES[r.kind]}`}
-                data-reserved-path={r.path}
-                data-reserved-kind={r.kind}
-                onclick={() => openConcept(r.path)}
-              >{ROOT_RESERVED_GLYPH[r.kind]} {RESERVED_FILES[r.kind]}</button>
-            {/each}
-          </div>
-        {/if}
         {#each rootOrdinary as child (child.path)}
           <Tree node={child} selected={editor.path} onopen={openConcept} onmenu={openMenu} />
         {/each}
@@ -792,28 +797,29 @@
     pointer-events: none;
   }
 
+  /* Bundle-root reserved files live in the Explorer header (see SidebarSection
+     `actions`): compact, icon-only buttons. */
   .root-reserved {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    padding: 0.1rem 0.1rem 0.4rem;
-    margin-bottom: 0.3rem;
-    border-bottom: 1px solid var(--border);
+    align-items: center;
+    gap: 0.1rem;
   }
 
   .reserved-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.2rem 0.55rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-pill);
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
     background: none;
-    color: inherit;
+    color: var(--text-muted);
     font: inherit;
-    font-size: 0.78rem;
+    font-size: 0.85rem;
+    line-height: 1;
     cursor: pointer;
-    opacity: 0.85;
+    opacity: 0.75;
     transition: background 0.12s ease;
   }
 
@@ -822,9 +828,14 @@
     opacity: 1;
   }
 
+  .reserved-btn:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -1px;
+    opacity: 1;
+  }
+
   .reserved-btn.selected {
     background: var(--accent-soft);
-    border-color: transparent;
     color: var(--tag-text);
     opacity: 1;
   }

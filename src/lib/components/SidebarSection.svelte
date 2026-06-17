@@ -21,24 +21,32 @@
     ontoggle: () => void;
     /** Optional test id; the header/body get `${testid}-header`/`-body`. */
     testid?: string;
+    /** Optional header actions, rendered beside the title (always visible, even
+        when collapsed). Kept outside the toggle button so clicks don't toggle. */
+    actions?: Snippet;
     /** Body content. */
     children: Snippet;
   }
 
-  let { title, expanded, ontoggle, testid, children }: Props = $props();
+  let { title, expanded, ontoggle, testid, actions, children }: Props = $props();
 </script>
 
 <section class="section" data-testid={testid} aria-label={title}>
-  <button
-    type="button"
-    class="header"
-    aria-expanded={expanded}
-    data-testid={testid ? `${testid}-header` : undefined}
-    onclick={ontoggle}
-  >
-    <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
-    <span class="title">{title}</span>
-  </button>
+  <div class="header">
+    <button
+      type="button"
+      class="header-toggle"
+      aria-expanded={expanded}
+      data-testid={testid ? `${testid}-header` : undefined}
+      onclick={ontoggle}
+    >
+      <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
+      <span class="title">{title}</span>
+    </button>
+    {#if actions}
+      <div class="header-actions">{@render actions()}</div>
+    {/if}
+  </div>
   {#if expanded}
     <div class="body" data-testid={testid ? `${testid}-body` : undefined}>
       {@render children()}
@@ -58,11 +66,20 @@
   .header {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
     flex: none;
     box-sizing: border-box;
     width: 100%;
     height: 2rem;
+  }
+
+  .header-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    box-sizing: border-box;
+    height: 100%;
     padding: 0 0.6rem;
     border: none;
     background: none;
@@ -77,14 +94,22 @@
     transition: background 0.12s ease;
   }
 
-  .header:hover {
+  .header-toggle:hover {
     background: var(--hover);
   }
 
-  .header:focus-visible {
+  .header-toggle:focus-visible {
     outline: 2px solid var(--accent-ring);
     outline-offset: -2px;
     border-radius: var(--radius-sm);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    flex: none;
+    gap: 0.15rem;
+    padding-right: 0.4rem;
   }
 
   .chevron {

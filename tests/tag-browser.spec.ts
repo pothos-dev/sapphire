@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+/** Expand a collapsible sidebar Section if it is currently collapsed (idempotent). */
+async function expandSection(page: import('@playwright/test').Page, name: string) {
+  const header = page.getByTestId(`${name}-section-header`);
+  if ((await header.getAttribute('aria-expanded')) === 'false') await header.click();
+}
+
 /**
  * Slice 8: tag browser.
  *
@@ -14,6 +20,8 @@ test('tag browser lists tags with counts, filters, and opens Concepts', async ({
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
 
+  // Tags is a collapsed-by-default sidebar Section; expand to read it.
+  await expandSection(page, 'tags');
   const tagBrowser = page.getByTestId('tag-browser');
   await expect(tagBrowser).toBeVisible();
 
@@ -49,6 +57,7 @@ test('tag browser reflects frontmatter tag edits on disk', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
 
+  await expandSection(page, 'tags');
   const tagBrowser = page.getByTestId('tag-browser');
 
   // A brand-new tag does not exist yet.

@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+/** Expand a collapsible sidebar Section if it is currently collapsed (idempotent). */
+async function expandSection(page: import('@playwright/test').Page, name: string) {
+  const header = page.getByTestId(`${name}-section-header`);
+  if ((await header.getAttribute('aria-expanded')) === 'false') await header.click();
+}
+
 /**
  * Slice 7: backlinks panel.
  *
@@ -18,6 +24,8 @@ test('backlinks panel lists sources and opens them via navigation', async ({ pag
   const tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
 
+  // Backlinks is a collapsed-by-default sidebar Section; expand to read it.
+  await expandSection(page, 'backlinks');
   const backlinks = page.getByTestId('backlinks');
   await expect(backlinks).toBeVisible();
 
@@ -53,6 +61,7 @@ test('backlinks panel refreshes when links change on disk', async ({ page }) => 
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
 
+  await expandSection(page, 'backlinks');
   const backlinks = page.getByTestId('backlinks');
 
   // complex-frontmatter.md initially has no backlinks.
