@@ -255,6 +255,12 @@ export function serializeFrontmatter(props: Property[]): string {
   if (props.length === 0) return '';
   let yaml = '';
   for (const p of props) {
+    // Skip not-yet-named rows. A freshly added property (slice: add Text/List)
+    // lives in the structured state with an empty key until the user commits a
+    // name; emitting `"":` would write a stray/duplicate empty key to disk on
+    // the autosave that follows the add. Omitting it keeps disk clean until the
+    // key is committed; a discarded row then leaves no trace.
+    if (p.key === '') continue;
     if (p.kind === 'complex') {
       let e = p.entry ?? '';
       if (e !== '' && !e.endsWith('\n')) e += '\n';
@@ -271,6 +277,9 @@ export function serializeFrontmatter(props: Property[]): string {
       yaml += v === '' ? `${key}:\n` : `${key}: ${serializeScalar(v, p.boolean ?? false)}\n`;
     }
   }
+  // All properties were unnamed (e.g. a single just-added, not-yet-committed
+  // row): emit no block rather than an empty `---\n---`.
+  if (yaml === '') return '';
   return `---\n${yaml}---\n`;
 }
 

@@ -113,6 +113,25 @@ test('properties: duplicate key on a new row is rejected (discarded, no write)',
   expect(after.match(/\ntype:/g)?.length ?? 0).toBe(1);
 });
 
+test('properties: an uncommitted added row writes no empty-key block to disk', async ({
+  page,
+}) => {
+  await open(page, 'concepts/no-frontmatter.md');
+  const before = await persisted(page, 'concepts/no-frontmatter.md');
+  expect(before.startsWith('---')).toBe(false); // genuinely frontmatter-less
+
+  // Add a row but DON'T commit a key. The add dispatches + autosaves, but the
+  // not-yet-named row must serialize to nothing — no `"":` line, no empty fences.
+  await page.getByTestId('add-text').click();
+  await expect(page.getByTestId('key-')).toBeFocused();
+  await expect.poll(() => persisted(page, 'concepts/no-frontmatter.md')).toBe(before);
+
+  // A second uncommitted add must not produce duplicate `"":` keys either.
+  await page.getByTestId('add-list').click();
+  expect(await persisted(page, 'concepts/no-frontmatter.md')).toBe(before);
+  expect(await persisted(page, 'concepts/no-frontmatter.md')).not.toContain('"":');
+});
+
 test('properties: adding the first property to a frontmatter-less doc writes a valid block', async ({
   page,
 }) => {
