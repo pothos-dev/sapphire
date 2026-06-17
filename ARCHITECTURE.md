@@ -19,14 +19,20 @@ src/
   lib/
     App.svelte               # app shell: tree pane | editor pane | side panels
     types.ts                 # shared TS types (TreeNode, Concept, Frontmatter, ...)
+    path.ts                  # bundle-relative path helpers (basename/dirname/joinPath/...)
+    errors.ts                # errMessage(e) — message from an Error or any thrown value
+    debounce.ts              # createDebouncer (shared autosave/persist timer)
+    frontmatter.ts links.ts outline.ts fuzzy.ts reserved.ts   # pure, unit-tested utils
     ipc/
       backend.ts             # Backend interface — the ONLY boundary to Rust
       tauri.ts               # real impl (invoke + event)
       fake.ts                # in-memory impl for browser/Playwright (no Tauri)
       index.ts               # selects real vs fake at runtime; exports `backend`
     state/                   # Svelte 5 rune-based stores (.svelte.ts)
-      bundle.svelte.ts       # tree + current bundle root
+      bundle.svelte.ts       # tree
       editor.svelte.ts       # open concept, dirty/autosave, nav history
+      session.svelte.ts      # per-Bundle persisted UI state (last concept, sidebars)
+      suggestions.svelte.ts  # index-derived autocomplete (paths/types/keys/tags)
     editor/
       cm.ts                  # builds the CodeMirror EditorView + extension set
     components/              # Tree.svelte, Properties.svelte, Backlinks.svelte, ...
@@ -35,9 +41,10 @@ src-tauri/src/
   app_state.rs               # BundleRoot + index handle + self-write tracker
   bundle.rs                  # tree walking, concept read/write, path resolution
   index.rs                   # in-memory index (frontmatter + links + reverse map)
+  paths.rs                   # shared walker + bundle-relative + link-resolution helpers
   watcher.rs                 # notify watcher -> emits events to frontend
   search.rs                  # ripgrep-crate full-text search
-  rewrite.rs                 # link auto-rewrite on rename/move
+  rewrite.rs                 # link auto-rewrite on rename/move (+ rename_and_rewrite)
   config.rs                  # per-Bundle session state (OS config dir)
 ```
 
@@ -129,6 +136,13 @@ No external store library. Keep autosave/dirty logic in `state/editor.svelte.ts`
 
 CDP is unavailable (Tauri uses WebKitGTK on Linux, not Chromium). So:
 
+- **Unit tests (fast, pure logic).** `bun test src/lib` runs the bun built-in test
+  runner over `src/lib/**/*.test.ts` (no extra dependency; `bun-types` is dev-only).
+  These cover the pure, DOM-free modules — `path`, `errors`, `debounce`, `frontmatter`,
+  `links`, `outline`, `fuzzy`, `reserved`. Keep them scoped to `src/lib` so the runner
+  never picks up the Playwright specs in `tests/`. The Rust side has `#[cfg(test)]`
+  unit tests run by `cargo test` (logic modules: bundle, index, rewrite, search, config,
+  watcher, app_state).
 - **Playwright over `vite dev` + the fake backend** is the primary interactive/visual test.
   Config: `playwright.config.ts` runs `bun run dev` (port 1420) as `webServer`. Tests live in
   `tests/`. Each slice adds at least one test that drives its UI and saves a screenshot to
@@ -137,8 +151,9 @@ CDP is unavailable (Tauri uses WebKitGTK on Linux, not Chromium). So:
 - **Integration smoke** via `tauri-driver` + WebKitWebDriver is best-effort for the real webview;
   not required for every slice.
 
-Every slice must leave `bun run build` (frontend typecheck/build) and `cargo check` green, and
-add/extend a Playwright test with a screenshot.
+Every slice must leave `bun run check` (frontend typecheck), `bun test src/lib` (unit),
+`cargo test` (Rust unit) and `cargo check` green, and add/extend a Playwright test with a
+screenshot.
 
 ## Ticket workflow
 
