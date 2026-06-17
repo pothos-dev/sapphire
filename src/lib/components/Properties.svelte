@@ -71,6 +71,42 @@
   // draft once it matches the (possibly newly-committed) live key again.
   let keyDrafts = $state<Record<number, string>>({});
 
+  // Row id of a freshly ADDED property awaiting its first key commit. It opens
+  // with the key input focused and empty; blurring it empty DISCARDS the row
+  // (slice: add-property-text-or-list). `null` when no add is pending. New rows
+  // are appended, so the new id is always the last index (`properties.length`).
+  let newRowId = $state<number | null>(null);
+
+  /**
+   * Append a new property and mark its row for auto-focus + discard-on-empty.
+   * The created KIND is fixed (no after-the-fact conversion). The new row lands
+   * at the end of `properties`, so its positional id is the current length.
+   */
+  function addProperty(prop: Property) {
+    newRowId = properties.length;
+    onchange([...properties, prop]);
+  }
+
+  function addText() {
+    addProperty({ key: '', kind: 'scalar', scalar: '' });
+  }
+
+  function addList() {
+    addProperty({ key: '', kind: 'list', list: [] });
+  }
+
+  /**
+   * Focus action for a row's key input. Focuses + selects only the just-added
+   * row (`newRowId`), so adding a property lands the cursor in its empty key.
+   */
+  function autofocusKey(node: HTMLInputElement, id: number) {
+    if (id === newRowId) {
+      node.focus();
+      node.select();
+    }
+    return {};
+  }
+
   function keyDraftValue(id: number, liveKey: string): string {
     const d = keyDrafts[id];
     return d === undefined ? liveKey : d;
@@ -80,11 +116,29 @@
   function commitKey(id: number) {
     const prop = properties[id];
     if (!prop) return;
+    const isNew = id === newRowId;
     const next = (keyDrafts[id] ?? prop.key).trim();
+    const duplicate = properties.some((p, i) => i !== id && p.key === next);
+
+    if (isNew) {
+      // A freshly added row has no prior key to revert to (unlike slice 2's
+      // rename). So both rejection cases DISCARD the row: an empty key, and a
+      // duplicate key. Discarding is the least-surprising consistent rule — it
+      // never commits under the duplicate name and leaves no half-edited row
+      // lingering after blur (no focus-fighting). The user simply re-adds.
+      delete keyDrafts[id];
+      newRowId = null;
+      if (next === '' || duplicate) {
+        onchange(properties.filter((_, i) => i !== id));
+        return;
+      }
+      onchange(properties.map((p, i) => (i === id ? renameProperty(p, next) : p)));
+      return;
+    }
+
     // Clear the draft regardless of outcome (revert reverts to the live key).
     delete keyDrafts[id];
     if (next === '' || next === prop.key) return; // empty or no-op -> revert
-    const duplicate = properties.some((p, i) => i !== id && p.key === next);
     if (duplicate) return; // duplicate key -> revert
     onchange(properties.map((p, i) => (i === id ? renameProperty(p, next) : p)));
   }
@@ -163,6 +217,7 @@
           aria-label={`Property name: ${prop.key}`}
           data-testid={`key-${prop.key}`}
           value={keyDraftValue(id, prop.key)}
+          use:autofocusKey={id}
           oninput={(e) => (keyDrafts[id] = (e.currentTarget as HTMLInputElement).value)}
           onblur={() => commitKey(id)}
           onkeydown={(e) => onKeyKeydown(e, id)}
@@ -248,6 +303,18 @@
       </div>
     </div>
   {/each}
+
+  <!-- Add controls: create a new scalar (`Text`) or flat-list (`List`) property.
+       The kind is fixed at creation. Shown in both the empty and populated
+       states; new rows append after existing ones. -->
+  <div class="add" data-testid="properties-add">
+    <button type="button" class="add-btn" data-testid="add-text" onclick={addText}>
+      + Text
+    </button>
+    <button type="button" class="add-btn" data-testid="add-list" onclick={addList}>
+      + List
+    </button>
+  </div>
 </section>
 
 <style>
@@ -451,5 +518,38 @@
   .chip-input {
     flex: 1 1 6rem;
     min-width: 5rem;
+  }
+
+  .add {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.15rem;
+  }
+
+  .add-btn {
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      color 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  .add-btn:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--hover);
+  }
+
+  .add-btn:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 </style>

@@ -159,6 +159,15 @@ but stay clickable (never blocked, per the OKF spec):
 An external link is never treated as broken: [Example](https://example.com).
 `,
 
+  // A Concept with NO frontmatter block at all. Exercises adding the first
+  // property to a frontmatter-less doc (slice: add-property-text-or-list): the
+  // serializer must synthesize a valid `---…---` block on the first commit.
+  'concepts/no-frontmatter.md': `# No Frontmatter
+
+This Concept has no YAML frontmatter block. Adding a property must synthesize
+one from scratch.
+`,
+
   'concepts/editor/live-preview.md': `---
 type: concept
 title: Live Preview
