@@ -3,6 +3,7 @@
 // including verbatim round-tripping of complex entries and key renaming.
 import { describe, expect, test } from 'bun:test';
 import {
+  frontmatterLineCount,
   isTypeMissing,
   joinConcept,
   parseProperties,
@@ -90,6 +91,20 @@ describe('serializeFrontmatter / joinConcept round-trip', () => {
     expect(serializeFrontmatter([{ key: 'type', kind: 'scalar', scalar: '' }])).toBe(
       '---\ntype:\n---\n',
     );
+  });
+});
+
+describe('frontmatterLineCount', () => {
+  test('counts the leading frontmatter lines, 0 when none', () => {
+    expect(frontmatterLineCount('# just body\nmore\n')).toBe(0);
+    expect(frontmatterLineCount('---\ntype: x\n---\nbody\n')).toBe(3);
+    expect(frontmatterLineCount('---\ntype: x\ntitle: y\n---\nbody\n')).toBe(4);
+  });
+
+  test('is the inverse of the offset scanHeadings adds', () => {
+    // A body H1 on the first body line maps to full-doc line offset+1.
+    const content = '---\ntype: x\n---\n# H1\n';
+    expect(frontmatterLineCount(content)).toBe(3);
   });
 });
 

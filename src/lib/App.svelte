@@ -17,7 +17,12 @@
     openSearch,
   } from '$lib/editor/cm';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
-  import { splitFrontmatter, parseProperties, type Property } from '$lib/frontmatter';
+  import {
+    splitFrontmatter,
+    parseProperties,
+    frontmatterLineCount,
+    type Property,
+  } from '$lib/frontmatter';
   import { resolveLink } from '$lib/links';
   import { dirname, joinPath } from '$lib/path';
   import { isReservedFile, reservedKind, reservedPath, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
@@ -407,14 +412,6 @@
   function scrollToOutlineLine(line: number) {
     if (!view) return;
     scrollToLine(view, line - frontmatterLineCount(editor.content));
-  }
-
-  /** Number of leading lines the frontmatter block occupies (0 when none). */
-  function frontmatterLineCount(content: string): number {
-    const { hasFrontmatter, open, yaml, close } = splitFrontmatter(content);
-    if (!hasFrontmatter) return 0;
-    const newlines = (s: string) => (s.match(/\n/g) ?? []).length;
-    return newlines(open) + newlines(yaml) + newlines(close);
   }
 
   // OKF link navigation (slice 5). A rendered-link click in the live preview is

@@ -109,6 +109,20 @@ export function splitFrontmatter(content: string): SplitConcept {
 }
 
 /**
+ * Number of leading lines the frontmatter block occupies (0 when none). The
+ * editor view holds only the BODY (frontmatter is split off, ADR 0003), so this
+ * is the offset between a full-document line number (e.g. an Outline entry) and
+ * the body-relative line CodeMirror addresses. Inverse of the offset that
+ * `scanHeadings` adds.
+ */
+export function frontmatterLineCount(content: string): number {
+  const { hasFrontmatter, open, yaml, close } = splitFrontmatter(content);
+  if (!hasFrontmatter) return 0;
+  const newlines = (s: string) => (s.match(/\n/g) ?? []).length;
+  return newlines(open) + newlines(yaml) + newlines(close);
+}
+
+/**
  * Parse the top-level frontmatter entries of a Concept into an ordered list of
  * Properties, classifying each per ADR 0002. Returns an empty list when there
  * is no frontmatter (the panel still renders, flagging missing `type`).
