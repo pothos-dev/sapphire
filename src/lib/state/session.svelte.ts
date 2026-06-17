@@ -14,10 +14,10 @@ import type { BundleState } from '$lib/types';
  * owned by Rust; we carry the opaque `window` field through untouched so a save
  * here never clobbers it.
  *
- * EXTENDING (slice 13 `recentFiles`): add a rune + accessor here, include it in
- * `snapshot()`, and seed it in `load()`. The Backend `BundleState` type and both
- * impls already round-trip unknown fields, so no seam change is needed beyond
- * the new field.
+ * EXTENDING (the `recentFiles` field below was added this way): add a rune +
+ * accessor here, include it in `snapshot()`, and seed it in `load()`. The
+ * Backend `BundleState` type and both impls already round-trip unknown fields,
+ * so no seam change is needed beyond the new field.
  */
 
 const SAVE_DEBOUNCE_MS = 250;

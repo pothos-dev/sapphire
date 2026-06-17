@@ -173,8 +173,9 @@ pub fn create_folder(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
 
 /// Rename (or move, when the target is in a different folder) `from` to `to`.
 /// Both are bundle-relative; `from` must exist, `to` must not. This is a PLAIN
-/// filesystem rename — inbound links are NOT rewritten (a later slice). Works
-/// for both Concepts and folders. Returns the resolved `to` absolute path.
+/// filesystem rename — inbound link rewriting is layered on top by the
+/// `rename_and_rewrite` command (lib.rs), not by this function. Works for both
+/// Concepts and folders. Returns the resolved `to` absolute path.
 pub fn rename_path(root: &Path, from: &str, to: &str) -> Result<PathBuf, String> {
     let src = resolve(root, from)?;
     let dst = resolve_new(root, to)?;

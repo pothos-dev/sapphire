@@ -53,10 +53,11 @@ export type TagCount = {
  * Per-Bundle session state persisted in the OS config folder (NEVER in the
  * Bundle). Matches the Rust `BundleState` (`serde rename_all = "camelCase"`).
  *
- * Designed to be EXTENDED: a later slice adds `recentFiles`. Both the Rust and
- * fake backends tolerate missing/extra fields, so adding a field here only
- * requires defaulting it on read. `window` is owned by Rust (it carries the
- * window geometry through round-trips) and is opaque to the frontend.
+ * Designed to be EXTENDED (e.g. `recentFiles` and the sidebar flags below were
+ * added this way). Both the Rust and fake backends tolerate missing/extra
+ * fields, so adding a field here only requires defaulting it on read. `window`
+ * is owned by Rust (it carries the window geometry through round-trips) and is
+ * opaque to the frontend.
  */
 export type BundleState = {
   /** bundle-relative path of the last-open Concept, or null if none */

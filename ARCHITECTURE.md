@@ -37,11 +37,14 @@ src-tauri/src/
   index.rs                   # in-memory index (frontmatter + links + reverse map)
   watcher.rs                 # notify watcher -> emits events to frontend
   search.rs                  # ripgrep-crate full-text search
-  commands/                  # thin #[tauri::command] wrappers calling the modules
+  rewrite.rs                 # link auto-rewrite on rename/move
+  config.rs                  # per-Bundle session state (OS config dir)
 ```
 
-Slices add files here; do not invent parallel structures. Keep `#[tauri::command]`
-functions thin — real logic lives in the module (`bundle.rs`, `index.rs`, ...).
+The `#[tauri::command]` wrappers live inline in `lib.rs` (there is no separate
+`commands/` directory). Keep those wrappers thin — real logic lives in the
+modules (`bundle.rs`, `index.rs`, `rewrite.rs`, ...). Slices add files here; do
+not invent parallel structures.
 
 ## The IPC seam (most important rule)
 
