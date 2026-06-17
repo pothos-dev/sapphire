@@ -1,7 +1,92 @@
-# Tauri + SvelteKit + TypeScript
+<div align="center">
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+<img src="src-tauri/icons/128x128.png" alt="Sapphire" width="128" height="128" />
 
-## Recommended IDE Setup
+# Sapphire
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+**A lightweight markdown editor — a slimmed-down Obsidian. Fast, focused, no bloat.**
+
+</div>
+
+Sapphire is a desktop markdown editor for people who want the good parts of a
+knowledge base — live preview, wikilinks, backlinks, properties, tags, instant
+search — without the plugin sprawl and proprietary lock-in. It opens a plain
+folder of markdown files and gets out of your way.
+
+---
+
+## Open any folder. No vault required.
+
+There is no proprietary "vault" to create, import, or convert into. Sapphire
+runs against **any** folder of markdown files. Point it at an existing
+directory — your notes, your docs repo, a cloned knowledge base — and start
+editing. Your files stay plain `.md` on disk, readable by every other tool you
+already use, and portable the moment you close the app.
+
+## Built for the Google Open Knowledge Format
+
+Sapphire has first-class support for the
+[**Open Knowledge Format (OKF)**](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/) —
+Google's open standard for sharing knowledge as portable, agent-readable,
+vendor-neutral markdown bundles.
+
+OKF is intentionally minimal: a directory of markdown files with YAML
+frontmatter describing typed concepts. There is no schema registry, no central
+authority, and no required tooling — if you can `cat` a file you can read OKF,
+and if you can `git clone` a repo you can ship it. That makes a Sapphire
+knowledge base equally consumable by humans, by AI agents, and by any other
+editor, with nothing to migrate and no vendor to depend on.
+
+Sapphire's frontmatter model (the typed-concept `type` / `title` / `tags`
+fields, reserved files, and bundle structure) conforms to the OKF spec:
+
+- Upstream spec: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
+- Vendored copy in this repo: [`docs/okf-spec.md`](docs/okf-spec.md)
+
+## Features
+
+- **Live preview** — Obsidian-style hybrid editing: inactive lines render
+  styled while the cursor line shows raw markup, with syntax-highlighted fenced
+  code, task lists, and interactive GFM tables.
+- **Wikilinks + backlinks** — navigate links between concepts; every concept
+  shows which others link to it.
+- **Frontmatter / Properties panel** — edit typed frontmatter as structured
+  fields (scalars, lists, tags) with complex YAML round-tripped verbatim.
+- **Tag browser** — browse and filter your bundle by tag, with live counts.
+- **Full-text search** — search across every concept with snippet results.
+- **Quick-nav palette** — jump to any concept instantly from a fuzzy command
+  palette.
+- **Outline panel** — a live heading outline of the open concept for fast
+  scrolling.
+- **Right sidebar** — a second, collapsible sidebar housing Backlinks.
+- **Light + dark theming** — a sapphire-blue palette that follows your OS color
+  scheme.
+
+## Screenshots
+
+A live concept open against a real OKF bundle — Explorer, Properties, live
+preview, Outline, Backlinks, and the Tag browser, all on screen.
+
+### Light
+
+![Sapphire in light mode](docs/assets/screenshot-light.png)
+
+### Dark
+
+![Sapphire in dark mode](docs/assets/screenshot-dark.png)
+
+## Development
+
+Sapphire is built with [Tauri](https://tauri.app/),
+[SvelteKit](https://svelte.dev/docs/kit), and TypeScript.
+
+```sh
+bun install          # install dependencies
+bun run tauri dev    # run the desktop app
+bun run build        # build the static SPA
+bunx playwright test # run the end-to-end suite
+```
+
+## License
+
+MIT
