@@ -1,4 +1,5 @@
 import { backend } from '$lib/ipc';
+import { errMessage } from '$lib/errors';
 import type { TreeNode } from '$lib/types';
 
 /**
@@ -20,7 +21,7 @@ class BundleStore {
     try {
       this.tree = await backend.listTree();
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMessage(e);
     } finally {
       this.loading = false;
     }

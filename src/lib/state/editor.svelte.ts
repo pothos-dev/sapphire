@@ -1,4 +1,5 @@
 import { backend } from '$lib/ipc';
+import { errMessage } from '$lib/errors';
 
 /** Autosave debounce: save this long after the user stops typing. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
@@ -95,7 +96,7 @@ class EditorStore {
       this.path = path;
       this.content = '';
       this.dirty = false;
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMessage(e);
     }
   }
 
@@ -137,7 +138,7 @@ class EditorStore {
       // Only clear dirty if no newer edit arrived while the write was in flight.
       if (this.content === content) this.dirty = false;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMessage(e);
     }
   }
 
@@ -194,7 +195,7 @@ class EditorStore {
       const content = await backend.readConcept(open);
       this.content = content;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMessage(e);
     }
   }
 }
