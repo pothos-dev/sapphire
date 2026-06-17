@@ -39,7 +39,7 @@ export interface Backend {
 
   /**
    * Subscribe to filesystem changes in the Bundle (created/modified/removed),
-   * as detected by the Rust watcher. Emerald's own autosave writes are
+   * as detected by the Rust watcher. Sapphire's own autosave writes are
    * suppressed and never delivered here. Returns an unsubscribe function.
    */
   onFileChanged(cb: (change: FileChange) => void): () => void;

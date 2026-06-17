@@ -213,7 +213,7 @@
     // Subscribe to filesystem changes from the backend watcher. On any change:
     // refresh the tree (add/remove/rename), reload the open Concept if it
     // changed, and refresh the index's existing-path set so broken-link styling
-    // restyles created/removed targets. Emerald's own autosave writes are
+    // restyles created/removed targets. Sapphire's own autosave writes are
     // suppressed by the backend, so they never arrive here (no reload loop).
     const unsubscribe = backend.onFileChanged((change) => {
       void bundle.load();

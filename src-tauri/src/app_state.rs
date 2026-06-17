@@ -13,7 +13,7 @@ const SELF_WRITE_WINDOW: Duration = Duration::from_millis(1500);
 /// Application state shared across Tauri commands.
 ///
 /// Holds the canonicalized Bundle root plus a self-write tracker: the set of
-/// absolute paths Emerald itself just wrote, with the instant of the write.
+/// absolute paths Sapphire itself just wrote, with the instant of the write.
 /// The filesystem watcher consults this to suppress echo events for our own
 /// autosave writes (so they never trigger a reload loop or cursor jump), while
 /// still reloading on genuine external edits. See ARCHITECTURE.md.
@@ -24,7 +24,7 @@ pub struct AppState {
     /// startup and kept current by the watcher. Behind an `RwLock`: queries
     /// (the common case) take a shared read lock; reindexing takes a write lock.
     pub index: RwLock<Index>,
-    /// Absolute path -> instant of Emerald's last write to it.
+    /// Absolute path -> instant of Sapphire's last write to it.
     self_writes: Mutex<HashMap<PathBuf, Instant>>,
 }
 
@@ -38,7 +38,7 @@ impl AppState {
         }
     }
 
-    /// Record that Emerald just wrote `path` (absolute). The watcher will ignore
+    /// Record that Sapphire just wrote `path` (absolute). The watcher will ignore
     /// fs events for it within `SELF_WRITE_WINDOW`.
     pub fn note_self_write(&self, path: PathBuf) {
         if let Ok(mut map) = self.self_writes.lock() {
@@ -46,7 +46,7 @@ impl AppState {
         }
     }
 
-    /// True if `path` (absolute) was written by Emerald within the suppression
+    /// True if `path` (absolute) was written by Sapphire within the suppression
     /// window. Consumes the entry on a positive match so a *subsequent* genuine
     /// external edit is not also swallowed, and prunes stale entries.
     pub fn is_recent_self_write(&self, path: &Path) -> bool {

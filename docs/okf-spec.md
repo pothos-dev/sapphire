@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Open Knowledge Format (OKF) Specification
-description: Vendored copy of the OKF v0.1 spec that Emerald's frontmatter model conforms to.
+description: Vendored copy of the OKF v0.1 spec that Sapphire's frontmatter model conforms to.
 resource: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
 tags: [okf, spec, frontmatter, reference]
 ---

@@ -1,6 +1,6 @@
 //! Global config/state store in the OS app-data directory.
 //!
-//! Emerald NEVER writes config or session state into the Bundle (CONTEXT.md:
+//! Sapphire NEVER writes config or session state into the Bundle (CONTEXT.md:
 //! the "no `.obsidian` equivalent" rule). Instead it keeps a single JSON file in
 //! the OS config directory — `dirs::config_dir()/emerald/state.json` (e.g.
 //! `~/.config/emerald/state.json` on Linux) — holding:
@@ -104,7 +104,7 @@ impl Default for AppConfig {
     }
 }
 
-/// Resolve the Emerald config directory (`<os-config-dir>/emerald`), creating it
+/// Resolve the Sapphire config directory (`<os-config-dir>/emerald`), creating it
 /// if needed. Returns `None` if the OS config dir cannot be determined.
 fn config_dir() -> Option<PathBuf> {
     let dir = dirs::config_dir()?.join("emerald");

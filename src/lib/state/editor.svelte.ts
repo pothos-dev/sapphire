@@ -12,7 +12,7 @@ const AUTOSAVE_DEBOUNCE_MS = 300;
  *
  * External changes: `onExternalChange()` (wired in App.svelte to the backend
  * watcher) refreshes nothing itself but reloads the open Concept when its file
- * changed on disk by another tool. Emerald's own writes are suppressed by the
+ * changed on disk by another tool. Sapphire's own writes are suppressed by the
  * backend, so they never arrive here — no reload loop or cursor jump.
  */
 class EditorStore {

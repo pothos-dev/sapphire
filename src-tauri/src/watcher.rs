@@ -2,7 +2,7 @@
 //! emits a Tauri event to the frontend when files change on disk.
 //!
 //! Self-write suppression lives here: before emitting, each changed path is
-//! checked against `AppState`'s self-write tracker. Paths Emerald just wrote
+//! checked against `AppState`'s self-write tracker. Paths Sapphire just wrote
 //! (autosave) are swallowed, so our own writes never cause a reload loop or
 //! cursor jump. Genuine external edits still emit and the frontend reloads.
 //!
@@ -74,7 +74,7 @@ fn handle_event(app: &AppHandle, event: notify::Event) {
             continue;
         };
 
-        // Keep the index current for EVERY change, including Emerald's own
+        // Keep the index current for EVERY change, including Sapphire's own
         // autosave writes — the index must reflect on-disk truth regardless of
         // who wrote it. (Only the *frontend event* is suppressed for self
         // writes, below, to avoid reload loops / cursor jumps.)
@@ -82,7 +82,7 @@ fn handle_event(app: &AppHandle, event: notify::Event) {
             update_index(&state, &rel, abs, kind);
         }
 
-        // Suppress Emerald's own writes for the frontend echo.
+        // Suppress Sapphire's own writes for the frontend echo.
         if state.is_recent_self_write(abs) {
             continue;
         }

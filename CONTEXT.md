@@ -1,13 +1,13 @@
-# Emerald
+# Sapphire
 
 A lightweight, CLI-launched Tauri + Svelte markdown editor/viewer with Obsidian-style
-live editing and first-class support for the Open Knowledge Format (OKF). `emerald ./docs`
+live editing and first-class support for the Open Knowledge Format (OKF). `sapphire ./docs`
 opens a folder as an editable knowledge base.
 
 ## Language
 
 **Bundle**:
-The root folder opened by Emerald — a directory tree of markdown files, per the OKF spec.
+The root folder opened by Sapphire — a directory tree of markdown files, per the OKF spec.
 _Avoid_: vault, workspace, project (these are other tools' terms).
 
 **Concept**:
