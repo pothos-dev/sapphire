@@ -189,6 +189,23 @@ body {
   height: 100%;
 }
 
+/* First-paint canvas. The theme store applies `data-theme` (and thus the full
+   palette) only AFTER the app mounts, so until then the page would paint with
+   the light `:root` tokens — a white flash on dark systems while the app boots.
+   Match the OS scheme here so the canvas behind the (fading-in) UI is already
+   the right colour. Only the visible background needs to be right; the rest of
+   the palette lands with `data-theme`. Keep `--bg` in sync with the dark block. */
+html {
+  color-scheme: light dark;
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171b22;
+  }
+}
+
 body {
   font-family: var(--font-ui);
   /* Quicksand reads light at 400; 500 is the comfortable UI baseline. */
