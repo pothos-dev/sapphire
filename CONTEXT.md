@@ -37,15 +37,22 @@ deliberately not domain language — section headers are discoverability afforda
 Any top-level layout region of the app shell.
 
 **Sidebar**:
-A Pane docked to the left or right edge, holding a vertical stack of **Sections**. There may
-be a left and a right Sidebar (only the left exists today).
+A Pane docked to the left or right edge, holding a vertical stack of **Sections**. Both a left
+and a right Sidebar exist. The left holds **Explorer** and **Tags**; the right holds **Outline**
+and **Backlinks** and starts collapsed.
 _Avoid_: "side panel" (use Sidebar).
 
 **Section**:
-One collapsible item in a Sidebar — an always-visible header plus a toggleable body. The three
-current Sections are **Explorer** (the Bundle tree), **Backlinks** (Concepts linking to the
-open Concept), and **Tags** (tags across the Bundle).
+One collapsible item in a Sidebar — an always-visible header plus a toggleable body. The current
+Sections are **Explorer** (the Bundle tree), **Tags** (tags across the Bundle), **Outline** (the
+open Concept's headings) and **Backlinks** (Concepts linking to the open Concept). The **Tags**
+Section is hidden entirely when the Bundle carries no tags.
 _Avoid_: "panel" (collides with VSCode's bottom dock).
+
+**Outline**:
+The **Section** listing the open Concept's markdown headings in document order, indented by
+heading level. Selecting a heading scrolls the Editor pane to it. Derived live from the open
+Concept's body (frontmatter and fenced code blocks excluded).
 
 **Editor pane**:
 The central Pane showing the open Concept.
