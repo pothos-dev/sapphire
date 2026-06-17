@@ -38,11 +38,18 @@
 
   const isMarkdown = $derived(!node.isDir && node.name.toLowerCase().endsWith('.md'));
 
+  // The tree shows only Concepts (`.md` files) and folders; any other file type
+  // in the Bundle is ignored. Displayed names omit the `.md` extension.
+  const displayName = $derived(node.isDir ? node.name : node.name.replace(/\.md$/i, ''));
+
   // Reserved files (`index.md`/`log.md`) are NOT shown as ordinary tree leaves;
   // they are surfaced as per-folder affordances on the containing folder row
-  // instead. Strip them from the normal child listing here (slice: reserved-files).
+  // instead. Strip them — and any non-markdown file — from the normal child
+  // listing here (slice: reserved-files).
   const ordinaryChildren = $derived(
-    (node.children ?? []).filter((c) => c.isDir || !isReservedFile(c.path)),
+    (node.children ?? []).filter(
+      (c) => c.isDir || (c.name.toLowerCase().endsWith('.md') && !isReservedFile(c.path)),
+    ),
   );
 
   // The reserved files this folder directly contains, in a stable order, each as
@@ -66,7 +73,7 @@
   <div class="row dir" style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected="false" tabindex="-1">
     <button class="entry dir-toggle" type="button" onclick={toggle} aria-expanded={expanded}>
       <span class="twisty" class:open={expanded}>▸</span>
-      <span class="name">{node.name}</span>
+      <span class="name">{displayName}</span>
     </button>
     <!-- Reserved-file affordances: click an icon to open the folder's index.md /
          log.md directly (they are stripped from the ordinary leaf listing). -->
@@ -114,7 +121,7 @@
       data-path={node.path}
       onclick={() => isMarkdown && onopen(node.path)}
     >
-      <span class="name">{node.name}</span>
+      <span class="name">{displayName}</span>
     </button>
     <button
       class="menu-btn"

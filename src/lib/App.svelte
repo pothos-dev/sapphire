@@ -362,7 +362,9 @@
   // reserved-files — index.md can appear at ANY level, including the root).
   const rootChildren = $derived(bundle.tree?.children ?? []);
   const rootOrdinary = $derived(
-    rootChildren.filter((c) => c.isDir || !isReservedFile(c.path)),
+    rootChildren.filter(
+      (c) => c.isDir || (c.name.toLowerCase().endsWith('.md') && !isReservedFile(c.path)),
+    ),
   );
   const rootReserved = $derived(
     rootChildren
