@@ -1,5 +1,5 @@
 # Subdirectories
 
-* [datasets](datasets/index.md) - The Stack Overflow public dataset contains a variety of tables related to Stack Overflow user activity, posts, and tags. This dataset is no longer actively updated.
-* [references](references/index.md) - This directory contains enumerated types, data structures, and internal references for Stack Exchange content, moderation, and the Data Explorer.
-* [tables](tables/index.md) - The directory contains structured data tables describing Stack Overflow content, users, and activity.
+* [datasets](datasets/index.md) - A sample of obfuscated Google Analytics BigQuery event export data for three months from the Google Merchandise Store is available as a public dataset in BigQuery.
+* [references](references/index.md) - This directory contains specifications for data joins and definitions for user activity and purchase metrics.
+* [tables](tables/index.md) - Contains Google Analytics event export data from the `ga4_obfuscated_sample_ecommerce` dataset.

@@ -1,3 +1,3 @@
 # BigQuery Dataset
 
-* [Stack Overflow Public Dataset](stackoverflow.md) - The Stack Overflow public dataset contains a variety of tables related to Stack Overflow user activity, posts, and tags. This dataset is no longer actively updated.
+* [BigQuery sample dataset for Google Analytics ecommerce web implementation](ga4_obfuscated_sample_ecommerce.md) - A sample of obfuscated Google Analytics BigQuery event export data for three months from the Google Merchandise Store is available as a public dataset in BigQuery.
