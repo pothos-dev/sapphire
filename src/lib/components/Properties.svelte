@@ -14,6 +14,7 @@
 
   import { isTypeMissing, renameProperty, type Property } from '$lib/frontmatter';
   import { isReservedFile } from '$lib/reserved';
+  import PropertyRow from './PropertyRow.svelte';
 
   interface Props {
     /** The open Concept's frontmatter properties (source of truth). */
@@ -299,72 +300,17 @@
         >
       </div>
 
-      <div class="value">
-        {#if prop.kind === 'scalar' && isType}
-          <!-- The `type` field: autocompletes against existing Bundle types via
-               a datalist (free entry still allowed), and is the focus target
-               when a new Concept opens. -->
-          <input
-            id={`prop-${prop.key}`}
-            class="text"
-            type="text"
-            data-testid={`scalar-${prop.key}`}
-            list="type-suggestions"
-            bind:this={typeInput}
-            value={prop.scalar ?? ''}
-            onchange={(e) => editScalar(prop.key, (e.currentTarget as HTMLInputElement).value)}
-          />
-          <datalist id="type-suggestions" data-testid="type-suggestions">
-            {#each types as t (t)}
-              <option value={t}></option>
-            {/each}
-          </datalist>
-        {:else if prop.kind === 'scalar'}
-          <input
-            id={`prop-${prop.key}`}
-            class="text"
-            type="text"
-            data-testid={`scalar-${prop.key}`}
-            value={prop.scalar ?? ''}
-            onchange={(e) => editScalar(prop.key, (e.currentTarget as HTMLInputElement).value)}
-          />
-        {:else if prop.kind === 'list'}
-          <div class="chips" data-testid={`chips-${prop.key}`}>
-            {#each prop.list ?? [] as item, i (i + ':' + item)}
-              <span class="chip" data-testid={`chip-${prop.key}`}>
-                {item}
-                <button
-                  type="button"
-                  class="chip-remove"
-                  aria-label={`Remove ${item}`}
-                  data-testid={`chip-remove-${prop.key}`}
-                  onclick={() => removeChip(prop.key, prop.list ?? [], i)}>×</button
-                >
-              </span>
-            {/each}
-            <input
-              id={`prop-${prop.key}`}
-              class="chip-input"
-              type="text"
-              placeholder="Add…"
-              data-testid={`chip-add-${prop.key}`}
-              list="tag-suggestions"
-              bind:value={chipDrafts[prop.key]}
-              onkeydown={(e) => onChipKeydown(e, prop.key, prop.list ?? [])}
-              onblur={() => addChip(prop.key, prop.list ?? [])}
-            />
-          </div>
-        {:else}
-          <textarea
-            id={`prop-${prop.key}`}
-            class="raw"
-            data-testid={`raw-${prop.key}`}
-            readonly
-            rows={Math.min(8, (prop.raw ?? '').split('\n').length)}
-            value={prop.raw ?? ''}
-          ></textarea>
-        {/if}
-      </div>
+      <PropertyRow
+        {prop}
+        {isType}
+        {types}
+        {editScalar}
+        {addChip}
+        {removeChip}
+        {onChipKeydown}
+        bind:chipDraft={chipDrafts[prop.key]}
+        bind:typeInput
+      />
     </div>
   {/each}
 
@@ -562,88 +508,6 @@
     font-size: 0.65rem;
     font-weight: 600;
     vertical-align: middle;
-  }
-
-  .value {
-    min-width: 0;
-  }
-
-  .text,
-  .chip-input,
-  .raw {
-    font-family: var(--font-ui);
-    color: var(--text);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 0.25rem 0.4rem;
-    transition:
-      border-color 0.15s ease,
-      box-shadow 0.15s ease;
-  }
-
-  .text:focus,
-  .chip-input:focus,
-  .raw:focus,
-  .text:focus-visible,
-  .chip-input:focus-visible,
-  .raw:focus-visible {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-
-  .text {
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .raw {
-    width: 100%;
-    box-sizing: border-box;
-    resize: vertical;
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    opacity: 0.85;
-    white-space: pre;
-  }
-
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    align-items: center;
-  }
-
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.1rem 0.2rem 0.1rem 0.5rem;
-    border-radius: var(--radius-pill);
-    background: var(--tag-bg);
-    color: var(--tag-text);
-  }
-
-  .chip-remove {
-    border: none;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    font-size: 1rem;
-    line-height: 1;
-    padding: 0 0.15rem;
-    border-radius: var(--radius-sm);
-    transition: background-color 0.15s ease;
-  }
-
-  .chip-remove:hover {
-    background: var(--hover);
-  }
-
-  .chip-input {
-    flex: 1 1 6rem;
-    min-width: 5rem;
   }
 
   .add {
