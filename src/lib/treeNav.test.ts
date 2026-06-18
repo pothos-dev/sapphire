@@ -3,6 +3,7 @@ import type { TreeNode } from './types';
 import {
   flattenVisible,
   indexOfPath,
+  neighborAfterRemoval,
   nextIndexClamped,
   prevIndexClamped,
 } from './treeNav';
@@ -97,6 +98,36 @@ describe('indexOfPath', () => {
   test('returns -1 for a missing or null path', () => {
     expect(indexOfPath(rows, 'nope.md')).toBe(-1);
     expect(indexOfPath(rows, null)).toBe(-1);
+  });
+});
+
+describe('neighborAfterRemoval', () => {
+  // All expanded: readme, concepts, concepts/codemirror, concepts/editor,
+  // concepts/editor/live-preview.
+  const rows = flattenVisible(tree, () => true);
+
+  test('picks the NEXT visible row when one follows', () => {
+    expect(neighborAfterRemoval(rows, 'readme.md')).toBe('concepts');
+    expect(neighborAfterRemoval(rows, 'concepts/codemirror.md')).toBe('concepts/editor');
+  });
+
+  test('picks the PREVIOUS row when the removed one was last', () => {
+    expect(neighborAfterRemoval(rows, 'concepts/editor/live-preview.md')).toBe(
+      'concepts/editor',
+    );
+  });
+
+  test('skips the removed folder’s descendants (no self-replacement)', () => {
+    // Removing `concepts/editor` (which has a child row directly after) lands on
+    // the row AFTER its subtree — here that is past the end, so the PREVIOUS row.
+    expect(neighborAfterRemoval(rows, 'concepts/editor')).toBe('concepts/codemirror.md');
+    // Removing `concepts` (whole subtree) lands on the previous top-level row.
+    expect(neighborAfterRemoval(rows, 'concepts')).toBe('readme.md');
+  });
+
+  test('returns null for an absent path or a sole row', () => {
+    expect(neighborAfterRemoval(rows, 'nope.md')).toBeNull();
+    expect(neighborAfterRemoval([{ path: 'only.md', isDir: false, depth: 0, parentPath: '', expanded: false }], 'only.md')).toBeNull();
   });
 });
 

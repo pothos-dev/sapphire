@@ -30,14 +30,32 @@
     /** App-owned focus-the-type request; bound so create-concept SETs it and
         create-reserved CLEARs it (see component header). */
     focusTypeForPath: string | null;
+    /**
+     * Fired when a dialog COMMITS (slice: explorer-crud-keybindings), so the
+     * Explorer can return its Focused item to the affected row. `path` is the
+     * renamed/created/moved node's NEW path; for a delete it is the deleted
+     * node's path with `deleted: true` (App resolves a neighbour). Not fired
+     * when a create/rename is a no-op (empty / unchanged name) — that closes
+     * like a cancel. Optional: the context menu uses the same dialogs and simply
+     * leaves it unset.
+     */
+    oncommit?: (path: string, opts?: { deleted?: boolean }) => void;
+    /** Fired when a dialog is CANCELLED, so the Explorer can restore focus. */
+    oncancel?: () => void;
   }
 
-  let { focusTypeForPath = $bindable() }: Props = $props();
+  let { focusTypeForPath = $bindable(), oncommit, oncancel }: Props = $props();
 
-  type Dialog =
+  // `viaKeyboard` records whether the dialog was opened by a Focused-item
+  // keybinding (slice: explorer-crud-keybindings) rather than the context menu.
+  // Only keyboard-opened dialogs fire `oncommit`/`oncancel` (which return focus
+  // to the Explorer); context-menu dialogs keep their existing behaviour (e.g.
+  // a new Concept lands focused on its `type` field, not back on the tree row).
+  type Dialog = { viaKeyboard: boolean } & (
     | { kind: 'newConcept' | 'newFolder' | 'rename'; node: TreeNode; value: string }
     | { kind: 'move'; node: TreeNode; value: string }
-    | { kind: 'delete'; node: TreeNode };
+    | { kind: 'delete'; node: TreeNode }
+  );
 
   // The open context menu (right-click / per-row ⋯), or null.
   let menu = $state<{ node: TreeNode; x: number; y: number } | null>(null);
@@ -64,6 +82,48 @@
   /** Open the context menu at viewport (x, y), targeting `node`. */
   export function openMenu(node: TreeNode, x: number, y: number) {
     menu = { node, x, y };
+  }
+
+  /** Find the tree node at bundle-relative `path` (the Bundle root is `''`). */
+  function nodeAt(path: string): TreeNode | null {
+    const root = bundle.tree;
+    if (!root) return null;
+    if (path === root.path) return root;
+    const walk = (n: TreeNode): TreeNode | null => {
+      if (n.path === path) return n;
+      for (const c of n.children ?? []) {
+        const hit = walk(c);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    return walk(root);
+  }
+
+  // Keyboard CRUD entry points (slice: explorer-crud-keybindings): fire the SAME
+  // dialogs the context menu opens, targeting the Explorer's Focused item (by
+  // path). They resolve the node from the live tree so the dialog state matches
+  // exactly what a right-click would produce; the new-target rule is the shared
+  // `childDirOf`. No-op when the path is gone (tree changed underfoot).
+  export function requestRename(path: string) {
+    const node = nodeAt(path);
+    if (node) dialog = { kind: 'rename', node, value: node.name, viaKeyboard: true };
+  }
+  export function requestDelete(path: string) {
+    const node = nodeAt(path);
+    if (node) dialog = { kind: 'delete', node, viaKeyboard: true };
+  }
+  export function requestNewConcept(path: string) {
+    const node = nodeAt(path);
+    if (node) dialog = { kind: 'newConcept', node, value: '', viaKeyboard: true };
+  }
+  export function requestNewFolder(path: string) {
+    const node = nodeAt(path);
+    if (node) dialog = { kind: 'newFolder', node, value: '', viaKeyboard: true };
+  }
+  export function requestMove(path: string) {
+    const node = nodeAt(path);
+    if (node) dialog = { kind: 'move', node, value: dirname(node.path), viaKeyboard: true };
   }
 
   /** Whether `dir` (a folder node) already contains the reserved file `kind`. */
@@ -113,25 +173,37 @@
   function onMenuSelect(id: string) {
     const node = menu?.node;
     if (!node) return;
-    if (id === 'newConcept') dialog = { kind: 'newConcept', node, value: '' };
-    else if (id === 'newFolder') dialog = { kind: 'newFolder', node, value: '' };
+    if (id === 'newConcept') dialog = { kind: 'newConcept', node, value: '', viaKeyboard: false };
+    else if (id === 'newFolder') dialog = { kind: 'newFolder', node, value: '', viaKeyboard: false };
     else if (id.startsWith('createReserved:')) {
       const kind = id.slice('createReserved:'.length) as ReservedKind;
       const path = reservedPath(node.path, kind);
       focusTypeForPath = null; // reserved files have no `type` to focus.
       void treeActions.createReservedFile(node.path, kind, path);
-    } else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name };
-    else if (id === 'move') dialog = { kind: 'move', node, value: dirname(node.path) };
-    else if (id === 'delete') dialog = { kind: 'delete', node };
+    } else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name, viaKeyboard: false };
+    else if (id === 'move') dialog = { kind: 'move', node, value: dirname(node.path), viaKeyboard: false };
+    else if (id === 'delete') dialog = { kind: 'delete', node, viaKeyboard: false };
   }
 
+  /**
+   * Cancel path: close the dialog and (only for a keyboard-opened dialog) let
+   * the Explorer restore its Focused item. A context-menu dialog leaves focus
+   * untouched, preserving the prior mouse-driven behaviour.
+   */
   function closeDialog() {
+    const viaKeyboard = dialog?.viaKeyboard ?? false;
     dialog = null;
+    if (viaKeyboard) oncancel?.();
   }
 
   async function confirmDialog() {
     if (!dialog) return;
     const d = dialog;
+    // Only keyboard-opened dialogs return focus to the Explorer on commit;
+    // context-menu creates keep their existing behaviour (e.g. focus `type`).
+    const commit = (path: string, opts?: { deleted?: boolean }) => {
+      if (d.viaKeyboard) oncommit?.(path, opts);
+    };
     if (d.kind === 'newConcept') {
       const name = d.value.trim();
       if (name === '') return;
@@ -140,23 +212,36 @@
       const ok = await treeActions.createConcept(path);
       // Land in `type`: a scaffolded (non-reserved) Concept opens focused there.
       if (ok && !isReservedFile(path)) focusTypeForPath = path;
+      dialog = null;
+      if (ok) commit(path);
     } else if (d.kind === 'newFolder') {
       const name = d.value.trim();
       if (name === '') return;
-      await treeActions.createFolder(joinPath(childDirOf(d.node), name));
+      const path = joinPath(childDirOf(d.node), name);
+      const ok = await treeActions.createFolder(path);
+      dialog = null;
+      if (ok) commit(path);
     } else if (d.kind === 'rename') {
       const name = d.value.trim();
       if (name === '' || name === d.node.name) {
+        // No-op rename: nothing changed, so close like a cancel.
         closeDialog();
         return;
       }
-      await treeActions.renamePath(d.node.path, joinPath(dirname(d.node.path), name));
+      const path = joinPath(dirname(d.node.path), name);
+      const ok = await treeActions.renamePath(d.node.path, path);
+      dialog = null;
+      if (ok) commit(path);
     } else if (d.kind === 'move') {
-      await treeActions.movePath(d.node.path, d.value);
+      const path = treeActions.resolveMove(d.node.path, d.value);
+      const ok = await treeActions.movePath(d.node.path, d.value);
+      dialog = null;
+      if (ok) commit(path);
     } else if (d.kind === 'delete') {
-      await treeActions.deletePath(d.node.path);
+      const ok = await treeActions.deletePath(d.node.path);
+      dialog = null;
+      if (ok) commit(d.node.path, { deleted: true });
     }
-    closeDialog();
   }
 </script>
 

@@ -31,6 +31,22 @@ export interface ExplorerNavActions {
   openConcept: (path: string) => void;
 }
 
+/**
+ * CRUD-dialog triggers the Focused-item key handler invokes; supplied by
+ * App.svelte (slice: explorer-crud-keybindings). Each fires the SAME existing
+ * `TreeCrud` dialog the right-click context menu opens, targeting `path` (the
+ * current Focused item). The new-target rule (inside a folder vs. sibling of a
+ * file) is applied by TreeCrud's existing `childDirOf`, so these just hand it
+ * the Focused item's path.
+ */
+export interface ExplorerCrudActions {
+  rename: (path: string) => void;
+  remove: (path: string) => void;
+  newConcept: (path: string) => void;
+  newFolder: (path: string) => void;
+  move: (path: string) => void;
+}
+
 class ExplorerNavStore {
   /**
    * bundle-relative path of the Focused item (the roving-tabindex tree row), or
@@ -129,6 +145,55 @@ class ExplorerNavStore {
         }
         return true;
       }
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Handle a CRUD letter key on the Focused item (slice:
+   * explorer-crud-keybindings). Fires the existing TreeCrud dialogs:
+   *   r / F2 → rename, d / Delete → delete, a → New Concept,
+   *   A (Shift+a) → New Folder, m → move.
+   * Returns true when the key was handled (caller then `preventDefault`s).
+   *
+   * Runs AFTER `handleKeydown` in App's tree-pane handler. These are UNMODIFIED
+   * keys, EXCEPT the one deliberate Shift exception (`A` = Shift+a → New
+   * Folder); any other Ctrl/Alt/Meta/Shift chord is left for the global handler.
+   * No-ops when nothing is focused — there is no target item.
+   */
+  handleCrudKeydown(e: KeyboardEvent, actions: ExplorerCrudActions): boolean {
+    // Ctrl/Alt/Meta belong to the global handler (Region move / palettes / undo).
+    if (e.altKey || e.ctrlKey || e.metaKey) return false;
+
+    const path = this.focusedPath;
+    if (path === null) return false;
+
+    // Shift is only ever allowed for the deliberate `A` (Shift+a) → New Folder
+    // exception; reject every other Shift chord so it can't trigger a verb.
+    if (e.shiftKey) {
+      if (e.key === 'A') {
+        actions.newFolder(path);
+        return true;
+      }
+      return false;
+    }
+
+    switch (e.key) {
+      case 'r':
+      case 'F2':
+        actions.rename(path);
+        return true;
+      case 'd':
+      case 'Delete':
+        actions.remove(path);
+        return true;
+      case 'a':
+        actions.newConcept(path);
+        return true;
+      case 'm':
+        actions.move(path);
+        return true;
       default:
         return false;
     }

@@ -119,10 +119,19 @@ class TreeActionsStore {
     return ok;
   }
 
+  /**
+   * The destination path `from` would land at when moved into folder `toDir`
+   * (keeps its basename; `''` = Bundle root). Exposed so callers can predict the
+   * new path (e.g. to refocus the Explorer there) before awaiting the move.
+   */
+  resolveMove(from: string, toDir: string): string {
+    const name = from.split('/').filter(Boolean).pop() ?? from;
+    return toDir === '' ? name : `${toDir.replace(/\/+$/, '')}/${name}`;
+  }
+
   /** Move `from` into the folder `toDir` (keeping its name), following the open Concept. */
   async movePath(from: string, toDir: string): Promise<boolean> {
-    const name = from.split('/').filter(Boolean).pop() ?? from;
-    const to = toDir === '' ? name : `${toDir.replace(/\/+$/, '')}/${name}`;
+    const to = this.resolveMove(from, toDir);
     const before = editor.path;
     this.#followRename(from, to);
     const ok = await this.#run(async () => {

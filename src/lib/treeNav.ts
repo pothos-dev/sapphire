@@ -78,6 +78,27 @@ export function indexOfPath(rows: VisibleRow[], path: string | null): number {
 }
 
 /**
+ * The path of a sensible Focused-item neighbour after the row at `path` is
+ * removed: the row that visually takes its place — the NEXT visible row, or the
+ * PREVIOUS one when the removed row was last. Returns null when there is no
+ * neighbour (the removed row was the only one, or `path` isn't a visible row).
+ * Used to keep the Explorer cursor on a real row after a delete (slice:
+ * explorer-crud-keybindings). Computed against the pre-delete `rows`.
+ */
+export function neighborAfterRemoval(rows: VisibleRow[], path: string): string | null {
+  const i = indexOfPath(rows, path);
+  if (i < 0) return null;
+  // Skip past the removed row's descendants (deeper-indented following rows) so
+  // a folder's child can't be chosen as its own replacement.
+  const removed = rows[i];
+  let next = i + 1;
+  while (next < rows.length && rows[next].depth > removed.depth) next++;
+  if (next < rows.length) return rows[next].path;
+  if (i > 0) return rows[i - 1].path;
+  return null;
+}
+
+/**
  * Next index moving DOWN, CLAMPED at the last row (no wrap). Returns 0 for an
  * empty list. A `from` of -1 (nothing focused) lands on the first row.
  */

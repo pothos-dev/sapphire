@@ -39,6 +39,7 @@
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
   import { explorerNav } from '$lib/state/explorerNav.svelte';
+  import { flattenVisible, neighborAfterRemoval } from '$lib/treeNav';
   import { outlineNav, backlinksNav } from '$lib/state/listFocusNav.svelte';
   import { propertiesNav } from '$lib/state/propertiesNav.svelte';
   import { region } from '$lib/region';
@@ -451,7 +452,79 @@
       setExpanded: (p, open) => session.setExpanded(p, open),
       openConcept: openConceptFromTree,
     });
-    if (handled) e.preventDefault();
+    if (handled) {
+      e.preventDefault();
+      return;
+    }
+    // CRUD letter keys (slice: explorer-crud-keybindings): r/F2, d/Delete, a,
+    // A (Shift+a), m fire the existing TreeCrud dialogs on the Focused item.
+    // Never fire while typing in a text input (the dialogs' own fields sit
+    // OUTSIDE this tree-pane handler, but guard defensively all the same).
+    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) {
+      return;
+    }
+    const crudHandled = explorerNav.handleCrudKeydown(e, {
+      rename: (p) => treeCrud?.requestRename(p),
+      remove: (p) => {
+        // Pre-resolve the neighbour to land on AFTER the delete, while the tree
+        // is still current (the row vanishes once the delete commits).
+        const rows = flattenVisible(bundle.tree, (q) => session.isExpanded(q));
+        pendingDeleteNeighbor = neighborAfterRemoval(rows, p);
+        treeCrud?.requestDelete(p);
+      },
+      newConcept: (p) => treeCrud?.requestNewConcept(p),
+      newFolder: (p) => treeCrud?.requestNewFolder(p),
+      move: (p) => treeCrud?.requestMove(p),
+    });
+    if (crudHandled) e.preventDefault();
+  }
+
+  // The Focused-item row to restore to when a keyboard-triggered CRUD dialog is
+  // cancelled (the Explorer's cursor at open time), and the neighbour to land on
+  // after a delete commits (resolved before the row vanishes). See the TreeCrud
+  // `oncommit`/`oncancel` wiring below.
+  let pendingDeleteNeighbor = $state<string | null>(null);
+
+  // Return focus to the Explorer with `path` as the Focused item — used after a
+  // CRUD dialog commits (the affected node becomes the cursor) so create/rename/
+  // move/delete all end with the keyboard back in the tree on a sensible row.
+  function refocusExplorerAt(path: string | null) {
+    if (path !== null) explorerNav.setFocused(path);
+    // The affected row may not be in the DOM yet — a create/rename/move awaits a
+    // backend round-trip and a `bundle.load()`, whose reactive re-render lands a
+    // frame or two later. Retry across a few animation frames until the row
+    // exists, then focus it: focusing a row inside the Explorer container makes
+    // it the active Region (the focus mirror picks it up) and the Focused item.
+    let tries = 0;
+    const tryFocus = () => {
+      const target = explorerNav.focusedPath;
+      if (target === null || !treePane) return;
+      const row = treePane.querySelector<HTMLElement>(
+        `.row[data-row-path="${CSS.escape(target)}"]`,
+      );
+      if (row) {
+        row.focus();
+      } else if (tries++ < 10) {
+        requestAnimationFrame(tryFocus);
+      }
+    };
+    requestAnimationFrame(tryFocus);
+  }
+
+  function onCrudCommit(path: string, opts?: { deleted?: boolean }) {
+    if (opts?.deleted) {
+      refocusExplorerAt(pendingDeleteNeighbor);
+      pendingDeleteNeighbor = null;
+    } else {
+      refocusExplorerAt(path);
+    }
+  }
+
+  function onCrudCancel() {
+    // Restore focus to the Explorer at the row that was focused when the dialog
+    // opened (the current `focusedPath` is unchanged by opening a dialog).
+    refocusExplorerAt(explorerNav.focusedPath);
+    pendingDeleteNeighbor = null;
   }
 
   // Enter on a file row: open the Concept AND move focus to the Editor (the
@@ -1011,7 +1084,12 @@
     onclose={() => (searchOpen = false)}
   />
 
-  <TreeCrud bind:this={treeCrud} bind:focusTypeForPath />
+  <TreeCrud
+    bind:this={treeCrud}
+    bind:focusTypeForPath
+    oncommit={onCrudCommit}
+    oncancel={onCrudCancel}
+  />
 
   {#if treeActions.notice}
     <div class="toast" role="status" aria-live="polite" data-testid="rewrite-toast">
