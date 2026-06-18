@@ -39,6 +39,7 @@
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
   import { explorerNav } from '$lib/state/explorerNav.svelte';
+  import { outlineNav, backlinksNav } from '$lib/state/listFocusNav.svelte';
   import { region } from '$lib/region';
   import type { Direction } from '$lib/regionGrid';
 
@@ -473,6 +474,70 @@
     if (row && document.activeElement !== row) row.focus();
   });
 
+  // --- Outline & Backlinks within-Region keyboard navigation
+  // (outline-backlinks-keyboard-nav). Same shape as the Explorer above: a LOCAL
+  // onkeydown on each Region container routes the unmodified arrow/jk/Enter/Home/
+  // End keys to a flat-list nav store (`$lib/state/listFocusNav`), and an effect
+  // mirrors the store's Focused index into DOM focus while that Region is active.
+  // Cross-Region movement (Alt+dir) + Escape→Editor stay in the global handler.
+  let outlineHost = $state<HTMLDivElement | null>(null);
+  let backlinksHost = $state<HTMLDivElement | null>(null);
+
+  // Outline Enter: scroll the Editor to the heading (same path as a click) AND
+  // move focus to the Editor. The entry's full-document line rides on its
+  // rendered button's `data-line`, so we read it from the DOM rather than
+  // re-deriving the heading list here.
+  function onOutlineKeydown(e: KeyboardEvent) {
+    if (!outlineHost) return;
+    const count = outlineHost.querySelectorAll('[data-testid="outline-entry"]').length;
+    const handled = outlineNav.handleKeydown(e, count, (index) => {
+      const entry = outlineHost?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+      const line = entry ? Number(entry.dataset.line) : NaN;
+      if (Number.isFinite(line)) {
+        scrollToOutlineLine(line);
+        queueMicrotask(() => view?.focus());
+      }
+    });
+    if (handled) e.preventDefault();
+  }
+
+  // Backlinks Enter: open the linked Concept (routes through navigation/history,
+  // focus → Editor), exactly like clicking it. The source path rides on the
+  // rendered button's `data-path`.
+  function onBacklinksKeydown(e: KeyboardEvent) {
+    if (!backlinksHost) return;
+    const count = backlinksHost.querySelectorAll('[data-testid="backlink"]').length;
+    const handled = backlinksNav.handleKeydown(e, count, (index) => {
+      const entry = backlinksHost?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+      const source = entry?.dataset.path;
+      if (source) {
+        openConcept(source);
+        queueMicrotask(() => view?.focus());
+      }
+    });
+    if (handled) e.preventDefault();
+  }
+
+  // Mirror the Outline Focused index into DOM focus while the Outline holds
+  // focus, so the region backbone records its remembered item and the active-
+  // Region highlight tracks it. Mirrors the Explorer effect above.
+  $effect(() => {
+    const index = outlineNav.focusedIndex;
+    if (index === null || !outlineHost) return;
+    if (focus.focusedRegion !== 'outline') return;
+    const entry = outlineHost.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    if (entry && document.activeElement !== entry) entry.focus();
+  });
+
+  // Mirror the Backlinks Focused index into DOM focus while Backlinks holds focus.
+  $effect(() => {
+    const index = backlinksNav.focusedIndex;
+    if (index === null || !backlinksHost) return;
+    if (focus.focusedRegion !== 'backlinks') return;
+    const entry = backlinksHost.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    if (entry && document.activeElement !== entry) entry.focus();
+  });
+
   // Open a full-text search result: navigate to the Concept (through history),
   // then scroll the editor to the matched line. We stash the line and let the
   // editor-build $effect apply the scroll once the new document is loaded, so
@@ -889,10 +954,13 @@
           class="region-host"
           class:region-active={focus.focusedRegion === 'outline'}
           data-region="outline"
+          bind:this={outlineHost}
           use:region={{
             id: 'outline',
             isVisible: () => session.rightSidebarOpen && session.outlineOpen && editor.path !== null,
           }}
+          onkeydown={onOutlineKeydown}
+          role="presentation"
         >
           <Outline path={editor.path} content={editor.content} onselect={scrollToOutlineLine} />
         </div>
@@ -907,11 +975,14 @@
           class="region-host"
           class:region-active={focus.focusedRegion === 'backlinks'}
           data-region="backlinks"
+          bind:this={backlinksHost}
           use:region={{
             id: 'backlinks',
             isVisible: () =>
               session.rightSidebarOpen && session.backlinksOpen && editor.path !== null,
           }}
+          onkeydown={onBacklinksKeydown}
+          role="presentation"
         >
           <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
         </div>

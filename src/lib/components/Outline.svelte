@@ -8,8 +8,17 @@
   // The scan (in `$lib/outline`) skips the frontmatter block and fenced code
   // blocks, and tracks line numbers against the FULL document so the scroll
   // target is correct. No active-heading highlight in this slice.
+  //
+  // Keyboard nav (outline-backlinks-keyboard-nav): the entries form a flat,
+  // navigate-and-open Region with roving tabindex — exactly one entry is
+  // tab-focusable (the Focused item) and carries the spotlight ring; the rest
+  // are `tabindex="-1"`. Arrowing moves the Focused item (clamped at the ends);
+  // Enter activates it (App scrolls the Editor + moves focus there). The
+  // Focused-index rune lives in `$lib/state/listFocusNav`; App drives DOM focus
+  // from it and supplies the keydown routing.
 
   import { scanHeadings, type OutlineHeading } from '$lib/outline';
+  import { outlineNav } from '$lib/state/listFocusNav.svelte';
 
   interface Props {
     /** bundle-relative path of the open Concept, or null when none open. */
@@ -24,6 +33,13 @@
 
   // Live heading list: recomputed whenever the editor content changes.
   const headings = $derived<OutlineHeading[]>(path === null ? [] : scanHeadings(content));
+
+  // Re-clamp the Focused item into bounds whenever the list shrinks/empties
+  // (Concept switch, headings edited away), so the roving tabindex never points
+  // past the end.
+  $effect(() => {
+    outlineNav.clamp(headings.length);
+  });
 </script>
 
 <section class="outline" aria-label="Outline" data-testid="outline">
@@ -33,17 +49,23 @@
     <p class="empty" data-testid="outline-empty">No headings</p>
   {:else}
     <ul class="list">
-      {#each headings as heading (heading.line)}
+      {#each headings as heading, i (heading.line)}
         <li>
           <button
             type="button"
             class="entry"
+            class:focused-item={outlineNav.focusedIndex === i}
             data-testid="outline-entry"
             data-level={heading.level}
             data-line={heading.line}
+            data-index={i}
             style="--level: {heading.level - 1}"
             title={heading.text}
-            onclick={() => onselect(heading.line)}
+            tabindex={outlineNav.focusedIndex === i ? 0 : -1}
+            onclick={() => {
+              outlineNav.setFocused(i);
+              onselect(heading.line);
+            }}
           >
             <span class="name">{heading.text}</span>
           </button>
@@ -95,6 +117,16 @@
   }
 
   .entry:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -2px;
+  }
+
+  /* The Focused item (keyboard cursor) — the spotlight ring. The entry is the
+     roving-tabindex element and is focused programmatically, so the ring is
+     driven by the `.focused-item` class rather than `:focus-visible` alone (a
+     programmatic `.focus()` does not always set `:focus-visible`). Matches the
+     Explorer's `.row.focused-item` affordance. */
+  .entry.focused-item {
     outline: 2px solid var(--accent-ring);
     outline-offset: -2px;
   }

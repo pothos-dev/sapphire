@@ -12,8 +12,17 @@
   // cache uses) in as a reactive dependency, so the panel re-queries when links
   // change on disk without inventing a new refresh mechanism.
 
+  // Keyboard nav (outline-backlinks-keyboard-nav): the entries form a flat,
+  // navigate-and-open Region with roving tabindex — exactly one entry is
+  // tab-focusable (the Focused item) and carries the spotlight ring; the rest
+  // are `tabindex="-1"`. Arrowing moves the Focused item (clamped at the ends);
+  // Enter activates it (App opens the linked Concept + moves focus to the
+  // Editor). The Focused-index rune lives in `$lib/state/listFocusNav`; App
+  // drives DOM focus from it and supplies the keydown routing.
+
   import { backend } from '$lib/ipc';
   import { stripMd } from '$lib/path';
+  import { backlinksNav } from '$lib/state/listFocusNav.svelte';
 
   interface Props {
     /** bundle-relative path of the focused Concept, or null when none open. */
@@ -27,6 +36,13 @@
   let { path, version, onopen }: Props = $props();
 
   let sources = $state<string[]>([]);
+
+  // Re-clamp the Focused item into bounds whenever the list shrinks/empties
+  // (Concept switch, links changed on disk), so the roving tabindex never
+  // points past the end.
+  $effect(() => {
+    backlinksNav.clamp(sources.length);
+  });
 
   // Re-query whenever the focused Concept or the index version changes. Reading
   // both inside the effect registers them as reactive dependencies.
@@ -60,15 +76,21 @@
     <p class="empty" data-testid="backlinks-empty">No backlinks</p>
   {:else}
     <ul class="list">
-      {#each sources as source (source)}
+      {#each sources as source, i (source)}
         <li>
           <button
             type="button"
             class="entry"
+            class:focused-item={backlinksNav.focusedIndex === i}
             data-testid="backlink"
             data-path={source}
+            data-index={i}
             title={source}
-            onclick={() => onopen(source)}
+            tabindex={backlinksNav.focusedIndex === i ? 0 : -1}
+            onclick={() => {
+              backlinksNav.setFocused(i);
+              onopen(source);
+            }}
           >
             <span class="name">{canonical(source)}</span>
           </button>
@@ -118,6 +140,16 @@
   }
 
   .entry:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -2px;
+  }
+
+  /* The Focused item (keyboard cursor) — the spotlight ring. The entry is the
+     roving-tabindex element and is focused programmatically, so the ring is
+     driven by the `.focused-item` class rather than `:focus-visible` alone (a
+     programmatic `.focus()` does not always set `:focus-visible`). Matches the
+     Explorer's `.row.focused-item` affordance. */
+  .entry.focused-item {
     outline: 2px solid var(--accent-ring);
     outline-offset: -2px;
   }
