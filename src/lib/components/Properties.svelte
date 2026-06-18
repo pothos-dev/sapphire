@@ -302,7 +302,7 @@
   // re-entry (Alt+↑) lands in nav mode on the remembered cell, per the ticket.
   $effect(() => {
     if (focus.focusedRegion !== 'properties') {
-      if (propertiesNav.mode === 'edit') propertiesNav.mode = 'nav';
+      if (propertiesNav.mode !== 'nav') propertiesNav.mode = 'nav';
       return;
     }
     void propertiesNav.cell;
@@ -335,10 +335,19 @@
     if (!cellEl) return;
     const row = Number(cellEl.dataset.cellRow);
     const col = (Number(cellEl.dataset.cellCol) === VALUE_COL ? VALUE_COL : KEY_COL) as 0 | 1;
-    const editable = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
     if (propertiesNav.cell.row !== row || propertiesNav.cell.col !== col) {
       propertiesNav.cell = { row, col };
     }
+    // Chip sub-nav (slice: properties-chip-subnavigation) owns its own mode +
+    // roving focus across the strip (chips + the new-tag input). While we're in
+    // `chips`/`edit` for THIS list cell, don't clobber the mode here: PropertyRow
+    // moves focus between strip elements (a chip button is non-editable, the
+    // new-tag input is editable) and would otherwise flip nav/edit spuriously.
+    const isChip = target.dataset.chipIndex !== undefined;
+    const inThisCellStrip =
+      propertiesNav.mode !== 'nav' && propertiesNav.cell.row === row && col === VALUE_COL;
+    if (isChip || inThisCellStrip) return;
+    const editable = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
     const mode = editable ? 'edit' : 'nav';
     if (propertiesNav.mode !== mode) propertiesNav.mode = mode;
   }
@@ -414,6 +423,11 @@
 
   /** Container-level keydown: route by mode. Bubbles from the cell inputs too. */
   function onGridKeydown(e: KeyboardEvent) {
+    // CHIPS mode (list value cell sub-nav) is owned entirely by PropertyRow,
+    // which handles the strip keys locally and stops their propagation. Any key
+    // that DOES bubble up here (e.g. an unhandled one) must NOT be routed to the
+    // nav handler — `d`/arrows there would act on the GRID, not the chip strip.
+    if (propertiesNav.mode === 'chips') return;
     if (propertiesNav.mode === 'edit') {
       if (handleEditKeydown(e)) e.preventDefault();
       return;

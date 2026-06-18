@@ -2,19 +2,25 @@
 //
 // The Properties Section is a spreadsheet-style 2-column grid (key | value) with
 // one row per frontmatter Property (CONTEXT.md "Focused item"; ADR 0003). The
-// Focused item is a CELL, and the Region has TWO MODES:
-//   - NAV mode  — the cell WRAPPER holds focus (spotlight ring); arrows navigate,
-//                 the inner <input> is NOT focused.
-//   - EDIT mode — the cell's <input> is focused; ordinary text editing.
+// Focused item is a CELL, and the Region has THREE MODES:
+//   - NAV mode   — the cell WRAPPER holds focus (spotlight ring); arrows navigate,
+//                  the inner <input> is NOT focused.
+//   - CHIPS mode — chip SUB-NAV for a list value cell: focus rides a roving index
+//                  across the strip `[chip]…[+ new-tag input]` (←/→ move it, ↑/↓
+//                  inert, `d` deletes the focused chip). `chipIndex` tracks the
+//                  focused strip position; chip-strip math lives in `$lib/chipStrip`.
+//   - EDIT mode  — the cell's <input> is focused; ordinary text editing (for a
+//                  list cell this is typing in the new-tag input).
 //
-// This store holds ONLY the cursor (`cell` rune) + the current `mode`, plus the
-// pure key-handling logic (delegating cell-index math to `$lib/propertiesGrid`).
-// It is DOM-free: App.svelte drives DOM focus from `cell`/`mode` via an effect
-// (focusing the cell wrapper in nav mode, the input in edit mode) and supplies
-// the side-effecting callbacks (enter/commit/cancel edit, add/delete row, the
-// nav-mode clipboard copy/paste, and focusing a list cell's chip-add input).
-// Keeping it here mirrors `explorerNav`/`listFocusNav` and keeps App's keydown
-// wiring thin.
+// This store holds ONLY the cursor (`cell` rune), the current `mode`, and (in
+// chips mode) the focused `chipIndex`, plus the pure key-handling logic
+// (delegating cell-index math to `$lib/propertiesGrid`). It is DOM-free:
+// App.svelte / Properties drive DOM focus from `cell`/`mode` via an effect
+// (focusing the cell wrapper in nav mode, the input in edit mode); PropertyRow
+// owns the chip-strip DOM focus + local key handling (the chip depths). The
+// store's actions cover enter/commit/cancel edit, add/delete row, and the
+// nav-mode clipboard copy/paste. Keeping it here mirrors `explorerNav`/
+// `listFocusNav` and keeps App's keydown wiring thin.
 
 import { KEY_COL, VALUE_COL, moveCell, clampCell, type Cell } from '$lib/propertiesGrid';
 
@@ -49,13 +55,30 @@ class PropertiesNavStore {
   /** The Focused cell (keyboard cursor). Row 0 / key column by default. */
   cell = $state<Cell>({ row: 0, col: KEY_COL });
 
-  /** `nav` = cell wrapper focused (arrows navigate); `edit` = input focused. */
-  mode = $state<'nav' | 'edit'>('nav');
+  /**
+   * `nav`   = cell wrapper focused (arrows navigate);
+   * `chips` = chip sub-nav of a list value cell (focus on a chip / new-tag input);
+   * `edit`  = an <input>/<textarea> focused (text editing).
+   */
+  mode = $state<'nav' | 'chips' | 'edit'>('nav');
+
+  /** Focused strip position in CHIPS mode: `0..chipCount-1` chips, `chipCount` = new-tag input. */
+  chipIndex = $state(0);
 
   /** Place the cursor on `cell` in NAV mode (click, programmatic focus). */
   setCell(cell: Cell): void {
     this.cell = cell;
     this.mode = 'nav';
+  }
+
+  /**
+   * Drop INTO a list value cell's chip sub-nav (CHIPS mode), landing on the
+   * first chip (index 0), or on the new-tag input when the list is empty
+   * (index 0 == chipCount). PropertyRow mirrors `chipIndex` into DOM focus.
+   */
+  toChips(index = 0): void {
+    this.mode = 'chips';
+    this.chipIndex = index;
   }
 
   /** Enter NAV mode on the cell at `row`/`col` (used after a commit). */
@@ -133,6 +156,13 @@ class PropertiesNavStore {
         return true;
       case 'Enter':
       case 'F2': {
+        // A LIST value cell drops into chip SUB-NAV (CHIPS mode) rather than
+        // edit mode: focus lands on the first chip (or the new-tag input when
+        // the list is empty). PropertyRow owns the strip's keys + DOM focus.
+        if (this.cell.col === VALUE_COL && actions.valueKind(this.cell.row) === 'list') {
+          this.toChips(0);
+          return true;
+        }
         // Read-only raw value cells have no edit mode — `enterEdit` just focuses
         // the textarea for select/copy. We still flip to `edit` so Escape exits.
         this.mode = 'edit';

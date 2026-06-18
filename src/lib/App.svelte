@@ -300,10 +300,13 @@
       if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         // Only when focus is inside a non-Editor Region (don't steal Escape from
         // overlays / inputs that handle it themselves and aren't in a Region).
-        // Exception: while the Properties grid is in EDIT mode, Escape cancels the
-        // cell draft and returns to nav mode (handled locally in Properties); the
-        // Region peel only applies once back in nav mode (properties-grid-navigation).
-        if (focus.focusedRegion === 'properties' && propertiesNav.mode === 'edit') {
+        // Exception: while the Properties grid is in a deeper mode, Escape peels
+        // exactly ONE layer locally and must not bubble up to the Region peel.
+        // A list value cell has three depths: text-edit (`edit`) → chip sub-nav
+        // (`chips`) → grid nav (`nav`). Both inner modes are handled locally (in
+        // Properties / PropertyRow); the Region peel only applies once back in
+        // nav mode (properties-grid-navigation, properties-chip-subnavigation).
+        if (focus.focusedRegion === 'properties' && propertiesNav.mode !== 'nav') {
           return;
         }
         if (focus.focusedRegion !== null && focus.focusedRegion !== 'editor') {

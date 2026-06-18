@@ -20,6 +20,8 @@
   // it does not own draft state.
 
   import type { Property } from '$lib/frontmatter';
+  import { propertiesNav, VALUE_COL } from '$lib/state/propertiesNav.svelte';
+  import { isNewTagIndex, moveChip, indexAfterDelete } from '$lib/chipStrip';
 
   interface Props {
     /** Positional row id (array index) used to address this row on edit. */
@@ -59,6 +61,144 @@
     onChipKeydown,
     typeInput = $bindable(),
   }: Props = $props();
+
+  // --- Chip sub-navigation (slice: properties-chip-subnavigation) ---
+  //
+  // A list value cell gets a THIRD focus depth on top of grid nav / edit:
+  //   nav  → (Enter on the cell) → CHIPS sub-nav → (Enter on new-tag input) → EDIT.
+  // In CHIPS mode focus rides a roving index across the strip
+  // `[chip 0]…[chip n-1][+ new-tag input]`; ←/→ move it (↑/↓ inert), `d` deletes
+  // the focused chip (focus → neighbour), and Enter on the new-tag input enters
+  // text edit. Escape peels exactly one layer (edit → chips → grid nav), handled
+  // locally here so the global capture handler doesn't skip a layer. The store
+  // (`propertiesNav`) holds `mode` + `chipIndex`; this component owns the strip's
+  // DOM focus + the local key handling. Chip-strip math lives in `$lib/chipStrip`.
+
+  // The chip <button> elements and the new-tag <input>, for roving DOM focus.
+  let chipEls = $state<(HTMLButtonElement | null)[]>([]);
+  let addInput = $state<HTMLInputElement | null>(null);
+
+  const items = $derived(prop.list ?? []);
+
+  /** True when this row's VALUE cell is the Focused cell AND we're in chip sub-nav. */
+  const inChips = $derived(
+    prop.kind === 'list' &&
+      propertiesNav.mode === 'chips' &&
+      propertiesNav.cell.row === id &&
+      propertiesNav.cell.col === VALUE_COL,
+  );
+
+  /** Mirror `chipIndex` into DOM focus while this row owns the chip sub-nav. */
+  $effect(() => {
+    if (!inChips) return;
+    const idx = propertiesNav.chipIndex;
+    const target = isNewTagIndex(idx, items.length) ? addInput : chipEls[idx];
+    if (target && document.activeElement !== target) target.focus();
+  });
+
+  /** Move focus across the strip (←/→); ↑/↓ are inert. */
+  function onChipNavKeydown(event: KeyboardEvent) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const idx = propertiesNav.chipIndex;
+    const count = items.length;
+    switch (event.key) {
+      case 'ArrowRight':
+        event.preventDefault();
+        event.stopPropagation();
+        propertiesNav.chipIndex = moveChip(idx, 'right', count);
+        return;
+      case 'ArrowLeft':
+        event.preventDefault();
+        event.stopPropagation();
+        propertiesNav.chipIndex = moveChip(idx, 'left', count);
+        return;
+      case 'ArrowUp':
+      case 'ArrowDown':
+        // Inert: don't let up/down eject the user from the strip (Escape leaves).
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      case 'Escape':
+        // Peel one layer: chip sub-nav → grid nav (back to the value cell).
+        event.preventDefault();
+        event.stopPropagation();
+        propertiesNav.toNav({ row: id, col: VALUE_COL });
+        return;
+    }
+  }
+
+  /** Keys on a focused CHIP: `d` deletes (focus → neighbour); Enter does nothing. */
+  function onChipKey(event: KeyboardEvent, index: number) {
+    onChipNavKeydown(event);
+    if (event.defaultPrevented) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.key === 'd') {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = indexAfterDelete(index, items.length);
+      removeChip(id, items, index);
+      propertiesNav.chipIndex = next;
+    } else if (event.key === 'Enter') {
+      // Enter on a chip does NOTHING (per the slice). Swallow it so it neither
+      // bubbles to the grid handler nor triggers a native button click.
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  /** Keys on the new-tag input WHILE in chip sub-nav (not yet typing). */
+  function onAddInputChipKey(event: KeyboardEvent) {
+    onChipNavKeydown(event);
+    if (event.defaultPrevented) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.key === 'Enter') {
+      // Enter focuses the new-tag input for TYPING → edit mode (depth 3).
+      event.preventDefault();
+      event.stopPropagation();
+      propertiesNav.mode = 'edit';
+    }
+  }
+
+  /** Keys on the new-tag input WHILE typing (edit mode, depth 3). */
+  function onAddInputEditKey(event: KeyboardEvent) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return; // native incl. copy/paste
+    if (event.key === 'Enter') {
+      // Commit the chip (existing behaviour), staying in text edit to add more.
+      event.preventDefault();
+      event.stopPropagation();
+      addChip(id, items);
+      propertiesNav.chipIndex = items.length;
+    } else if (event.key === 'Escape') {
+      // Peel one layer: text edit → chip sub-nav (focus the new-tag input).
+      // Abandon the in-progress draft so the peel commits nothing.
+      event.preventDefault();
+      event.stopPropagation();
+      chipDraft = '';
+      propertiesNav.toChips(items.length);
+    }
+  }
+
+  /** Route the new-tag input's keydown by mode (chip sub-nav vs typing). */
+  function onAddInputKeydown(event: KeyboardEvent) {
+    if (propertiesNav.mode === 'edit') {
+      onAddInputEditKey(event);
+    } else if (inChips) {
+      onAddInputChipKey(event);
+    } else {
+      // Direct (mouse) focus with no sub-nav active: keep the legacy Enter-adds.
+      onChipKeydown(event, id, items);
+    }
+  }
+
+  /** Tabindex for a chip: roving 0 only on the focused chip in chip sub-nav. */
+  function chipTabindex(index: number): number {
+    return inChips && propertiesNav.chipIndex === index ? 0 : -1;
+  }
+
+  /** Tabindex for the new-tag input: roving 0 when it's the focused strip slot. */
+  const addTabindex = $derived(
+    inChips && isNewTagIndex(propertiesNav.chipIndex, items.length) ? 0 : -1,
+  );
 </script>
 
 <div class="value">
@@ -94,30 +234,49 @@
     />
   {:else if prop.kind === 'list'}
     <div class="chips" data-testid={`chips-${prop.key}`}>
-      {#each prop.list ?? [] as item, i (i + ':' + item)}
-        <span class="chip" data-testid={`chip-${prop.key}`}>
+      {#each items as item, i (i + ':' + item)}
+        <!-- A chip is a roving-tabindex button in chip sub-nav: ←/→ move across
+             the strip, `d` deletes it. Clicking it focuses it (mouse parity);
+             the × still removes it. -->
+        <button
+          type="button"
+          class="chip"
+          class:chip-active={inChips && propertiesNav.chipIndex === i}
+          tabindex={chipTabindex(i)}
+          data-testid={`chip-${prop.key}`}
+          data-chip-index={i}
+          bind:this={chipEls[i]}
+          onkeydown={(e) => onChipKey(e, i)}
+        >
           {item}
-          <button
-            type="button"
+          <!-- Mouse-only remove affordance (mouse parity). Keyboard deletes via
+               `d` on the focused chip (above), so no key handler is needed here;
+               a nested <button> is invalid inside the chip <button>. -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <span
             class="chip-remove"
-            tabindex="-1"
             aria-label={`Remove ${item}`}
             data-testid={`chip-remove-${prop.key}`}
-            onclick={() => removeChip(id, prop.list ?? [], i)}>×</button
+            onclick={(e) => {
+              e.stopPropagation();
+              removeChip(id, items, i);
+            }}>×</span
           >
-        </span>
+        </button>
       {/each}
       <input
         id={`prop-${prop.key}`}
         class="chip-input"
         type="text"
-        tabindex="-1"
+        tabindex={addTabindex}
         placeholder="Add…"
         data-testid={`chip-add-${prop.key}`}
         list="tag-suggestions"
         bind:value={chipDraft}
-        onkeydown={(e) => onChipKeydown(e, id, prop.list ?? [])}
-        onblur={() => addChip(id, prop.list ?? [])}
+        bind:this={addInput}
+        onkeydown={onAddInputKeydown}
+        onblur={() => addChip(id, items)}
       />
     </div>
   {:else}
@@ -191,11 +350,27 @@
     gap: 0.25rem;
     padding: 0.1rem 0.2rem 0.1rem 0.5rem;
     border-radius: var(--radius-pill);
+    border: 1px solid transparent;
     background: var(--tag-bg);
     color: var(--tag-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  /* Spotlight ring on the focused chip in chip sub-nav (mirrors the cell ring). */
+  .chip:focus,
+  .chip:focus-visible {
+    outline: none;
+  }
+
+  .chip.chip-active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
   .chip-remove {
+    display: inline-flex;
+    align-items: center;
     border: none;
     background: transparent;
     color: inherit;
