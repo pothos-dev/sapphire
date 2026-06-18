@@ -24,6 +24,7 @@
   } from '$lib/reserved';
   import { bundle } from '$lib/state/bundle.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
+  import { focus } from '$lib/state/focus.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
 
   interface Props {
@@ -61,6 +62,36 @@
   let menu = $state<{ node: TreeNode; x: number; y: number } | null>(null);
   // The open modal dialog (name prompt / move picker / delete confirm), or null.
   let dialog = $state<Dialog | null>(null);
+
+  // Overlay-stack registration (slice: escape-peel-restore-opener): the context
+  // menu and the CRUD dialogs are OVERLAYS, so the global Escape peel closes them
+  // as one layer (the dialogs gained Escape-to-close here, where before only
+  // Cancel/backdrop closed them). We register on open / unregister on close,
+  // capturing the opener Region at open time. CANCEL (Escape/backdrop) restores
+  // focus to the opener; for a KEYBOARD-opened dialog `closeDialog`/`confirmDialog`
+  // ALSO route focus through `oncancel`/`oncommit` to the Explorer's affected row
+  // (slice: explorer-crud-keybindings) — both target the Explorer, so the
+  // opener-restore is consistent, never fighting the slice-3 routing.
+  let menuOverlayId: number | null = null;
+  $effect(() => {
+    if (menu && menuOverlayId === null) {
+      menuOverlayId = focus.pushOverlay(() => (menu = null));
+    } else if (!menu && menuOverlayId !== null) {
+      focus.removeOverlay(menuOverlayId);
+      menuOverlayId = null;
+    }
+  });
+  let dialogOverlayId: number | null = null;
+  $effect(() => {
+    if (dialog && dialogOverlayId === null) {
+      // Cancel closes the dialog via the SAME path as the Cancel button so the
+      // keyboard-CRUD focus restore (oncancel) still fires.
+      dialogOverlayId = focus.pushOverlay(closeDialog);
+    } else if (!dialog && dialogOverlayId !== null) {
+      focus.removeOverlay(dialogOverlayId);
+      dialogOverlayId = null;
+    }
+  });
 
   /**
    * Folder a NEW child of `node` should live in: the node itself if it's a

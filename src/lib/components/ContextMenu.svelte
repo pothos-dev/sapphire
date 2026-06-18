@@ -26,16 +26,10 @@
     onselect(id);
     onclose();
   }
-
-  function onWindowKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      onclose();
-    }
-  }
+  // Escape-to-close is owned by the global capture-phase peel (App.svelte →
+  // focus.escape), which cancels this overlay via the focus store's overlay
+  // stack and restores focus to the opener Region. No local Escape handler here.
 </script>
-
-<svelte:window onkeydown={onWindowKeydown} />
 
 <!-- Backdrop: an outside click closes the menu. -->
 <div

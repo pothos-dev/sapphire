@@ -311,26 +311,26 @@
         }
       }
 
-      // Region movement: Alt+arrows AND Alt+hjkl move focus directionally across
-      // the 3×2 Region grid (left/right change column, up/down move within it).
-      // Plain Alt only — Ctrl+Alt is history (above), and we never touch
-      // Ctrl+C/Ctrl+V (no Ctrl branch here). Escape returns to the Editor.
+      // Escape: the UNIFIED peel (slice: escape-peel-restore-opener). One layer
+      // per press, innermost first — in-field edit → overlay → Region → Editor.
+      // The decision lives in `focus.escape`; here we only compute whether an
+      // INNERMOST LOCAL peel owns this press (layer 1), and let the store resolve
+      // the rest (overlay stack → Region → Editor).
       if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-        // Only when focus is inside a non-Editor Region (don't steal Escape from
-        // overlays / inputs that handle it themselves and aren't in a Region).
-        // Exception: while the Properties grid is in a deeper mode, Escape peels
-        // exactly ONE layer locally and must not bubble up to the Region peel.
-        // A list value cell has three depths: text-edit (`edit`) → chip sub-nav
-        // (`chips`) → grid nav (`nav`). Both inner modes are handled locally (in
-        // Properties / PropertyRow); the Region peel only applies once back in
-        // nav mode (properties-grid-navigation, properties-chip-subnavigation).
-        if (focus.focusedRegion === 'properties' && propertiesNav.mode !== 'nav') {
-          return;
-        }
-        if (focus.focusedRegion !== null && focus.focusedRegion !== 'editor') {
-          e.preventDefault();
-          focus.escapeToEditor();
-        }
+        // Layer-1 (local) peels the global handler must NOT steal:
+        //  - Properties in a deeper mode: a list value cell has three depths —
+        //    text-edit (`edit`) → chip sub-nav (`chips`) → grid nav (`nav`). The
+        //    inner modes peel locally (Properties / PropertyRow); only `nav`
+        //    bubbles to the Region peel.
+        //  - CodeMirror's Find: while the editor holds focus, CM's own keymap
+        //    handles Escape (closing the Find panel, ADR-noted), so we defer.
+        //    The Editor with nothing open is layer 4 (no-op) — deferring there is
+        //    harmless (CM no-ops too).
+        const propertiesPeel =
+          focus.focusedRegion === 'properties' && propertiesNav.mode !== 'nav';
+        const editorPeel = focus.focusedRegion === 'editor';
+        const localPeelActive = propertiesPeel || editorPeel;
+        if (focus.escape(localPeelActive)) e.preventDefault();
         return;
       }
 
@@ -1157,13 +1157,25 @@
     open={quickNavOpen}
     paths={suggestions.conceptPaths}
     recent={session.recentFiles}
-    onopen={openConcept}
+    onopen={(p) => {
+      // COMMIT: opening a Concept moves focus to the Editor (the action target),
+      // NOT back to the opener Region (escape-peel-restore-opener). Mirrors
+      // Enter-on-a-tree-row; retry-focus across frames since the view (re)builds
+      // reactively and may be null when opening from a fresh load.
+      openConcept(p);
+      focusEditorWhenReady();
+    }}
     onclose={() => (quickNavOpen = false)}
   />
 
   <SearchPanel
     open={searchOpen}
-    onopen={openSearchResult}
+    onopen={(path, line) => {
+      // COMMIT: jumping to a result opens the Concept and moves focus to the
+      // Editor (the action target), not back to the opener Region.
+      openSearchResult(path, line);
+      focusEditorWhenReady();
+    }}
     onclose={() => (searchOpen = false)}
   />
 

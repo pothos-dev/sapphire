@@ -15,6 +15,7 @@
   import { backend } from '$lib/ipc';
   import { clampIndex, nextIndex, prevIndex } from '$lib/listNav';
   import { splitPath } from '$lib/path';
+  import { focus } from '$lib/state/focus.svelte';
   import type { SearchHit } from '$lib/types';
 
   interface Props {
@@ -56,7 +57,13 @@
   });
 
   // Reset + focus each time the panel transitions to open. Tracks `open` only.
+  // On open we REGISTER with the focus store's overlay stack (slice: escape-peel-
+  // restore-opener), capturing the opener Region BEFORE focus moves to the input,
+  // so a CANCEL (Escape/backdrop) restores focus to where it came from. The token
+  // is dropped on close via ANY path (commit opens a Concept→Editor; cancel
+  // restores the opener).
   let wasOpen = false;
+  let overlayId: number | null = null;
   $effect(() => {
     if (open && !wasOpen) {
       wasOpen = true;
@@ -64,9 +71,14 @@
       results = [];
       selected = 0;
       searching = false;
+      overlayId = focus.pushOverlay(onclose);
       queueMicrotask(() => input?.focus());
     } else if (!open) {
       wasOpen = false;
+      if (overlayId !== null) {
+        focus.removeOverlay(overlayId);
+        overlayId = null;
+      }
       if (debounceTimer !== null) {
         clearTimeout(debounceTimer);
         debounceTimer = null;
@@ -126,6 +138,15 @@
     onclose();
   }
 
+  /**
+   * CANCEL via backdrop click — same outcome as Escape. Route through the focus
+   * store so the opener Region (and its remembered item) is restored, NOT a bare
+   * `onclose` (which would leave focus stranded on the backdrop/body).
+   */
+  function cancel() {
+    focus.cancelTopOverlay();
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -137,16 +158,16 @@
       e.preventDefault();
       const r = results[activeIndex];
       if (r) choose(r);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onclose();
     }
+    // Escape is handled by the global capture-phase peel (App.svelte →
+    // focus.escape), which CANCELS this overlay and restores focus to the opener
+    // Region. Handling it here too would double-fire and skip the opener-restore.
   }
 </script>
 
 {#if open}
-  <!-- Backdrop: an outside click closes the panel. -->
-  <div class="fts-backdrop" role="presentation" onclick={onclose}></div>
+  <!-- Backdrop: an outside click CANCELS the panel (restores the opener). -->
+  <div class="fts-backdrop" role="presentation" onclick={cancel}></div>
 
   <div class="fts-panel" role="dialog" aria-modal="true" data-testid="search-panel">
     <!-- svelte-ignore a11y_autofocus -->

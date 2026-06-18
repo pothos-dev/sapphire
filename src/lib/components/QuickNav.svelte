@@ -12,6 +12,7 @@
   import { clampIndex, nextIndex, prevIndex } from '$lib/listNav';
   import { splitPath } from '$lib/path';
   import { isReservedFile } from '$lib/reserved';
+  import { focus } from '$lib/state/focus.svelte';
 
   interface Props {
     /** Whether the palette is open. */
@@ -64,16 +65,27 @@
   });
 
   // Reset + focus each time the palette transitions to open. Tracks `open` only
-  // (NOT query/selected) so it doesn't re-run on every keystroke.
+  // (NOT query/selected) so it doesn't re-run on every keystroke. On open we also
+  // REGISTER with the focus store's overlay stack (slice: escape-peel-restore-
+  // opener), capturing the opener Region BEFORE we move focus to the input, so a
+  // later CANCEL (Escape/backdrop) restores focus exactly where it came from. The
+  // token is dropped on close via ANY path (cancel or commit) so the stack stays
+  // clean — commit moves focus to the Concept→Editor, cancel restores the opener.
   let wasOpen = false;
+  let overlayId: number | null = null;
   $effect(() => {
     if (open && !wasOpen) {
       wasOpen = true;
       query = '';
       selected = 0;
+      overlayId = focus.pushOverlay(onclose);
       queueMicrotask(() => input?.focus());
     } else if (!open) {
       wasOpen = false;
+      if (overlayId !== null) {
+        focus.removeOverlay(overlayId);
+        overlayId = null;
+      }
     }
   });
 
@@ -82,6 +94,15 @@
   function choose(path: string) {
     onopen(path);
     onclose();
+  }
+
+  /**
+   * CANCEL via backdrop click — the same outcome as Escape. Route through the
+   * focus store so the opener Region (and its remembered item) is restored, NOT
+   * a bare `onclose` (which would leave focus stranded on the backdrop/body).
+   */
+  function cancel() {
+    focus.cancelTopOverlay();
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -95,16 +116,16 @@
       e.preventDefault();
       const r = results[activeIndex];
       if (r) choose(r.path);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onclose();
     }
+    // Escape is handled by the global capture-phase peel (App.svelte →
+    // focus.escape), which CANCELS this overlay and restores focus to the opener
+    // Region. Handling it here too would double-fire and skip the opener-restore.
   }
 </script>
 
 {#if open}
-  <!-- Backdrop: an outside click closes the palette. -->
-  <div class="qn-backdrop" role="presentation" onclick={onclose}></div>
+  <!-- Backdrop: an outside click CANCELS the palette (restores the opener). -->
+  <div class="qn-backdrop" role="presentation" onclick={cancel}></div>
 
   <div class="qn-panel" role="dialog" aria-modal="true" data-testid="quick-nav">
     <!-- svelte-ignore a11y_autofocus -->

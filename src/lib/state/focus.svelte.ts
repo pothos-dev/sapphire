@@ -70,6 +70,33 @@ export interface RegionRegistration {
   reveal?: () => void;
 }
 
+/**
+ * One entry on the overlay stack (slice: escape-peel-restore-opener). An overlay
+ * (QuickNav, Search, the tree context menu, a TreeCrud dialog, ...) pushes one
+ * of these when it opens and pops it when it closes. The stack is the model of
+ * "what is open above the Regions"; the global Escape handler closes the TOPMOST
+ * entry before peeling down to the Region layer.
+ */
+interface OverlayEntry {
+  /** Identity token returned to the opener (used to pop the exact entry). */
+  id: number;
+  /**
+   * The Region that was active when the overlay opened (read from
+   * `focusedRegion` at push time), or null when the overlay opened from outside
+   * every Region. CANCELLING the overlay restores focus here (and its remembered
+   * Focused item via the Region's `focus()` entry point); COMMITTING does not —
+   * the committer moves focus to the action target itself.
+   */
+  opener: RegionId | null;
+  /**
+   * Close the overlay (CANCEL outcome): the opener flips the component's `open`
+   * flag false. Called by `cancelTopOverlay`; the store then restores focus to
+   * `opener`. Closing via this path must NOT itself move focus to the action
+   * target — that is the commit path, which the component drives directly.
+   */
+  close: () => void;
+}
+
 class FocusStore {
   /**
    * The active Region, mirrored from `document.activeElement`. `null` when focus
@@ -80,6 +107,16 @@ class FocusStore {
 
   /** Live registry of Regions by id. */
   #regions = new Map<RegionId, RegionRegistration>();
+
+  /**
+   * The OVERLAY STACK (slice: escape-peel-restore-opener). LIFO: the last opened
+   * overlay sits on top and is the first the Escape peel closes. Each entry
+   * records the opener Region so a CANCEL restores focus exactly where it left.
+   * Plain array (no rune): nothing renders from it reactively — it only drives
+   * imperative Escape resolution + focus restoration.
+   */
+  #overlays: OverlayEntry[] = [];
+  #nextOverlayId = 1;
 
   /**
    * Per-column sticky landing memory: the Region last focused in each column
@@ -227,14 +264,100 @@ class FocusStore {
   }
 
   /**
-   * Return focus to the Editor (home base) from any non-Editor Region. Basic
-   * version of the escape-peel model (the full peel ordering is a later slice).
-   * No-op when already in the Editor or the Editor is not registered/visible.
+   * Return focus to the Editor (home base) from any non-Editor Region. Used as
+   * the Region-layer step of the Escape peel (`escape`, below). No-op when
+   * already in the Editor or the Editor is not registered/visible.
    */
   escapeToEditor(): void {
     if (this.focusedRegion === 'editor') return;
     const editor = this.#regions.get('editor');
     if (editor && editor.isVisible()) editor.focus();
+  }
+
+  // --- Overlay stack + the unified Escape peel (slice: escape-peel-restore-opener) ---
+
+  /**
+   * Register an open overlay. Called by an overlay component the moment it
+   * opens; it captures the CURRENT active Region as the opener so a later CANCEL
+   * can restore focus there. `close` cancels the overlay (flips its `open` flag).
+   * Returns a token to pass back to `removeOverlay` when the overlay closes via
+   * ANY path (cancel or commit), so the stack never leaks a closed overlay.
+   */
+  pushOverlay(close: () => void): number {
+    const id = this.#nextOverlayId++;
+    this.#overlays.push({ id, opener: this.focusedRegion, close });
+    return id;
+  }
+
+  /**
+   * Drop the overlay with `id` from the stack WITHOUT touching focus. Called
+   * from an overlay's close/teardown so both outcomes (cancel via the peel,
+   * commit via the action) leave the stack clean. Idempotent.
+   */
+  removeOverlay(id: number): void {
+    const i = this.#overlays.findIndex((o) => o.id === id);
+    if (i !== -1) this.#overlays.splice(i, 1);
+  }
+
+  /** Whether any overlay is currently open (drives the Escape peel ordering). */
+  get hasOverlay(): boolean {
+    return this.#overlays.length > 0;
+  }
+
+  /**
+   * CANCEL the topmost overlay: close it, then restore focus to its opener
+   * Region (and the opener's remembered Focused item, via the Region's `focus()`
+   * entry point). Re-entering that Region fires its focusin, which — through the
+   * `onLeaveRegion` seam — clears any OTHER transient peeks while keeping the
+   * opener's own peek revealed (so a peeked Region survives an overlay
+   * open+cancel round-trip). No-op when the stack is empty. Returns whether an
+   * overlay was closed.
+   */
+  cancelTopOverlay(): boolean {
+    const top = this.#overlays.pop();
+    if (!top) return false;
+    top.close();
+    // Restore focus to the opener Region once the overlay has torn down. The
+    // close above flips a reactive `open` flag; deferring a frame lets the
+    // overlay's elements leave the DOM before we place focus (avoids landing on
+    // an element that is about to be removed).
+    const opener = top.opener;
+    if (opener !== null) {
+      const reg = this.#regions.get(opener);
+      if (reg) requestAnimationFrame(() => reg.focus());
+    }
+    return true;
+  }
+
+  /**
+   * The unified Escape peel — peels EXACTLY ONE layer per press, innermost
+   * first (see escape-peel-restore-opener):
+   *   1. an IN-FIELD / local peel is active → DEFER (return false; the local
+   *      handler in Properties / PropertyRow / CodeMirror's Find runs instead);
+   *   2. an OVERLAY is open → CANCEL the topmost (restore focus to its opener);
+   *   3. a NON-EDITOR Region is focused → home to the Editor;
+   *   4. the Editor is focused with nothing open → no-op.
+   * `localPeelActive` is supplied by the caller (App.svelte): it folds together
+   * the innermost layers the global handler must not steal — the Properties
+   * deeper modes (edit/chips), and CodeMirror's own Find while the editor holds
+   * focus. Returns true when this method handled the press (the caller should
+   * then `preventDefault`); false means "defer to a local handler / no-op".
+   */
+  escape(localPeelActive: boolean): boolean {
+    // Layer 1: an in-field / local peel owns this press — let it run.
+    if (localPeelActive) return false;
+    // Layer 2: an overlay is open — cancel the topmost.
+    if (this.hasOverlay) {
+      this.cancelTopOverlay();
+      return true;
+    }
+    // Layer 3: a non-Editor Region is focused — home to the Editor.
+    if (this.focusedRegion !== null && this.focusedRegion !== 'editor') {
+      this.escapeToEditor();
+      return true;
+    }
+    // Layer 4: Editor focused / nothing open — no-op.
+    return false;
   }
 }
 
