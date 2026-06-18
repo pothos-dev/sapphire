@@ -61,6 +61,22 @@ The central Pane showing the open Concept.
 The height-sharing behaviour of a Sidebar's stacked Sections (they share the viewport, each
 body capped). Names the behaviour, not a single item — one item is a **Section**.
 
+**Region**:
+An interactive surface that can hold keyboard focus and defines its own keyboard semantics.
+Orthogonal to Pane/Section: a Region may *be* a Pane (the **Editor**), live *as* a Section
+(**Explorer**, **Tags**, **Outline**, **Backlinks**), or be neither (**Properties**, which is
+chrome inside the Editor pane). Exactly one Region is focused at a time, mirrored from
+`document.activeElement`.
+_Avoid_: "pane focus", "panel focus" (use "the active Region").
+
+**Focused item**:
+The single navigable item that currently holds focus *within* a Region (the roving-tabindex
+element) — arrow keys move it, Enter activates it. In the **Explorer** the Focused item is a
+tree row and is **distinct from the open Concept**: arrowing moves the Focused item without
+opening anything; Enter opens the Focused Concept into the Editor. The open Concept keeps its
+own marker; the Focused item shows a separate focus ring.
+_Avoid_: "cursor" (reserved for the CodeMirror text caret), "selection" (ambiguous).
+
 **Search**:
 Bundle-wide full-text search — the centered modal (`Ctrl+Shift+F`) that scans every Concept
 body across the Bundle and lists matching path/line/snippet hits. Always means the cross-Bundle
@@ -81,6 +97,10 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
   (`[x](/path.md)`) or relative (`[x](./path.md)`). Links are tolerated even when broken.
 - A **Sidebar** contains many **Sections**; each Section shows a view onto the Bundle or the
   open Concept. The **Accordion** is how a Sidebar's Sections share height.
+- A **Region** is any focusable interactive surface; exactly one is the active Region at a time.
+  Regions cut across Panes and Sections (see term). Each Region has at most one **Focused item**.
+- In the **Explorer**, the **Focused item** (keyboard position) is independent of the open
+  **Concept** (what the Editor shows); they coincide only until you arrow away.
 
 ## Flagged ambiguities
 
@@ -90,3 +110,6 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
   the height-sharing behaviour. "Panel" is avoided (VSCode bottom-dock collision).
 - "search" referred to both the cross-Bundle full-text modal and the in-editor operation —
   resolved to **Search** (cross-Bundle only) vs **Find** (single-Concept only).
+- "pane" was used loosely for "the thing keyboard focus moves between" — but focus targets
+  (Editor, Explorer, Properties, ...) don't map to Panes (Properties is neither Pane nor
+  Section). Resolved: the focus unit is a **Region**, orthogonal to Pane/Section.
