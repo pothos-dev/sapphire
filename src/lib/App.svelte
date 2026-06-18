@@ -539,6 +539,22 @@
     queueMicrotask(() => view?.focus());
   }
 
+  // Focus the CodeMirror view once it exists. Used when opening a Concept from a
+  // Region with NOTHING open yet (e.g. Enter on a Tags concept leaf on a fresh
+  // load): `view` is null until the build effect runs, so a single microtask is
+  // too early. Retry across a few animation frames until the view is built.
+  function focusEditorWhenReady() {
+    let tries = 0;
+    const tryFocus = () => {
+      if (view) {
+        view.focus();
+      } else if (tries++ < 10) {
+        requestAnimationFrame(tryFocus);
+      }
+    };
+    requestAnimationFrame(tryFocus);
+  }
+
   // Mirror the Focused-item path into DOM focus: when the keyboard cursor moves
   // (arrowing, Home/End, parent-jump), focus the matching row element so the
   // region backbone records it as the Explorer's remembered item and the
@@ -850,7 +866,21 @@
           data-region="tags"
           use:region={{ id: 'tags', isVisible: () => tagsVisible && session.tagsOpen }}
         >
-          <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
+          <TagBrowser
+            version={indexStore.version}
+            selected={editor.path}
+            onopen={openConcept}
+            onopenFocus={(p) => {
+              // Keyboard Enter on a concept leaf: open AND move focus to the
+              // Editor (CONTEXT.md). `editor.open` is async and the view is
+              // (re)built in a reactive effect a frame or two later — and when
+              // NO Concept was open yet, `view` is still null at the next
+              // microtask. So retry focusing across a few frames until the view
+              // exists, mirroring the Explorer's post-CRUD refocus.
+              openConcept(p);
+              focusEditorWhenReady();
+            }}
+          />
         </div>
       </SidebarSection>
     {/if}
