@@ -272,11 +272,19 @@
 
   /* The Focused item (keyboard cursor) — the spotlight focus ring. Distinct
      from the open Concept's filled accent (`.file-entry.selected`): they
-     coincide right after Enter-open and diverge as the keyboard moves away. The
-     row is the roving-tabindex element and is focused programmatically, so the
-     ring is driven by the `.focused-item` class rather than `:focus-visible`
-     alone (a programmatic `.focus()` does not always set `:focus-visible`). */
-  .row.focused-item {
+     coincide right after Enter-open and diverge as the keyboard moves away.
+
+     The ring shows ONLY while the row actually holds focus (`:focus-within`),
+     i.e. while the Explorer Region is the active Region — the `.focused-item`
+     class persists as the roving tab target even when focus is elsewhere, but a
+     remembered cursor in an UNFOCUSED Region must not paint a second spotlight.
+     `:focus-within` (not `:focus-visible`) because the row is focused
+     PROGRAMMATICALLY and a programmatic `.focus()` does not reliably set
+     `:focus-visible`; `:focus-within` also covers the brief moment an inner
+     (tabindex=-1) button holds focus before the row-focus effect runs. Its
+     higher specificity also beats `.row:focus { outline: none }` below, which
+     would otherwise suppress the ring exactly while the row is focused. */
+  .row.focused-item:focus-within {
     outline: 2px solid var(--accent-ring);
     outline-offset: -2px;
   }

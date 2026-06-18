@@ -272,6 +272,13 @@
   // row) and the buttons share the cells' roving-tabindex + spotlight model.
   const addRowIndex = $derived(properties.length);
 
+  // The nav-mode spotlight ring is shown ONLY while the Properties Region is the
+  // active Region. The Focused cell (`propertiesNav.cell`) is remembered as the
+  // roving tab target even when focus is elsewhere, but a remembered cursor in
+  // an UNFOCUSED Region must not paint a second spotlight (mirrors the
+  // `:focus-within`-gated rings in the Explorer / Outline / Backlinks / Tags).
+  const propsActive = $derived(focus.focusedRegion === 'properties');
+
   /** Whether the add button in `col` is the Focused cell (roving tabindex / ring). */
   function addBtnFocused(col: 0 | 1): boolean {
     return propertiesNav.cell.row === addRowIndex && propertiesNav.cell.col === col;
@@ -576,7 +583,7 @@
            the <input> inside it is the edit-mode target. -->
       <div
         class="key cell"
-        class:cell-active={keyFocused && propertiesNav.mode === 'nav'}
+        class:cell-active={keyFocused && propertiesNav.mode === 'nav' && propsActive}
         data-testid={`cell-key-${id}`}
         data-cell-row={id}
         data-cell-col={KEY_COL}
@@ -616,7 +623,7 @@
       <!-- VALUE cell wrapper: same two-mode model. -->
       <div
         class="cell value-cell"
-        class:cell-active={valueFocused && propertiesNav.mode === 'nav'}
+        class:cell-active={valueFocused && propertiesNav.mode === 'nav' && propsActive}
         data-testid={`cell-value-${id}`}
         data-cell-row={id}
         data-cell-col={VALUE_COL}
@@ -669,7 +676,7 @@
     <button
       type="button"
       class="add-btn"
-      class:cell-active={addBtnFocused(KEY_COL)}
+      class:cell-active={addBtnFocused(KEY_COL) && propsActive}
       data-testid="add-text"
       data-cell-row={addRowIndex}
       data-cell-col={KEY_COL}
@@ -681,7 +688,7 @@
     <button
       type="button"
       class="add-btn"
-      class:cell-active={addBtnFocused(VALUE_COL)}
+      class:cell-active={addBtnFocused(VALUE_COL) && propsActive}
       data-testid="add-list"
       data-cell-row={addRowIndex}
       data-cell-col={VALUE_COL}

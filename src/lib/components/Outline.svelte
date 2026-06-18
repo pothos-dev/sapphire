@@ -121,12 +121,15 @@
     outline-offset: -2px;
   }
 
-  /* The Focused item (keyboard cursor) — the spotlight ring. The entry is the
-     roving-tabindex element and is focused programmatically, so the ring is
-     driven by the `.focused-item` class rather than `:focus-visible` alone (a
-     programmatic `.focus()` does not always set `:focus-visible`). Matches the
-     Explorer's `.row.focused-item` affordance. */
-  .entry.focused-item {
+  /* The Focused item (keyboard cursor) — the spotlight ring. Shown ONLY while
+     the entry actually holds focus (`:focus-within`), i.e. while this Region is
+     the active Region: the `.focused-item` class persists as the roving tab
+     target even when focus is elsewhere, but a remembered cursor in an
+     UNFOCUSED Region must not paint a second spotlight. `:focus-within` (not
+     `:focus-visible`) because the entry is focused PROGRAMMATICALLY and that
+     does not reliably set `:focus-visible`. Matches the Explorer's
+     `.row.focused-item:focus-within` affordance. */
+  .entry.focused-item:focus-within {
     outline: 2px solid var(--accent-ring);
     outline-offset: -2px;
   }

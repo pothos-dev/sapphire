@@ -42,6 +42,16 @@ async function freshLoad(page: Page) {
   await expect(page.getByTestId('tree')).toBeVisible();
 }
 
+test('on first load the keyboard cursor starts in the Explorer', async ({ page }) => {
+  await freshLoad(page);
+  // Nothing clicked: focus auto-lands on the first visible tree row, so the app
+  // opens WITH a Focused item (the Explorer is the active Region) rather than
+  // with focus nowhere.
+  await expect(page.locator('.region-active[data-region="explorer"]')).toBeVisible();
+  await expect.poll(() => focusedRow(page)).toBe('concepts');
+  await expect.poll(() => rovingCount(page)).toBe(1);
+});
+
 test('Explorer keyboard nav: move/expand/collapse/descend/parent, clamp, roving tabindex', async ({
   page,
 }) => {

@@ -232,6 +232,10 @@
         await editor.open(session.lastOpenConcept);
       }
       session.endRestore();
+
+      // Land the keyboard cursor in the Explorer on first paint (see the
+      // function's note — it no-ops if focus has already moved somewhere).
+      focusExplorerInitial();
     })();
 
     // Seed the broken-link existence cache from the Bundle index.
@@ -534,6 +538,37 @@
       }
     };
     requestAnimationFrame(tryFocus);
+  }
+
+  // On first load, start keyboard focus in the Explorer so the app opens WITH a
+  // Focused item rather than with focus nowhere (focusedRegion === null). Picks
+  // the first visible row and focuses it once it has rendered. Bails the moment
+  // anything else already holds focus (a fast click into another Region, a
+  // restore flow that focused the Editor) so it can never steal focus from an
+  // interaction the user has already started. Runs once from onMount.
+  function focusExplorerInitial() {
+    let tries = 0;
+    const attempt = () => {
+      const active = document.activeElement;
+      if (active && active !== document.body) return; // something already has focus
+      const root = bundle.tree;
+      if (treePane && root) {
+        const rows = flattenVisible(root, (q) => session.isExpanded(q));
+        const first = rows[0]?.path;
+        if (first !== undefined) {
+          explorerNav.setFocused(first);
+          const row = treePane.querySelector<HTMLElement>(
+            `.row[data-row-path="${CSS.escape(first)}"]`,
+          );
+          if (row) {
+            row.focus();
+            return;
+          }
+        }
+      }
+      if (tries++ < 20) requestAnimationFrame(attempt);
+    };
+    requestAnimationFrame(attempt);
   }
 
   function onCrudCommit(path: string, opts?: { deleted?: boolean }) {

@@ -304,23 +304,22 @@
   }
 
   /* The Focused item (keyboard cursor) — the spotlight ring. Distinct from the
-     open Concept's filled accent (`.concept.selected`). Rows are focused
-     programmatically, so the ring is driven by the `.focused-item` class (a
-     programmatic `.focus()` doesn't always set `:focus-visible`). */
-  .tag.focused-item,
-  .concept.focused-item {
-    outline: 2px solid var(--accent-ring);
-    outline-offset: -1px;
-  }
-
+     open Concept's filled accent (`.concept.selected`). Shown ONLY while the
+     row actually holds focus (`:focus-within`), i.e. while the Tags Region is
+     the active Region: the `.focused-item` class persists as the roving tab
+     target even when focus is elsewhere, but a remembered cursor in an
+     UNFOCUSED Region must not paint a second spotlight. `:focus-within` (not
+     `:focus-visible`) because rows are focused PROGRAMMATICALLY. The higher
+     specificity also beats `.tag:focus { outline: none }` while focused. */
   .tag:focus,
   .concept:focus {
     outline: none;
   }
 
-  .tag.focused-item:focus,
-  .concept.focused-item:focus {
+  .tag.focused-item:focus-within,
+  .concept.focused-item:focus-within {
     outline: 2px solid var(--accent-ring);
+    outline-offset: -1px;
   }
 
   .twisty {
