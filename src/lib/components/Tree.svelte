@@ -4,12 +4,13 @@
   import { session } from '$lib/state/session.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
+  import { explorerNav } from '$lib/state/explorerNav.svelte';
   import { isReservedFile, reservedKind, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Self from './Tree.svelte';
 
   interface Props {
     node: TreeNode;
-    /** path of the currently-open Concept, for highlighting */
+    /** path of the currently-open Concept, for the filled-accent "open" marker */
     selected: string | null;
     /** called when a `.md` file is clicked */
     onopen: (path: string) => void;
@@ -20,6 +21,24 @@
   }
 
   let { node, selected, onopen, onmenu, depth = 0 }: Props = $props();
+
+  // The Focused item (keyboard cursor) is INDEPENDENT of the open Concept
+  // (CONTEXT.md): this row carries the roving `tabindex="0"` + the spotlight ring
+  // when it is the Explorer's Focused item, every other row stays `tabindex="-1"`.
+  const isFocusedItem = $derived(explorerNav.focusedPath === node.path);
+
+  // Clicking a row makes it the Focused item too (in addition to opening, for a
+  // Concept). Wired onto the row's interactive controls (the folder toggle / the
+  // file entry button) rather than the row container, so it never interferes
+  // with the start of a drag and keeps the row's a11y semantics clean.
+  function focusRow() {
+    explorerNav.setFocused(node.path);
+  }
+
+  function toggleAndFocus() {
+    focusRow();
+    toggle();
+  }
 
   function openMenu(e: MouseEvent) {
     e.preventDefault();
@@ -137,6 +156,7 @@
   <div
     class="row dir"
     class:drop-target={isDropTarget}
+    class:focused-item={isFocusedItem}
     data-row-path={node.path}
     style="padding-left: {indent}px"
     oncontextmenu={openMenu}
@@ -148,7 +168,8 @@
     ondrop={onDrop}
     role="treeitem"
     aria-selected="false"
-    tabindex="-1"
+    aria-expanded={expanded}
+    tabindex={isFocusedItem ? 0 : -1}
   >
     <!-- The disclosure twisty and the folder name are split into two toggle
          buttons so the reserved-file icons (index/log) can sit between them,
@@ -159,7 +180,8 @@
     <button
       class="entry dir-toggle twisty-toggle"
       type="button"
-      onclick={toggle}
+      tabindex="-1"
+      onclick={toggleAndFocus}
       aria-expanded={expanded}
       aria-label={displayName}
     >
@@ -170,6 +192,7 @@
         class="reserved-btn"
         class:selected={selected === r.path}
         type="button"
+        tabindex="-1"
         title={`Open ${RESERVED_FILES[r.kind]}`}
         aria-label={`Open ${RESERVED_FILES[r.kind]}`}
         data-reserved-path={r.path}
@@ -183,7 +206,7 @@
     <button
       class="entry dir-toggle name-toggle"
       type="button"
-      onclick={toggle}
+      onclick={toggleAndFocus}
       tabindex="-1"
       aria-hidden="true"
     >
@@ -202,6 +225,7 @@
 {:else}
   <div
     class="row file"
+    class:focused-item={isFocusedItem}
     data-row-path={node.path}
     style="padding-left: {indent}px"
     oncontextmenu={openMenu}
@@ -213,16 +237,20 @@
     ondrop={onDrop}
     role="treeitem"
     aria-selected={selected === node.path}
-    tabindex="-1"
+    tabindex={isFocusedItem ? 0 : -1}
   >
     <button
       class="entry file-entry"
       class:selected={selected === node.path}
       class:nonmd={!isMarkdown}
       type="button"
+      tabindex="-1"
       disabled={!isMarkdown}
       data-path={node.path}
-      onclick={() => isMarkdown && onopen(node.path)}
+      onclick={() => {
+        focusRow();
+        if (isMarkdown) onopen(node.path);
+      }}
     >
       <span class="name">{displayName}</span>
     </button>
@@ -239,6 +267,24 @@
   .row {
     display: flex;
     align-items: center;
+    border-radius: var(--radius-sm);
+  }
+
+  /* The Focused item (keyboard cursor) — the spotlight focus ring. Distinct
+     from the open Concept's filled accent (`.file-entry.selected`): they
+     coincide right after Enter-open and diverge as the keyboard moves away. The
+     row is the roving-tabindex element and is focused programmatically, so the
+     ring is driven by the `.focused-item` class rather than `:focus-visible`
+     alone (a programmatic `.focus()` does not always set `:focus-visible`). */
+  .row.focused-item {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -2px;
+  }
+
+  /* Suppress the row's own default outline on plain focus; the `.focused-item`
+     ring above is the affordance, and the inner buttons carry tabindex=-1. */
+  .row:focus {
+    outline: none;
   }
 
   /* Folder rows highlight as a whole (the twisty/name halves are transparent),

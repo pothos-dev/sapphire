@@ -38,6 +38,7 @@
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
+  import { explorerNav } from '$lib/state/explorerNav.svelte';
   import { region } from '$lib/region';
   import type { Direction } from '$lib/regionGrid';
 
@@ -425,6 +426,53 @@
     void editor.open(path);
   }
 
+  // The Explorer's tree-pane element (the `explorer` Region container). Used to
+  // drive DOM focus onto the Focused-item row as the keyboard cursor moves, so
+  // the region backbone's sticky last-item memory and the active-Region mirror
+  // both track it.
+  let treePane = $state<HTMLDivElement | null>(null);
+
+  // Within-Region keyboard navigation for the Explorer (explorer-keyboard-nav).
+  // Cross-Region movement (Alt+dir) + Escape→Editor stay in the global capture
+  // handler in onMount; THIS handles the unmodified arrow/hjkl/Enter/Home/End
+  // keys LOCALLY on the tree-pane. The store moves the Focused item (a tree row)
+  // independently of the open Concept; an effect below mirrors it into DOM focus.
+  function onTreeKeydown(e: KeyboardEvent) {
+    const handled = explorerNav.handleKeydown(e, bundle.tree, {
+      isExpanded: (p) => session.isExpanded(p),
+      setExpanded: (p, open) => session.setExpanded(p, open),
+      openConcept: openConceptFromTree,
+    });
+    if (handled) e.preventDefault();
+  }
+
+  // Enter on a file row: open the Concept AND move focus to the Editor (the
+  // Focused item and the open Concept coincide here, then diverge if the user
+  // arrows back into the tree). Routes through the same `editor.open` navigation
+  // path as a click, then focuses the CodeMirror view once it has the document.
+  function openConceptFromTree(path: string) {
+    openConcept(path);
+    // Focus the Editor after the open settles. `editor.open` is async and the
+    // view updates reactively; a microtask defer lets the build/update effect
+    // run first so `view` points at the new Concept before we focus it.
+    queueMicrotask(() => view?.focus());
+  }
+
+  // Mirror the Focused-item path into DOM focus: when the keyboard cursor moves
+  // (arrowing, Home/End, parent-jump), focus the matching row element so the
+  // region backbone records it as the Explorer's remembered item and the
+  // active-Region highlight tracks it. Only acts while the Explorer holds focus
+  // (so a click elsewhere or a programmatic path change can't steal focus).
+  $effect(() => {
+    const path = explorerNav.focusedPath;
+    if (path === null || !treePane) return;
+    if (focus.focusedRegion !== 'explorer') return;
+    const row = treePane.querySelector<HTMLElement>(
+      `.row[data-row-path="${CSS.escape(path)}"]`,
+    );
+    if (row && document.activeElement !== row) row.focus();
+  });
+
   // Open a full-text search result: navigate to the Concept (through history),
   // then scroll the editor to the matched line. We stash the line and let the
   // editor-build $effect apply the scroll once the new document is loaded, so
@@ -577,7 +625,9 @@
         class:drop-target={treeDnd.dropTarget === ''}
         class:region-active={focus.focusedRegion === 'explorer'}
         data-region="explorer"
+        bind:this={treePane}
         use:region={{ id: 'explorer', isVisible: () => session.explorerOpen }}
+        onkeydown={onTreeKeydown}
         ondragover={(e) => {
           const from = treeDnd.dragging;
           if (from === null || !treeDnd.canDrop(from, '')) return;
