@@ -26,7 +26,12 @@ src/
     ipc/
       backend.ts             # Backend interface — the ONLY boundary to Rust
       tauri.ts               # real impl (invoke + event)
-      fake.ts                # in-memory impl for browser/Playwright (no Tauri)
+      fake.ts                # in-memory impl for browser/Playwright (wires fake/*)
+      fake/                  # focused modules behind the fake backend:
+        store.ts             #   fixture data + shared mutable FILES/FOLDERS state
+        tree.ts              #   TreeNode build + rename/delete path mutation
+        frontmatter.ts       #   YAML type/tags/keys parse (mirrors Rust index.rs)
+        links.ts             #   outbound-link extraction + rename link-rewrite
       index.ts               # selects real vs fake at runtime; exports `backend`
     state/                   # Svelte 5 rune-based stores (.svelte.ts)
       bundle.svelte.ts       # tree
