@@ -27,6 +27,17 @@ export default defineConfig({
   reporter: 'list',
   timeout: 60_000,
   expect: { timeout: 10_000 },
+  // Retry a failed test a couple of times. The suite is logic-deterministic
+  // (every spec passes in isolation), but the single-worker FULL run shares one
+  // machine with the build/preview server and the OS, so a rare momentary stall
+  // (a GC pause, a swap-in under memory pressure) can push the FIRST paint of a
+  // heavy SPA route past the 10s `expect` timeout — surfacing as a `getByTestId
+  // ('tree')` "element(s) not found" on whichever test happens to navigate during
+  // the stall. That is an environmental hiccup, not a regression: a clean re-run
+  // of just that test passes. Retries absorb it WITHOUT weakening any assertion's
+  // intent, and pair with `trace: 'on-first-retry'` below (which only captures a
+  // trace when a retry actually happens, so the rare real failure is debuggable).
+  retries: 2,
   use: {
     baseURL: 'http://localhost:1420',
     trace: 'on-first-retry',
