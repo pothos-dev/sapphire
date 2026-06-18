@@ -14,7 +14,18 @@
 //
 // Each Region registers a container element plus a `focus()` callback (focuses
 // its entry point — its remembered item, else its first focusable element) and
-// an `isVisible()` predicate (collapsed / absent / empty Regions are skipped).
+// two predicates that split the old single `isVisible` notion in two
+// (slice: transient-region-auto-reveal):
+//   - `isPresent()` — is there content to focus? FALSE for genuinely absent /
+//     empty Regions (Properties with no open Concept, Tags with no tags). These
+//     are SKIPPED by directional movement and never revealed.
+//   - `isVisible()` — is the Region currently SHOWN (rendered, focusable right
+//     now)? FALSE when a collapse hides it. A present-but-not-visible Region is
+//     hidden only by a collapse, so movement can transiently REVEAL it.
+// A Region hidden by a collapse therefore has `isPresent() === true` and
+// `isVisible() === false`; directional movement into it calls its `reveal()`
+// (flip the relevant transient flag) and then focuses it once it has rendered.
+//
 // The registry is keyed by RegionId; re-registration replaces the prior entry
 // (a component remount during HMR or a Concept switch just updates it).
 
@@ -37,11 +48,26 @@ export interface RegionRegistration {
    */
   focus: () => boolean;
   /**
-   * Whether the Region is currently focusable. Hidden Regions (collapsed,
-   * absent like Properties with no Concept, or empty like Tags with no tags)
-   * return false and are skipped by movement.
+   * Whether there is content to focus here. FALSE only when the Region is
+   * genuinely absent/empty (no open Concept → Properties/Outline/Backlinks; no
+   * tags → Tags). Such Regions are SKIPPED by movement and never revealed. A
+   * Region hidden merely by a collapse is still present (`true`).
+   */
+  isPresent: () => boolean;
+  /**
+   * Whether the Region is currently SHOWN — rendered and focusable right now.
+   * FALSE when a collapse folds it away. Movement into a present-but-not-shown
+   * Region transiently reveals it via `reveal()`.
    */
   isVisible: () => boolean;
+  /**
+   * Transiently reveal the collapse(s) hiding this Region so focus can land in
+   * it. No-op when the Region is already shown. The flipped flag is ephemeral
+   * (session store, never persisted) and cleared on focus-out (see
+   * `#clearTransientOnLeave`). Optional: the Editor (never collapse-hidden)
+   * omits it.
+   */
+  reveal?: () => void;
 }
 
 class FocusStore {
@@ -64,6 +90,18 @@ class FocusStore {
 
   #started = false;
 
+  /**
+   * Sink called when focus TRULY lands in a Region DIFFERENT from the previous
+   * one — App wires it to clear every transient reveal EXCEPT the ones keeping
+   * `entered` shown (so the reveal we just performed to land here is not undone
+   * by its own focusin). Kept as an injected callback (not a direct session
+   * import) so this module stays free of session/UI knowledge and the
+   * transient-reveal seam is explicit. The next slice
+   * (escape-peel-restore-opener) drives the same focusin path; no extra wiring
+   * is needed there.
+   */
+  onLeaveRegion: ((entered: RegionId) => void) | null = null;
+
   /** Register (or replace) a Region. Returns an unregister disposer. */
   register(id: RegionId, reg: RegionRegistration): () => void {
     this.#regions.set(id, reg);
@@ -74,10 +112,16 @@ class FocusStore {
     };
   }
 
-  /** True when a visible Region with this id is registered. */
-  #isVisible = (id: RegionId): boolean => {
+  /**
+   * Reachability predicate for `regionGrid.move`: a Region is a valid movement
+   * target when it is PRESENT (has content to focus), whether or not it is
+   * currently shown. A present-but-collapsed Region is reached and then
+   * transiently revealed; only absent/empty Regions (`isPresent() === false`)
+   * are skipped.
+   */
+  #isPresent = (id: RegionId): boolean => {
     const reg = this.#regions.get(id);
-    return reg !== undefined && reg.isVisible();
+    return reg !== undefined && reg.isPresent();
   };
 
   /**
@@ -92,9 +136,19 @@ class FocusStore {
       const target = e.target;
       if (!(target instanceof Node)) return;
       const id = this.#regionOf(target);
+      const prev = this.focusedRegion;
       this.focusedRegion = id;
       // Record the column the focus landed in as sticky landing memory.
       if (id) this.#columnMemory[REGION_CELL[id][0]] = id;
+      // Transient-reveal lifecycle (slice: transient-region-auto-reveal):
+      // collapse any peeked Region only once focus TRULY lands in a DIFFERENT
+      // registered Region. Focus moving to an overlay (QuickNav, Search) lands
+      // OUTSIDE every Region, so `id === null` and we DON'T clear — that is how
+      // a peek survives an overlay open/cancel round-trip. We also skip when
+      // re-entering the same Region (`id === prev`). This focusin-based clear is
+      // the seam the next slice (escape-peel-restore-opener) hooks: it restores
+      // focus to the opener Region, whose focusin then clears the others.
+      if (id !== null && id !== prev) this.onLeaveRegion?.(id);
     };
     // A focusout with no incoming related target (focus left the document /
     // moved to a non-element) clears the active Region. When focus moves between
@@ -126,16 +180,50 @@ class FocusStore {
 
   /**
    * Move the active Region in `direction` (Alt+arrows / Alt+hjkl). Resolves the
-   * destination via `regionGrid.move` (skipping hidden Regions, clamping at grid
-   * edges, honouring sticky per-column landing), then focuses it. No-op when
+   * destination via `regionGrid.move` over the PRESENCE predicate (absent/empty
+   * Regions skipped, clamping at grid edges, honouring sticky per-column
+   * landing). If the target is present but currently hidden by a collapse, it
+   * is transiently REVEALED first, then focused once it has rendered. No-op when
    * focus is outside every Region or the move is clamped.
    */
   moveFocus(direction: Direction): void {
     const from = this.focusedRegion;
     if (from === null) return;
-    const target = move(from, direction, this.#isVisible, this.#columnMemory);
+    const target = move(from, direction, this.#isPresent, this.#columnMemory);
     if (target === null) return; // clamped at an edge
-    this.#regions.get(target)?.focus();
+    const reg = this.#regions.get(target);
+    if (!reg) return;
+    if (!reg.isVisible()) {
+      // Present but collapse-hidden: reveal it, then focus once it has rendered.
+      // Revealing flips a transient flag that drives a reactive re-render, so
+      // the focusable target may not exist this tick — `#focusWhenVisible`
+      // retries across animation frames (the codebase's standard pattern).
+      reg.reveal?.();
+      this.#focusWhenVisible(target);
+      return;
+    }
+    reg.focus();
+  }
+
+  /**
+   * Focus the Region `id`'s entry point once it has actually rendered after a
+   * transient reveal. Re-reads the registration each attempt (a remount during
+   * the reveal-driven re-render replaces it) and retries across a few animation
+   * frames until the Region reports visible, mirroring `focusEditorWhenReady` /
+   * the Explorer post-CRUD refocus in App.svelte. Gives up after a bounded
+   * number of frames so a reveal that never materialises can't spin forever.
+   */
+  #focusWhenVisible(id: RegionId): void {
+    let tries = 0;
+    const attempt = () => {
+      const reg = this.#regions.get(id);
+      if (reg && reg.isVisible()) {
+        reg.focus();
+      } else if (tries++ < 10) {
+        requestAnimationFrame(attempt);
+      }
+    };
+    requestAnimationFrame(attempt);
   }
 
   /**

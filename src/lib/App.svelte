@@ -62,9 +62,12 @@
   // Right-Sidebar expanded count: only meaningful while the right Sidebar is
   // open. Sums its expanded Sections (Outline + Backlinks) so each body's cap
   // divides this sidebar's height independently of the left one.
+  // Counts use the EFFECTIVE-visible getters (`*Visible` = persisted-open OR
+  // transiently revealed) so a transient auto-reveal divides the accordion
+  // height correctly while it is being peeked (slice: transient-region-auto-reveal).
   const rightExpandedCount = $derived(
-    session.rightSidebarOpen
-      ? (session.outlineOpen ? 1 : 0) + (session.backlinksOpen ? 1 : 0)
+    session.rightSidebarVisible
+      ? (session.outlineVisible ? 1 : 0) + (session.backlinksVisible ? 1 : 0)
       : 0,
   );
 
@@ -133,12 +136,17 @@
   // (gated render, no setter call), so it is preserved across hide/show. The
   // hidden Section is excluded from `expandedCount` (above) so the remaining
   // left-Sidebar Sections share height correctly.
-  const tagsVisible = $derived(suggestions.tags.length > 0);
+  // `tagsPresent` = the Bundle carries at least one tag → the Tags Section is
+  // PRESENT (rendered at all). Distinct from `session.tagsVisible` (effective
+  // expanded). An absent Tags Section is skipped by movement and never revealed.
+  const tagsPresent = $derived(suggestions.tags.length > 0);
   // Left-Sidebar expanded count for the `--expanded-count` CSS var: count the
-  // Explorer when open, and Tags only when it is BOTH present (tags exist) and
-  // open — a hidden Tags Section must not steal a share of the height.
+  // Explorer when effectively visible, and Tags only when it is BOTH present
+  // (tags exist) and effectively visible — a hidden Tags Section must not steal
+  // a share of the height. Uses the `*Visible` getters so a transient reveal is
+  // counted while it is being peeked.
   const expandedCount = $derived(
-    (session.explorerOpen ? 1 : 0) + (tagsVisible && session.tagsOpen ? 1 : 0),
+    (session.explorerVisible ? 1 : 0) + (tagsPresent && session.tagsVisible ? 1 : 0),
   );
 
   // When a NEW Concept is created from the tree it opens focused on the `type`
@@ -187,6 +195,16 @@
     // Mirror DOM focus into the `focus` store so the active Region can be styled
     // reactively and directional movement knows where it is (region-focus-backbone).
     const stopFocus = focus.start();
+
+    // Transient auto-reveal (slice: transient-region-auto-reveal): when focus
+    // TRULY lands in a DIFFERENT Region, snap every transiently-revealed
+    // collapsible back to its persisted state — except the reveal keeping the
+    // just-entered Region shown (focusing a freshly-revealed Region fires the
+    // very focusin that runs this, so we must not undo its own reveal). The
+    // store fires this only on a region→different-region focusin, NOT when focus
+    // goes to an overlay (focusedRegion → null), so a QuickNav/Search
+    // open-then-cancel that returns focus to the peeked Region keeps it open.
+    focus.onLeaveRegion = (entered) => session.clearTransientRevealsExcept(entered);
 
     // Load the Bundle, then restore persisted per-Bundle session state:
     // expanded folders + last-open Concept. Both must wait for their data
@@ -332,6 +350,7 @@
       window.removeEventListener('keydown', onKeydown, true);
       stopTheme();
       stopFocus();
+      focus.onLeaveRegion = null;
       unregisterEditor?.();
       unregisterEditor = null;
       view?.destroy();
@@ -402,6 +421,9 @@
           view?.focus();
           return true;
         },
+        // The Editor is never collapse-hidden: present (and shown) iff a Concept
+        // is open. No `reveal` — there is nothing to un-collapse.
+        isPresent: () => editor.path !== null,
         isVisible: () => editor.path !== null,
       });
     } else {
@@ -738,7 +760,7 @@
 
 <div
   class="app"
-  class:sidebar-collapsed={!session.leftSidebarOpen}
+  class:sidebar-collapsed={!session.leftSidebarVisible}
   data-testid="app-root"
   bind:this={appRoot}
 >
@@ -755,7 +777,7 @@
     <div class="side-bar-inner">
     <SidebarSection
       title="Explorer"
-      expanded={session.explorerOpen}
+      expanded={session.explorerVisible}
       ontoggle={() => session.setExplorerOpen(!session.explorerOpen)}
       testid="explorer-section"
     >
@@ -790,7 +812,16 @@
         class:region-active={focus.focusedRegion === 'explorer'}
         data-region="explorer"
         bind:this={treePane}
-        use:region={{ id: 'explorer', isVisible: () => session.explorerOpen }}
+        use:region={{
+          id: 'explorer',
+          // Always present (the Explorer holds the Bundle tree even when empty).
+          isPresent: () => true,
+          // Shown when the left Sidebar AND the Explorer Section are effectively
+          // open (persisted or transiently revealed).
+          isVisible: () => session.leftSidebarVisible && session.explorerVisible,
+          // Reveal opens whichever collapse hid it (the Sidebar and/or Section).
+          reveal: () => session.revealLeftSection('explorer'),
+        }}
         onkeydown={onTreeKeydown}
         ondragover={(e) => {
           const from = treeDnd.dragging;
@@ -856,10 +887,10 @@
          file-changed) — the same mechanism the broken-link cache uses, so no
          bespoke refresh path. Selecting an entry routes through `openConcept`
          (editor navigation) for back/forward history. -->
-    {#if tagsVisible}
+    {#if tagsPresent}
       <SidebarSection
         title="Tags"
-        expanded={session.tagsOpen}
+        expanded={session.tagsVisible}
         ontoggle={() => session.setTagsOpen(!session.tagsOpen)}
         testid="tags-section"
       >
@@ -867,7 +898,15 @@
           class="region-host"
           class:region-active={focus.focusedRegion === 'tags'}
           data-region="tags"
-          use:region={{ id: 'tags', isVisible: () => tagsVisible && session.tagsOpen }}
+          use:region={{
+            id: 'tags',
+            // Present only when the Bundle carries tags (else skipped, never
+            // revealed). The `{#if tagsPresent}` gate above already unmounts the
+            // Region when absent, but the predicate keeps the contract explicit.
+            isPresent: () => tagsPresent,
+            isVisible: () => tagsPresent && session.leftSidebarVisible && session.tagsVisible,
+            reveal: () => session.revealLeftSection('tags'),
+          }}
         >
           <TagBrowser
             version={indexStore.version}
@@ -1014,6 +1053,10 @@
         data-region="properties"
         use:region={{
           id: 'properties',
+          // Properties is never collapse-hidden — it is chrome inside the Editor
+          // pane, present iff a non-reserved Concept is open, absent otherwise
+          // (skipped, never revealed). Presence == visibility here.
+          isPresent: () => editor.path !== null && !isReservedFile(editor.path),
           isVisible: () => editor.path !== null && !isReservedFile(editor.path),
         }}
       >
@@ -1051,7 +1094,7 @@
        divides this sidebar's height independently of the left one. -->
   <aside
     class="side-bar right-side-bar"
-    class:collapsed={!session.rightSidebarOpen}
+    class:collapsed={!session.rightSidebarVisible}
     aria-label="Outline & Backlinks"
     data-testid="right-side-bar"
     style="--expanded-count: {rightExpandedCount}"
@@ -1059,7 +1102,7 @@
     <div class="side-bar-inner">
       <SidebarSection
         title="Outline"
-        expanded={session.outlineOpen}
+        expanded={session.outlineVisible}
         ontoggle={() => session.setOutlineOpen(!session.outlineOpen)}
         testid="outline-section"
       >
@@ -1070,7 +1113,11 @@
           bind:this={outlineHost}
           use:region={{
             id: 'outline',
-            isVisible: () => session.rightSidebarOpen && session.outlineOpen && editor.path !== null,
+            // Present iff a Concept is open (absent → skipped, never revealed).
+            isPresent: () => editor.path !== null,
+            isVisible: () =>
+              session.rightSidebarVisible && session.outlineVisible && editor.path !== null,
+            reveal: () => session.revealRightSection('outline'),
           }}
           onkeydown={onOutlineKeydown}
           role="presentation"
@@ -1080,7 +1127,7 @@
       </SidebarSection>
       <SidebarSection
         title="Backlinks"
-        expanded={session.backlinksOpen}
+        expanded={session.backlinksVisible}
         ontoggle={() => session.setBacklinksOpen(!session.backlinksOpen)}
         testid="backlinks-section"
       >
@@ -1091,8 +1138,11 @@
           bind:this={backlinksHost}
           use:region={{
             id: 'backlinks',
+            // Present iff a Concept is open (absent → skipped, never revealed).
+            isPresent: () => editor.path !== null,
             isVisible: () =>
-              session.rightSidebarOpen && session.backlinksOpen && editor.path !== null,
+              session.rightSidebarVisible && session.backlinksVisible && editor.path !== null,
+            reveal: () => session.revealRightSection('backlinks'),
           }}
           onkeydown={onBacklinksKeydown}
           role="presentation"

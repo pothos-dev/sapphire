@@ -125,7 +125,12 @@ test('Region focus: directional movement, sticky landing, Escape→Editor', asyn
   await page.screenshot({ path: 'tests/screenshots/region-focus.png', fullPage: true });
 });
 
-test('hidden Regions are skipped; movement clamps at grid edges', async ({ page }) => {
+test('absent Regions are skipped; movement clamps at grid edges', async ({ page }) => {
+  // NOTE: collapse-hidden Regions are now transiently REVEALED, not skipped
+  // (slice: transient-region-auto-reveal — see region-auto-reveal.spec.ts). The
+  // skip/clamp behaviour now applies only to GENUINELY ABSENT Regions (nothing
+  // to focus). With NO Concept open, the centre column (Properties + Editor) and
+  // the right column (Outline + Backlinks) are all absent.
   await page.goto('/');
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -134,16 +139,15 @@ test('hidden Regions are skipped; movement clamps at grid edges', async ({ page 
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
 
-  await tree.locator('[data-path="concepts/codemirror.md"]').click();
-  const editor = page.getByTestId('editor');
-  await expect(editor).toContainText('CodeMirror 6 is the editor core');
+  // Focus the Explorer (left column) WITHOUT opening a Concept.
+  await tree.locator('.row').first().focus();
+  await expectActive(page, 'explorer');
 
-  // Right Sidebar stays COLLAPSED (fresh default) → Outline + Backlinks hidden.
-  // From the Editor, Alt+Right should CLAMP (no visible Region to the right).
-  await editor.locator('.cm-content').click();
-  await expectActive(page, 'editor');
+  // From the Explorer, Alt+Right should CLAMP: every column to the right has no
+  // present Region (no Concept open), and nothing is revealed.
   await altPress(page, 'ArrowRight');
-  await expectActive(page, 'editor'); // clamped — right column hidden
+  await expectActive(page, 'explorer'); // clamped — no present Region to the right
+  await expect(page.getByTestId('right-side-bar')).toHaveClass(/collapsed/);
 });
 
 test('history is on Ctrl+Alt+arrows; plain Alt+arrows no longer navigates; copy/paste untouched', async ({

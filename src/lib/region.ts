@@ -25,11 +25,25 @@ export interface RegionParams {
   /** Which Region this container is. */
   id: RegionId;
   /**
-   * Whether the Region is currently focusable. Read on demand (movement skips
-   * hidden Regions), so pass a getter over reactive state, e.g.
-   * `() => session.explorerOpen && hasRows`.
+   * Whether there is content to focus here — FALSE only when the Region is
+   * genuinely absent/empty (no open Concept, no tags). Read on demand by
+   * directional movement, which skips absent/empty Regions but can reveal a
+   * present-but-collapsed one. Pass a getter over reactive state, e.g.
+   * `() => hasRows`.
+   */
+  isPresent: () => boolean;
+  /**
+   * Whether the Region is currently SHOWN (rendered, focusable right now) —
+   * FALSE when a collapse folds it away. Effective visibility, i.e.
+   * `expanded || transientlyRevealed`. Pass a getter over reactive state.
    */
   isVisible: () => boolean;
+  /**
+   * Transiently reveal the collapse(s) hiding this Region so focus can land in
+   * it (flip the ephemeral session reveal flag). No-op / omitted when the
+   * Region can never be collapse-hidden.
+   */
+  reveal?: () => void;
 }
 
 /** CSS selector for natively-focusable / tabindexed descendants. */
@@ -44,7 +58,7 @@ function firstFocusable(container: HTMLElement): HTMLElement | null {
 }
 
 export const region: Action<HTMLElement, RegionParams> = (node, params) => {
-  let { id, isVisible } = params;
+  let { id, isPresent, isVisible, reveal } = params;
 
   // The Region's remembered Focused item: the descendant that last held focus.
   // Restored on re-entry so moving away and back returns to the same item.
@@ -77,15 +91,19 @@ export const region: Action<HTMLElement, RegionParams> = (node, params) => {
   const dispose = focus.register(id, {
     container: node,
     focus: focusEntry,
+    isPresent: () => isPresent(),
     isVisible: () => isVisible(),
+    reveal: () => reveal?.(),
   });
 
   return {
     update(next: RegionParams) {
-      // `id` is stable in practice, but keep both fresh so the registration
-      // never goes stale across an `isVisible` getter change.
+      // `id` is stable in practice, but keep the getters fresh so the
+      // registration never goes stale across a reactive getter change.
       id = next.id;
+      isPresent = next.isPresent;
       isVisible = next.isVisible;
+      reveal = next.reveal;
     },
     destroy() {
       node.removeEventListener('focusin', onFocusIn);

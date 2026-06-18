@@ -1,6 +1,8 @@
 import { backend } from '$lib/ipc';
 import { createDebouncer } from '$lib/debounce';
 import type { BundleState } from '$lib/types';
+import type { RegionId } from '$lib/regionGrid';
+import { flagsToClearOnEnter } from '$lib/transientReveal';
 
 /**
  * Per-Bundle session state (slice: config-theme-state-store).
@@ -60,6 +62,27 @@ class SessionStore {
    * expanded — matching the left-Sidebar Sections' fresh-Bundle default.
    */
   outlineOpen = $state<boolean>(true);
+  /**
+   * EPHEMERAL transient-reveal flags (slice: transient-region-auto-reveal).
+   * NEVER persisted — kept out of `#snapshot()`/`load()` deliberately. When
+   * directional focus moves INTO a Region hidden only by a collapse (a folded
+   * Sidebar or accordion-collapsed Section), the backbone flips the matching
+   * flag here so the collapsible renders open and focus can land inside; on
+   * focus truly leaving the Region the flag is cleared, snapping back to the
+   * persisted `*Open` state. A Region stays open after a visit ONLY if it was
+   * manually `*Open` BEFORE the visit (no in-visit pin).
+   *
+   * Effective visibility of a collapsible is therefore `*Open || transient*`.
+   * We key the transient flags at the SAME granularity as the persisted ones
+   * (the whole left/right Sidebar, and each Section) so a reveal opens exactly
+   * the level that was hidden.
+   */
+  leftSidebarRevealed = $state<boolean>(false);
+  rightSidebarRevealed = $state<boolean>(false);
+  explorerRevealed = $state<boolean>(false);
+  tagsRevealed = $state<boolean>(false);
+  outlineRevealed = $state<boolean>(false);
+  backlinksRevealed = $state<boolean>(false);
   /**
    * True only after the FULL restore sequence (load + seed defaults + reopen the
    * last Concept) has completed. Persistence is gated on this so a reactive
@@ -188,6 +211,81 @@ class SessionStore {
     if (open === this.outlineOpen) return;
     this.outlineOpen = open;
     this.#scheduleSave();
+  }
+
+  // --- Transient auto-reveal (slice: transient-region-auto-reveal) ---------
+  //
+  // Effective visibility of each collapsible: persisted `*Open` OR the
+  // ephemeral transient flag. App.svelte's render + the Region `isVisible`
+  // getters read THESE so a transiently-revealed Sidebar/Section both renders
+  // open and is treated as visible by within-Region focus mirroring. Movement
+  // reachability uses `isPresent` (content exists) instead — see the Region
+  // registrations in App.svelte.
+
+  /** Left Sidebar effectively shown (persisted-open or transiently revealed). */
+  get leftSidebarVisible(): boolean {
+    return this.leftSidebarOpen || this.leftSidebarRevealed;
+  }
+  /** Right Sidebar effectively shown. */
+  get rightSidebarVisible(): boolean {
+    return this.rightSidebarOpen || this.rightSidebarRevealed;
+  }
+  /** Explorer Section effectively expanded. */
+  get explorerVisible(): boolean {
+    return this.explorerOpen || this.explorerRevealed;
+  }
+  /** Tags Section effectively expanded. */
+  get tagsVisible(): boolean {
+    return this.tagsOpen || this.tagsRevealed;
+  }
+  /** Outline Section effectively expanded. */
+  get outlineVisible(): boolean {
+    return this.outlineOpen || this.outlineRevealed;
+  }
+  /** Backlinks Section effectively expanded. */
+  get backlinksVisible(): boolean {
+    return this.backlinksOpen || this.backlinksRevealed;
+  }
+
+  /**
+   * Transiently reveal whatever collapse currently hides one of a Sidebar's
+   * Sections, so directional focus can land inside it. Opens the whole Sidebar
+   * if it was collapsed AND the Section if its accordion was collapsed — both
+   * levels, since a reveal must end with the Section actually shown. Each flag
+   * flips only when needed (so it doesn't clobber an already-open level into a
+   * transient state, which would wrongly re-collapse it on focus-out).
+   */
+  revealLeftSection(section: 'explorer' | 'tags'): void {
+    if (!this.leftSidebarOpen) this.leftSidebarRevealed = true;
+    if (section === 'explorer' && !this.explorerOpen) this.explorerRevealed = true;
+    if (section === 'tags' && !this.tagsOpen) this.tagsRevealed = true;
+  }
+
+  /** As `revealLeftSection`, for the right Sidebar (Outline / Backlinks). */
+  revealRightSection(section: 'outline' | 'backlinks'): void {
+    if (!this.rightSidebarOpen) this.rightSidebarRevealed = true;
+    if (section === 'outline' && !this.outlineOpen) this.outlineRevealed = true;
+    if (section === 'backlinks' && !this.backlinksOpen) this.backlinksRevealed = true;
+  }
+
+  /**
+   * Snap transient reveals back to the persisted state when focus lands in
+   * `entered`, KEEPING only the reveals that currently hold `entered` itself
+   * shown. Called from the focus backbone on a region→different-region focusin
+   * (see focus.svelte.ts). The "keep" set matters because focusing the
+   * just-revealed Region fires the very focusin that triggers this clear — so
+   * clearing indiscriminately would re-collapse the Region we just entered. We
+   * therefore preserve exactly the flag(s) needed to keep `entered` visible and
+   * clear every OTHER peeked Region.
+   *
+   * Never persisted — these flags are not in `#snapshot()`. `entered === null`
+   * (focus left for an overlay / the body) is handled by the caller, which
+   * simply does NOT call this, so an overlay round-trip preserves the peek.
+   */
+  clearTransientRevealsExcept(entered: RegionId): void {
+    // The flags-to-clear decision is pure (transientReveal.ts) and unit-tested;
+    // here we just apply it to the runes.
+    for (const flag of flagsToClearOnEnter(entered)) this[flag] = false;
   }
 
   /** Current state as a plain `BundleState` for persistence. */
