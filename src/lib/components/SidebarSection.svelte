@@ -11,6 +11,8 @@
   // guarantee everything fits the viewport even if header heights drift from the
   // 2rem assumed by the cap formula; overflow scrolls within each body.
   import type { Snippet } from 'svelte';
+  import { region, type RegionParams } from '$lib/region';
+  import { focus } from '$lib/state/focus.svelte';
 
   interface Props {
     /** Section title shown in the always-visible header. */
@@ -24,11 +26,21 @@
     /** Optional header actions, rendered beside the title (always visible, even
         when collapsed). Kept outside the toggle button so clicks don't toggle. */
     actions?: Snippet;
+    /**
+     * Optional focus-backbone Region wiring. When supplied, the body element is
+     * registered as this Region and stays MOUNTED even while the Section is
+     * collapsed — so directional focus can target it and transiently REVEAL it
+     * (flip `expanded` open) on the way in. Only the body's CONTENT is gated by
+     * `expanded`, so a collapsed Section still unmounts its panel. Without this,
+     * the body is simply `{#if expanded}` (no Region, content removed when shut).
+     */
+    region?: RegionParams;
     /** Body content. */
     children: Snippet;
   }
 
-  let { title, expanded, ontoggle, testid, actions, children }: Props = $props();
+  let { title, expanded, ontoggle, testid, actions, region: regionParams, children }: Props =
+    $props();
 </script>
 
 <section class="section" data-testid={testid} aria-label={title}>
@@ -61,7 +73,23 @@
       <span class="title">{title}</span>
     </button>
   </div>
-  {#if expanded}
+  {#if regionParams}
+    <!-- Region body: ALWAYS mounted (even collapsed) so the focus backbone can
+         target + transiently reveal this Section; only the CONTENT is gated, so
+         a shut Section still unmounts its panel. The active-Region background
+         paints here, behind the whole body. -->
+    <div
+      class="body"
+      class:region-active={focus.focusedRegion === regionParams.id}
+      data-region={regionParams.id}
+      data-testid={testid ? `${testid}-body` : undefined}
+      use:region={regionParams}
+    >
+      {#if expanded}
+        {@render children()}
+      {/if}
+    </div>
+  {:else if expanded}
     <div class="body" data-testid={testid ? `${testid}-body` : undefined}>
       {@render children()}
     </div>
@@ -149,5 +177,24 @@
     /* Cap each expanded body to its share of the viewport (minus the three
        2rem headers). `--expanded-count` is set by the sidebar container. */
     max-height: calc((100vh - 6rem) / var(--expanded-count, 3));
+  }
+
+  /* When the body hosts a Region (always mounted, content gated by `expanded`)
+     a collapsed Section leaves an EMPTY body — clamp it to nothing so it adds
+     no height and no scroll affordance. */
+  .body:empty {
+    max-height: 0;
+  }
+
+  /* Active-Region affordance: a faint background lift behind the whole body
+     while keyboard focus is in this Region (mirrors the other Regions). The
+     body carries tabindex=-1 only as a last-resort entry point, so suppress its
+     focus outline — the Focused item's own ring is the spotlight. */
+  .body.region-active {
+    background: var(--region-active);
+  }
+
+  .body:focus {
+    outline: none;
   }
 </style>

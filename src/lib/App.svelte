@@ -815,6 +815,16 @@
       expanded={session.explorerVisible}
       ontoggle={() => session.setExplorerOpen(!session.explorerOpen)}
       testid="explorer-section"
+      region={{
+        id: 'explorer',
+        // Always present (the Explorer holds the Bundle tree even when empty).
+        isPresent: () => true,
+        // Shown when the left Sidebar AND the Explorer Section are effectively
+        // open (persisted or transiently revealed).
+        isVisible: () => session.leftSidebarVisible && session.explorerVisible,
+        // Reveal opens whichever collapse hid it (the Sidebar and/or Section).
+        reveal: () => session.revealLeftSection('explorer'),
+      }}
     >
       {#snippet actions()}
         {#if rootReservedSorted.length > 0}
@@ -844,19 +854,7 @@
       <div
         class="tree-pane"
         class:drop-target={treeDnd.dropTarget === ''}
-        class:region-active={focus.focusedRegion === 'explorer'}
-        data-region="explorer"
         bind:this={treePane}
-        use:region={{
-          id: 'explorer',
-          // Always present (the Explorer holds the Bundle tree even when empty).
-          isPresent: () => true,
-          // Shown when the left Sidebar AND the Explorer Section are effectively
-          // open (persisted or transiently revealed).
-          isVisible: () => session.leftSidebarVisible && session.explorerVisible,
-          // Reveal opens whichever collapse hid it (the Sidebar and/or Section).
-          reveal: () => session.revealLeftSection('explorer'),
-        }}
         onkeydown={onTreeKeydown}
         ondragover={(e) => {
           const from = treeDnd.dragging;
@@ -928,37 +926,31 @@
         expanded={session.tagsVisible}
         ontoggle={() => session.setTagsOpen(!session.tagsOpen)}
         testid="tags-section"
+        region={{
+          id: 'tags',
+          // Present only when the Bundle carries tags (else skipped, never
+          // revealed). The `{#if tagsPresent}` gate above already unmounts the
+          // Region when absent, but the predicate keeps the contract explicit.
+          isPresent: () => tagsPresent,
+          isVisible: () => tagsPresent && session.leftSidebarVisible && session.tagsVisible,
+          reveal: () => session.revealLeftSection('tags'),
+        }}
       >
-        <div
-          class="region-host"
-          class:region-active={focus.focusedRegion === 'tags'}
-          data-region="tags"
-          use:region={{
-            id: 'tags',
-            // Present only when the Bundle carries tags (else skipped, never
-            // revealed). The `{#if tagsPresent}` gate above already unmounts the
-            // Region when absent, but the predicate keeps the contract explicit.
-            isPresent: () => tagsPresent,
-            isVisible: () => tagsPresent && session.leftSidebarVisible && session.tagsVisible,
-            reveal: () => session.revealLeftSection('tags'),
+        <TagBrowser
+          version={indexStore.version}
+          selected={editor.path}
+          onopen={openConcept}
+          onopenFocus={(p) => {
+            // Keyboard Enter on a concept leaf: open AND move focus to the
+            // Editor (CONTEXT.md). `editor.open` is async and the view is
+            // (re)built in a reactive effect a frame or two later — and when
+            // NO Concept was open yet, `view` is still null at the next
+            // microtask. So retry focusing across a few frames until the view
+            // exists, mirroring the Explorer's post-CRUD refocus.
+            openConcept(p);
+            focusEditorWhenReady();
           }}
-        >
-          <TagBrowser
-            version={indexStore.version}
-            selected={editor.path}
-            onopen={openConcept}
-            onopenFocus={(p) => {
-              // Keyboard Enter on a concept leaf: open AND move focus to the
-              // Editor (CONTEXT.md). `editor.open` is async and the view is
-              // (re)built in a reactive effect a frame or two later — and when
-              // NO Concept was open yet, `view` is still null at the next
-              // microtask. So retry focusing across a few frames until the view
-              // exists, mirroring the Explorer's post-CRUD refocus.
-              openConcept(p);
-              focusEditorWhenReady();
-            }}
-          />
-        </div>
+        />
       </SidebarSection>
     {/if}
     </div>
@@ -1140,20 +1132,18 @@
         expanded={session.outlineVisible}
         ontoggle={() => session.setOutlineOpen(!session.outlineOpen)}
         testid="outline-section"
+        region={{
+          id: 'outline',
+          // Present iff a Concept is open (absent → skipped, never revealed).
+          isPresent: () => editor.path !== null,
+          isVisible: () =>
+            session.rightSidebarVisible && session.outlineVisible && editor.path !== null,
+          reveal: () => session.revealRightSection('outline'),
+        }}
       >
         <div
           class="region-host"
-          class:region-active={focus.focusedRegion === 'outline'}
-          data-region="outline"
           bind:this={outlineHost}
-          use:region={{
-            id: 'outline',
-            // Present iff a Concept is open (absent → skipped, never revealed).
-            isPresent: () => editor.path !== null,
-            isVisible: () =>
-              session.rightSidebarVisible && session.outlineVisible && editor.path !== null,
-            reveal: () => session.revealRightSection('outline'),
-          }}
           onkeydown={onOutlineKeydown}
           role="presentation"
         >
@@ -1165,20 +1155,18 @@
         expanded={session.backlinksVisible}
         ontoggle={() => session.setBacklinksOpen(!session.backlinksOpen)}
         testid="backlinks-section"
+        region={{
+          id: 'backlinks',
+          // Present iff a Concept is open (absent → skipped, never revealed).
+          isPresent: () => editor.path !== null,
+          isVisible: () =>
+            session.rightSidebarVisible && session.backlinksVisible && editor.path !== null,
+          reveal: () => session.revealRightSection('backlinks'),
+        }}
       >
         <div
           class="region-host"
-          class:region-active={focus.focusedRegion === 'backlinks'}
-          data-region="backlinks"
           bind:this={backlinksHost}
-          use:region={{
-            id: 'backlinks',
-            // Present iff a Concept is open (absent → skipped, never revealed).
-            isPresent: () => editor.path !== null,
-            isVisible: () =>
-              session.rightSidebarVisible && session.backlinksVisible && editor.path !== null,
-            reveal: () => session.revealRightSection('backlinks'),
-          }}
           onkeydown={onBacklinksKeydown}
           role="presentation"
         >

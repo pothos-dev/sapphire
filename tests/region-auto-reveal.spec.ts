@@ -174,3 +174,49 @@ test('absent (no Concept → Properties/Editor) and empty (no tags → Tags) Reg
   await expectActive(page, 'explorer');
   await expect(page.getByTestId('tags-section')).toHaveCount(0);
 });
+
+test('Section-collapsed Tags (left Sidebar open) is transiently revealed on Alt-Down from the Explorer', async ({
+  page,
+}) => {
+  // Fresh load: the left Sidebar is open and the Bundle carries tags, so the
+  // Tags Section is PRESENT. Collapse JUST the Tags Section (not the Sidebar) —
+  // its body content unmounts while the header stays.
+  await page.goto('/');
+  let tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+
+  const tagsToggle = page.getByTestId('tags-section').locator('[aria-expanded]').first();
+  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'true');
+  await tagsToggle.click();
+  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'false');
+  // Collapsed Section: the panel content is gone, but the Section is still present.
+  await expect(page.getByTestId('tag-browser')).toHaveCount(0);
+
+  // Focus the Explorer, then Alt+Down toward Tags. Previously this CLAMPED (the
+  // collapsed body had unmounted the Region, so it was unreachable); now the
+  // Section is transiently revealed and focus lands inside it.
+  await page.getByTestId('explorer-section-body').locator('.row').first().focus();
+  await expectActive(page, 'explorer');
+  await altPress(page, 'ArrowDown');
+
+  await expectActive(page, 'tags');
+  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'true');
+  expect(
+    await page.evaluate(() => {
+      const region = document.querySelector('[data-region="tags"]');
+      return region?.contains(document.activeElement) ?? false;
+    }),
+  ).toBe(true);
+
+  // Leave the Region (Escape → Editor home base is absent with no Concept, so
+  // Escape peels back to the Explorer): the transient peek snaps back, the Tags
+  // Section re-collapses.
+  await page.getByTestId('explorer-section-body').locator('.row').first().focus();
+  await expectActive(page, 'explorer');
+  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('tag-browser')).toHaveCount(0);
+});
