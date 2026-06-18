@@ -70,6 +70,7 @@
       id={`prop-${prop.key}`}
       class="text"
       type="text"
+      tabindex="-1"
       data-testid={`scalar-${prop.key}`}
       list="type-suggestions"
       bind:this={typeInput}
@@ -86,6 +87,7 @@
       id={`prop-${prop.key}`}
       class="text"
       type="text"
+      tabindex="-1"
       data-testid={`scalar-${prop.key}`}
       value={prop.scalar ?? ''}
       onchange={(e) => editScalar(id, (e.currentTarget as HTMLInputElement).value)}
@@ -98,6 +100,7 @@
           <button
             type="button"
             class="chip-remove"
+            tabindex="-1"
             aria-label={`Remove ${item}`}
             data-testid={`chip-remove-${prop.key}`}
             onclick={() => removeChip(id, prop.list ?? [], i)}>×</button
@@ -108,6 +111,7 @@
         id={`prop-${prop.key}`}
         class="chip-input"
         type="text"
+        tabindex="-1"
         placeholder="Add…"
         data-testid={`chip-add-${prop.key}`}
         list="tag-suggestions"
@@ -120,6 +124,7 @@
     <textarea
       id={`prop-${prop.key}`}
       class="raw"
+      tabindex="-1"
       data-testid={`raw-${prop.key}`}
       readonly
       rows={Math.min(8, (prop.raw ?? '').split('\n').length)}

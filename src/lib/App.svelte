@@ -40,6 +40,7 @@
   import { focus } from '$lib/state/focus.svelte';
   import { explorerNav } from '$lib/state/explorerNav.svelte';
   import { outlineNav, backlinksNav } from '$lib/state/listFocusNav.svelte';
+  import { propertiesNav } from '$lib/state/propertiesNav.svelte';
   import { region } from '$lib/region';
   import type { Direction } from '$lib/regionGrid';
 
@@ -298,6 +299,12 @@
       if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         // Only when focus is inside a non-Editor Region (don't steal Escape from
         // overlays / inputs that handle it themselves and aren't in a Region).
+        // Exception: while the Properties grid is in EDIT mode, Escape cancels the
+        // cell draft and returns to nav mode (handled locally in Properties); the
+        // Region peel only applies once back in nav mode (properties-grid-navigation).
+        if (focus.focusedRegion === 'properties' && propertiesNav.mode === 'edit') {
+          return;
+        }
         if (focus.focusedRegion !== null && focus.focusedRegion !== 'editor') {
           e.preventDefault();
           focus.escapeToEditor();
