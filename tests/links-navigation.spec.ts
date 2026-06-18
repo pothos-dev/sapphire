@@ -9,7 +9,7 @@ import { test, expect, type Page } from '@playwright/test';
  *    (`./codemirror.md`) and a bundle-absolute link (`/index.md`),
  *  - clicks the relative link and asserts the target Concept opens in the pane,
  *  - asserts Back returns to the original Concept and Forward re-advances,
- *  - exercises the absolute link and the Alt+Left shortcut.
+ *  - exercises the absolute link and the Ctrl+Alt+Left (history Back) shortcut.
  *
  * atomic-editor's live preview makes link TEXT editable and routes navigation
  * through a trailing "open" icon (a `::after` pseudo-element ~1.25em wide at the
@@ -74,8 +74,9 @@ test('OKF link navigation + back/forward history', async ({ page }) => {
   // Forward history was truncated by this new navigation.
   await expect(forward).toBeDisabled();
 
-  // Keyboard shortcut: Alt+Left goes Back to the previous Concept.
-  await page.keyboard.press('Alt+ArrowLeft');
+  // Keyboard shortcut: Ctrl+Alt+Left goes Back to the previous Concept
+  // (history moved off plain Alt+Left, now Region movement — region-focus-backbone).
+  await page.keyboard.press('Control+Alt+ArrowLeft');
   await expect(editor).toContainText('A Bundle is the root folder');
 
   await page.screenshot({

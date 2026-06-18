@@ -37,6 +37,9 @@
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
+  import { focus } from '$lib/state/focus.svelte';
+  import { region } from '$lib/region';
+  import type { Direction } from '$lib/regionGrid';
 
   // Sidebar accordions (VSCode-style): the left Sidebar holds the Bundle tree
   // (Explorer) + Tags; the right Sidebar holds Backlinks (Outline arrives in a
@@ -64,6 +67,10 @@
   let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
+  // Disposer for the Editor Region's focus-backbone registration. The Editor's
+  // entry point is the CodeMirror view itself (registered once it is built),
+  // unlike the other Regions which use the `use:region` action on a container.
+  let unregisterEditor: (() => void) | null = null;
 
   // The open Concept's frontmatter, mirrored out of the editor's frontmatter
   // field (the single source of truth — ADR 0003) so the Properties panel can
@@ -139,6 +146,27 @@
     focusTypeForPath !== null && focusTypeForPath === editor.path,
   );
 
+  /** Map an Alt-chord key to a Region-movement direction (arrows + hjkl), or
+   *  null when the key isn't a movement key. */
+  function regionDirection(key: string): Direction | null {
+    switch (key) {
+      case 'ArrowLeft':
+      case 'h':
+        return 'left';
+      case 'ArrowDown':
+      case 'j':
+        return 'down';
+      case 'ArrowUp':
+      case 'k':
+        return 'up';
+      case 'ArrowRight':
+      case 'l':
+        return 'right';
+      default:
+        return null;
+    }
+  }
+
   /** Collect bundle-relative paths of all directories at depth < `maxDepth`. */
   function defaultOpenFolders(node: TreeNode, depth: number, maxDepth: number, out: string[]) {
     if (!node.isDir) return;
@@ -151,6 +179,10 @@
   onMount(() => {
     // Apply the OS-driven theme and keep it live.
     const stopTheme = theme.start();
+
+    // Mirror DOM focus into the `focus` store so the active Region can be styled
+    // reactively and directional movement knows where it is (region-focus-backbone).
+    const stopFocus = focus.start();
 
     // Load the Bundle, then restore persisted per-Bundle session state:
     // expanded folders + last-open Concept. Both must wait for their data
@@ -242,14 +274,40 @@
         }
       }
 
-      // Browser-style history shortcuts: Alt+Left = Back, Alt+Right = Forward.
+      // Browser-style history shortcuts moved to Ctrl+Alt+Left/Right
+      // (Obsidian-style) so plain Alt+Left/Right is free for Region movement
+      // (region-focus-backbone). Ctrl+Alt+arrow only — no Shift/Meta.
+      if (e.ctrlKey && e.altKey && !e.metaKey && !e.shiftKey) {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          void editor.back();
+          return;
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          void editor.forward();
+          return;
+        }
+      }
+
+      // Region movement: Alt+arrows AND Alt+hjkl move focus directionally across
+      // the 3×2 Region grid (left/right change column, up/down move within it).
+      // Plain Alt only — Ctrl+Alt is history (above), and we never touch
+      // Ctrl+C/Ctrl+V (no Ctrl branch here). Escape returns to the Editor.
+      if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        // Only when focus is inside a non-Editor Region (don't steal Escape from
+        // overlays / inputs that handle it themselves and aren't in a Region).
+        if (focus.focusedRegion !== null && focus.focusedRegion !== 'editor') {
+          e.preventDefault();
+          focus.escapeToEditor();
+        }
+        return;
+      }
+
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (e.key === 'ArrowLeft') {
+      const dir = regionDirection(e.key);
+      if (dir !== null) {
         e.preventDefault();
-        void editor.back();
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        void editor.forward();
+        focus.moveFocus(dir);
       }
     };
     // Capture phase so the palette shortcut wins even when focus is inside the
@@ -260,6 +318,9 @@
       unsubscribe();
       window.removeEventListener('keydown', onKeydown, true);
       stopTheme();
+      stopFocus();
+      unregisterEditor?.();
+      unregisterEditor = null;
       view?.destroy();
       view = null;
     };
@@ -319,6 +380,17 @@
       });
       frontmatterProps = props;
       syncHistoryDepths();
+      // Register the Editor Region with the focus backbone. Its entry point is
+      // the CodeMirror view (home base for Escape + the grid's centre column).
+      // Visible only when a Concept is open (the editor-host is hidden otherwise).
+      unregisterEditor = focus.register('editor', {
+        container: view.dom,
+        focus: () => {
+          view?.focus();
+          return true;
+        },
+        isVisible: () => editor.path !== null,
+      });
     } else {
       // No-op when body + frontmatter are unchanged (guards against feedback
       // from edits); updates the field on Concept switch / external reload. A
@@ -503,6 +575,9 @@
       <div
         class="tree-pane"
         class:drop-target={treeDnd.dropTarget === ''}
+        class:region-active={focus.focusedRegion === 'explorer'}
+        data-region="explorer"
+        use:region={{ id: 'explorer', isVisible: () => session.explorerOpen }}
         ondragover={(e) => {
           const from = treeDnd.dragging;
           if (from === null || !treeDnd.canDrop(from, '')) return;
@@ -574,7 +649,14 @@
         ontoggle={() => session.setTagsOpen(!session.tagsOpen)}
         testid="tags-section"
       >
-        <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
+        <div
+          class="region-host"
+          class:region-active={focus.focusedRegion === 'tags'}
+          data-region="tags"
+          use:region={{ id: 'tags', isVisible: () => tagsVisible && session.tagsOpen }}
+        >
+          <TagBrowser version={indexStore.version} selected={editor.path} onopen={openConcept} />
+        </div>
       </SidebarSection>
     {/if}
     </div>
@@ -629,7 +711,7 @@
           type="button"
           class="nav-btn"
           data-testid="nav-back"
-          title="Back (Alt+Left)"
+          title="Back (Ctrl+Alt+Left)"
           aria-label="Back"
           disabled={!editor.canGoBack}
           onclick={() => void editor.back()}>←</button
@@ -638,7 +720,7 @@
           type="button"
           class="nav-btn"
           data-testid="nav-forward"
-          title="Forward (Alt+Right)"
+          title="Forward (Ctrl+Alt+Right)"
           aria-label="Forward"
           disabled={!editor.canGoForward}
           onclick={() => void editor.forward()}>→</button
@@ -698,23 +780,35 @@
       <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
     {/if}
     {#if editor.path && !isReservedFile(editor.path)}
-      <Properties
-        properties={frontmatterProps}
-        path={editor.path}
-        types={suggestions.types}
-        keys={suggestions.keys}
-        tags={suggestions.tags}
-        focusType={focusTypeNow}
-        onchange={onPropertiesChange}
-        onUndo={doUndo}
-        onRedo={doRedo}
-        {canUndo}
-        {canRedo}
-      />
+      <div
+        class="region-host properties-host"
+        class:region-active={focus.focusedRegion === 'properties'}
+        data-region="properties"
+        use:region={{
+          id: 'properties',
+          isVisible: () => editor.path !== null && !isReservedFile(editor.path),
+        }}
+      >
+        <Properties
+          properties={frontmatterProps}
+          path={editor.path}
+          types={suggestions.types}
+          keys={suggestions.keys}
+          tags={suggestions.tags}
+          focusType={focusTypeNow}
+          onchange={onPropertiesChange}
+          onUndo={doUndo}
+          onRedo={doRedo}
+          {canUndo}
+          {canRedo}
+        />
+      </div>
     {/if}
     <div
       class="editor-host"
       class:hidden={!editor.path}
+      class:region-active={focus.focusedRegion === 'editor'}
+      data-region="editor"
       data-testid="editor"
       bind:this={editorParent}
     ></div>
@@ -741,7 +835,17 @@
         ontoggle={() => session.setOutlineOpen(!session.outlineOpen)}
         testid="outline-section"
       >
-        <Outline path={editor.path} content={editor.content} onselect={scrollToOutlineLine} />
+        <div
+          class="region-host"
+          class:region-active={focus.focusedRegion === 'outline'}
+          data-region="outline"
+          use:region={{
+            id: 'outline',
+            isVisible: () => session.rightSidebarOpen && session.outlineOpen && editor.path !== null,
+          }}
+        >
+          <Outline path={editor.path} content={editor.content} onselect={scrollToOutlineLine} />
+        </div>
       </SidebarSection>
       <SidebarSection
         title="Backlinks"
@@ -749,7 +853,18 @@
         ontoggle={() => session.setBacklinksOpen(!session.backlinksOpen)}
         testid="backlinks-section"
       >
-        <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
+        <div
+          class="region-host"
+          class:region-active={focus.focusedRegion === 'backlinks'}
+          data-region="backlinks"
+          use:region={{
+            id: 'backlinks',
+            isVisible: () =>
+              session.rightSidebarOpen && session.backlinksOpen && editor.path !== null,
+          }}
+        >
+          <Backlinks path={editor.path} version={indexStore.version} onopen={openConcept} />
+        </div>
       </SidebarSection>
     </div>
   </aside>
@@ -843,6 +958,31 @@
   /* Padding wrapper for the tree inside the Explorer section body. */
   .tree-pane {
     padding: 0.5rem;
+  }
+
+  /* Active-Region affordance (region-focus-backbone): the Region currently
+     holding keyboard focus gets a SUBTLE lighter background on its container.
+     Deliberately no ring/border around the Region — the Focused item's own
+     `:focus-visible` ring stays the prominent spotlight. Driven by the
+     `focusedRegion` rune (state/focus.svelte.ts), which mirrors DOM focus.
+     The Region containers focused via `use:region` carry tabindex=-1 as a
+     fallback entry point; suppress the default outline on them so only the
+     subtle background reads as the Region affordance. */
+  .region-active {
+    background: var(--hover);
+  }
+
+  .region-host:focus,
+  .tree-pane:focus,
+  .editor-host:focus {
+    outline: none;
+  }
+
+  /* A plain block wrapper that hosts a Region container (Tags / Properties /
+     Outline / Backlinks) so the active-Region background paints behind the
+     whole Section body. */
+  .region-host {
+    display: block;
   }
 
   /* Whole-pane highlight while a row is dragged over empty space (drop = move to
