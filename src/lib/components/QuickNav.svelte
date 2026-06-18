@@ -9,6 +9,7 @@
    * navigation/history path (so back/forward keeps working), Escape closes.
    */
   import { fuzzyRank, type FuzzyMatch } from '$lib/fuzzy';
+  import { clampIndex, nextIndex, prevIndex } from '$lib/listNav';
   import { splitPath } from '$lib/path';
   import { isReservedFile } from '$lib/reserved';
 
@@ -50,9 +51,7 @@
   // The effective selection, clamped to the current result set without writing
   // back to state (avoids an effect-update loop). `selected` is the user's
   // intent; this derived value is what the UI highlights / Enter opens.
-  const activeIndex = $derived(
-    results.length === 0 ? 0 : Math.min(selected, results.length - 1),
-  );
+  const activeIndex = $derived(clampIndex(selected, results.length));
 
   // Keep the highlighted result within the scrollable viewport as the selection
   // moves with ↑/↓ (and wraps at the ends), matching the Search panel.
@@ -88,10 +87,10 @@
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (results.length > 0) selected = (activeIndex + 1) % results.length;
+      selected = nextIndex(activeIndex, results.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (results.length > 0) selected = (activeIndex - 1 + results.length) % results.length;
+      selected = prevIndex(activeIndex, results.length);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const r = results[activeIndex];

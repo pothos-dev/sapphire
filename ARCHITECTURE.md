@@ -22,6 +22,7 @@ src/
     path.ts                  # bundle-relative path helpers (basename/dirname/joinPath/...)
     errors.ts                # errMessage(e) — message from an Error or any thrown value
     debounce.ts              # createDebouncer (shared autosave/persist timer)
+    listNav.ts               # clamp/wrap index math shared by QuickNav + SearchPanel
     frontmatter.ts links.ts outline.ts fuzzy.ts reserved.ts   # pure, unit-tested utils
     ipc/
       backend.ts             # Backend interface — the ONLY boundary to Rust
@@ -143,8 +144,8 @@ CDP is unavailable (Tauri uses WebKitGTK on Linux, not Chromium). So:
 
 - **Unit tests (fast, pure logic).** `bun test src/lib` runs the bun built-in test
   runner over `src/lib/**/*.test.ts` (no extra dependency; `bun-types` is dev-only).
-  These cover the pure, DOM-free modules — `path`, `errors`, `debounce`, `frontmatter`,
-  `links`, `outline`, `fuzzy`, `reserved`. Keep them scoped to `src/lib` so the runner
+  These cover the pure, DOM-free modules — `path`, `errors`, `debounce`, `listNav`,
+  `frontmatter`, `links`, `outline`, `fuzzy`, `reserved`. Keep them scoped to `src/lib` so the runner
   never picks up the Playwright specs in `tests/`. The Rust side has `#[cfg(test)]`
   unit tests run by `cargo test` (logic modules: bundle, index, rewrite, search, config,
   watcher, app_state).

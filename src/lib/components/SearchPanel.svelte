@@ -13,6 +13,7 @@
    * Style mirrors the QuickNav palette for consistency.
    */
   import { backend } from '$lib/ipc';
+  import { clampIndex, nextIndex, prevIndex } from '$lib/listNav';
   import { splitPath } from '$lib/path';
   import type { SearchHit } from '$lib/types';
 
@@ -41,9 +42,7 @@
   // Monotonic token so a slow earlier search cannot overwrite a newer one.
   let queryToken = 0;
 
-  const activeIndex = $derived(
-    results.length === 0 ? 0 : Math.min(selected, results.length - 1),
-  );
+  const activeIndex = $derived(clampIndex(selected, results.length));
 
   // Keep the highlighted result within the scrollable viewport as the selection
   // moves with ↑/↓ (and wraps at the ends). Without this, the selection can move
@@ -130,10 +129,10 @@
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (results.length > 0) selected = (activeIndex + 1) % results.length;
+      selected = nextIndex(activeIndex, results.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (results.length > 0) selected = (activeIndex - 1 + results.length) % results.length;
+      selected = prevIndex(activeIndex, results.length);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const r = results[activeIndex];
