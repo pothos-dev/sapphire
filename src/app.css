@@ -39,6 +39,11 @@
   /* Neutral interaction wash */
   --hover: rgba(62, 70, 84, 0.07);
 
+  /* Active-Region lift: the Region holding keyboard focus is BRIGHTENED (never
+     darkened) by a subtle translucent-white wash, so the Focused item's ring
+     reads against it rather than blending into a dimmed backdrop. */
+  --region-active: rgba(255, 255, 255, 0.5);
+
   /* Danger — muted clay, never vivid */
   --danger: #b15c4f;
   --danger-contrast: #f9fafc;
@@ -133,6 +138,9 @@ body:has([data-theme='dark']) {
   --accent-ring: rgba(125, 163, 207, 0.5);
 
   --hover: rgba(200, 208, 222, 0.07);
+
+  /* Same brightening lift over the dark "paper" — a faint white wash. */
+  --region-active: rgba(255, 255, 255, 0.05);
 
   --danger: #c06d5f;
   --danger-contrast: #0f131a;

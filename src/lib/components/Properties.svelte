@@ -267,11 +267,26 @@
     return propertiesNav.cell.row === id;
   }
 
-  /** Find the cell wrapper element for `cell`, if rendered. */
+  // The add-controls row ("+ Text" / "+ List") is a navigable grid row sitting
+  // one past the last data row, so the cursor can land on it (↓ from the last
+  // row) and the buttons share the cells' roving-tabindex + spotlight model.
+  const addRowIndex = $derived(properties.length);
+
+  /** Whether the add button in `col` is the Focused cell (roving tabindex / ring). */
+  function addBtnFocused(col: 0 | 1): boolean {
+    return propertiesNav.cell.row === addRowIndex && propertiesNav.cell.col === col;
+  }
+
+  /**
+   * Find the navigable element for `cell`, if rendered. This is the cell WRAPPER
+   * for a data row, or the "+ Text" / "+ List" BUTTON for the add-controls row
+   * (row index === `properties.length`) — both carry the `data-cell-row` /
+   * `data-cell-col` coordinates, so a single attribute query addresses either.
+   */
   function cellEl(cell: Cell): HTMLElement | null {
     return (
       panel?.querySelector<HTMLElement>(
-        `.cell[data-cell-row="${cell.row}"][data-cell-col="${cell.col}"]`,
+        `[data-cell-row="${cell.row}"][data-cell-col="${cell.col}"]`,
       ) ?? null
     );
   }
@@ -331,7 +346,7 @@
   function onPanelFocusIn(e: FocusEvent) {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
-    const cellEl = target.closest<HTMLElement>('.cell');
+    const cellEl = target.closest<HTMLElement>('[data-cell-row]');
     if (!cellEl) return;
     const row = Number(cellEl.dataset.cellRow);
     const col = (Number(cellEl.dataset.cellCol) === VALUE_COL ? VALUE_COL : KEY_COL) as 0 | 1;
@@ -437,6 +452,7 @@
       valueKind: valueKindAt,
       enterEdit,
       addRow: addText,
+      addList,
       deleteRow: (row) => deleteRowByIndex(row),
       copyCell,
       pasteCell,
@@ -643,11 +659,35 @@
   <!-- Add controls: create a new scalar (`Text`) or flat-list (`List`) property.
        The kind is fixed at creation. Shown in both the empty and populated
        states; new rows append after existing ones. -->
+  <!-- The two add buttons ARE the grid's final ("add-controls") row: they carry
+       the `data-cell-row`/`data-cell-col` coordinates (row = `addRowIndex`, one
+       past the last data row) and the roving tabindex, so ↓ from the last row
+       lands here and ←/→ move between them. `.cell-active` mirrors the cells'
+       nav-mode spotlight (programmatic focus doesn't reliably set
+       `:focus-visible`). Clicking still adds regardless of focus. -->
   <div class="add" data-testid="properties-add">
-    <button type="button" class="add-btn" data-testid="add-text" onclick={addText}>
+    <button
+      type="button"
+      class="add-btn"
+      class:cell-active={addBtnFocused(KEY_COL)}
+      data-testid="add-text"
+      data-cell-row={addRowIndex}
+      data-cell-col={KEY_COL}
+      tabindex={addBtnFocused(KEY_COL) ? 0 : -1}
+      onclick={addText}
+    >
       + Text
     </button>
-    <button type="button" class="add-btn" data-testid="add-list" onclick={addList}>
+    <button
+      type="button"
+      class="add-btn"
+      class:cell-active={addBtnFocused(VALUE_COL)}
+      data-testid="add-list"
+      data-cell-row={addRowIndex}
+      data-cell-col={VALUE_COL}
+      tabindex={addBtnFocused(VALUE_COL) ? 0 : -1}
+      onclick={addList}
+    >
       + List
     </button>
   </div>
@@ -870,7 +910,8 @@
     background: var(--hover);
   }
 
-  .add-btn:focus-visible {
+  .add-btn:focus-visible,
+  .add-btn.cell-active {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);

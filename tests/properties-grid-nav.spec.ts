@@ -105,9 +105,23 @@ test('grid nav: Alt+↑ enters nav mode, arrows move + clamp, input not focused'
   await page.keyboard.press('ArrowLeft');
   await expect.poll(() => activeCell(page)).toEqual({ row: 1, col: 0 });
 
-  // ArrowDown to the last row (4 = timestamp), then clamp.
-  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
+  // ArrowDown walks to the last DATA row (4 = timestamp)…
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown'); // rows 2, 3, 4
   await expect.poll(() => activeCell(page)).toEqual({ row: 4, col: 0 });
+  // …then ONTO the add-controls row (the "+ Text" / "+ List" buttons), which is
+  // a navigable grid row one past the last data row. It is a button, not a cell
+  // wrapper, so `activeCell` is null; identify it by testid.
+  await page.keyboard.press('ArrowDown'); // → "+ Text"
+  await expect.poll(() => activeCell(page)).toBeNull();
+  await expect.poll(() => activeTestId(page)).toBe('add-text');
+  await page.keyboard.press('ArrowDown'); // clamps on the add-controls row
+  await expect.poll(() => activeTestId(page)).toBe('add-text');
+  // ←/→ move between the two add buttons.
+  await page.keyboard.press('ArrowRight'); // → "+ List"
+  await expect.poll(() => activeTestId(page)).toBe('add-list');
+  // ↑ returns to the last data row (value column, since we're on col 1).
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(() => activeCell(page)).toEqual({ row: 4, col: 1 });
 
   await page.screenshot({ path: 'tests/screenshots/properties-grid-nav.png', fullPage: true });
 });
@@ -187,7 +201,10 @@ test('grid: `a` adds a row in edit mode on its key cell; `d` deletes the focused
   // Navigate to the new row (last, row index = before) and delete it with `d`.
   await page.keyboard.press('Alt+ArrowUp'); // re-assert nav mode in Properties
   await expect.poll(() => activeCell(page)).not.toBeNull();
-  for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowDown'); // to last row
+  // Overshoot down onto the add-controls row, then step back UP one to land on
+  // the last data row (the new `priority` row, index `before`).
+  for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowUp');
   await expect.poll(() => activeCell(page)).toEqual({ row: before, col: 0 });
   await page.keyboard.press('d');
   await expect.poll(rowCount).toBe(before);

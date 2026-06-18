@@ -41,8 +41,10 @@ export interface PropertiesNavActions {
    * places DOM focus.
    */
   enterEdit: (cell: Cell) => void;
-  /** Add a new property row and request edit mode on its key cell. */
+  /** Add a new scalar ("+ Text") property row and request edit mode on its key cell. */
   addRow: () => void;
+  /** Add a new list ("+ List") property row (the add-controls row, right button). */
+  addList: () => void;
   /** Delete the property row at `row`. */
   deleteRow: (row: number) => void;
   /** Copy the focused cell's value to the clipboard (nav-mode Ctrl+C). */
@@ -93,7 +95,10 @@ class PropertiesNavStore {
    * the grid is now empty.
    */
   clamp(rowCount: number): void {
-    const next = clampCell(this.cell, rowCount);
+    // The grid has `rowCount` data rows PLUS the add-controls row at index
+    // `rowCount` (the "+ Text" / "+ List" buttons), which the cursor may rest
+    // on — so clamp against `rowCount + 1` navigable rows.
+    const next = clampCell(this.cell, rowCount + 1);
     // Only write when the position actually changes, so an effect that re-runs
     // this on every render doesn't churn a fresh object reference (which would
     // retrigger cursor-dependent effects in a loop).
@@ -112,6 +117,13 @@ class PropertiesNavStore {
    */
   handleNavKeydown(e: KeyboardEvent, actions: PropertiesNavActions): boolean {
     const rowCount = actions.rowCount();
+    // The add-controls row ("+ Text" / "+ List") sits at index `rowCount`, one
+    // past the last data row, and is navigable like any other row: col 0 is the
+    // "+ Text" button, col 1 the "+ List" button. Movement runs over
+    // `rowCount + 1` rows so ↓ from the last data row lands on it and ←/→ move
+    // between the two buttons; Enter ACTIVATES the focused button.
+    const navRows = rowCount + 1;
+    const onAddRow = this.cell.row === rowCount;
 
     // Nav-mode clipboard: copy/paste the whole cell value as a string. Claimed
     // BEFORE the modified-chord guard below (which would otherwise yield Ctrl to
@@ -132,30 +144,29 @@ class PropertiesNavStore {
     // Never claim other modified chords: those belong to the global handler
     // (Alt = Region move). Only plain keys navigate / act on the grid.
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
-    if (rowCount === 0) {
-      // No rows yet: `a` can still add the first one.
-      if (e.key === 'a') {
-        actions.addRow();
-        return true;
-      }
-      return false;
-    }
 
     switch (e.key) {
       case 'ArrowUp':
-        this.cell = moveCell(this.cell, 'up', rowCount);
+        this.cell = moveCell(this.cell, 'up', navRows);
         return true;
       case 'ArrowDown':
-        this.cell = moveCell(this.cell, 'down', rowCount);
+        this.cell = moveCell(this.cell, 'down', navRows);
         return true;
       case 'ArrowLeft':
-        this.cell = moveCell(this.cell, 'left', rowCount);
+        this.cell = moveCell(this.cell, 'left', navRows);
         return true;
       case 'ArrowRight':
-        this.cell = moveCell(this.cell, 'right', rowCount);
+        this.cell = moveCell(this.cell, 'right', navRows);
         return true;
       case 'Enter':
       case 'F2': {
+        // On the add-controls row, Enter ACTIVATES the focused button rather
+        // than entering edit mode: col 0 = "+ Text" (scalar), col 1 = "+ List".
+        if (onAddRow) {
+          if (this.cell.col === VALUE_COL) actions.addList();
+          else actions.addRow();
+          return true;
+        }
         // A LIST value cell drops into chip SUB-NAV (CHIPS mode) rather than
         // edit mode: focus lands on the first chip (or the new-tag input when
         // the list is empty). PropertyRow owns the strip's keys + DOM focus.
@@ -170,9 +181,13 @@ class PropertiesNavStore {
         return true;
       }
       case 'a':
+        // `a` appends a new scalar row from anywhere (including the add row and
+        // the empty grid), matching the "+ Text" button.
         actions.addRow();
         return true;
       case 'd':
+        // The add-controls row has no property to delete.
+        if (onAddRow) return true;
         actions.deleteRow(this.cell.row);
         return true;
       default:

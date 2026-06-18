@@ -1262,15 +1262,17 @@
   }
 
   /* Active-Region affordance (region-focus-backbone): the Region currently
-     holding keyboard focus gets a SUBTLE lighter background on its container.
-     Deliberately no ring/border around the Region — the Focused item's own
-     `:focus-visible` ring stays the prominent spotlight. Driven by the
-     `focusedRegion` rune (state/focus.svelte.ts), which mirrors DOM focus.
-     The Region containers focused via `use:region` carry tabindex=-1 as a
-     fallback entry point; suppress the default outline on them so only the
+     holding keyboard focus gets a SUBTLE BRIGHTER background on its container
+     (`--region-active`, a faint white lift) — never a dimming wash, so the
+     Focused item's own ring stays legible against it rather than blending into
+     a darkened backdrop. Deliberately no ring/border around the Region — the
+     Focused item's `:focus-visible` ring stays the prominent spotlight. Driven
+     by the `focusedRegion` rune (state/focus.svelte.ts), which mirrors DOM
+     focus. The Region containers focused via `use:region` carry tabindex=-1 as
+     a fallback entry point; suppress the default outline on them so only the
      subtle background reads as the Region affordance. */
   .region-active {
-    background: var(--hover);
+    background: var(--region-active);
   }
 
   .region-host:focus,
