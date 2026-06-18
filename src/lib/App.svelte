@@ -1298,6 +1298,15 @@
     background: var(--region-active);
   }
 
+  /* Properties paints its own opaque "sunken well" background (Properties.svelte),
+     which fully covers its host and so hides the lift above. Layer the SAME
+     translucent lift over that well when the Region is active, so the metadata
+     editor highlights on focus like every other Region. */
+  .properties-host.region-active :global(.properties) {
+    background:
+      linear-gradient(var(--region-active), var(--region-active)), var(--bg-sunken);
+  }
+
   .region-host:focus,
   .tree-pane:focus,
   .editor-host:focus {
