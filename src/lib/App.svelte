@@ -36,6 +36,7 @@
   import TagBrowser from '$lib/components/TagBrowser.svelte';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
+  import { treeDnd } from '$lib/state/treeDnd.svelte';
 
   // Sidebar accordions (VSCode-style): the left Sidebar holds the Bundle tree
   // (Explorer) + Tags; the right Sidebar holds Backlinks (Outline arrives in a
@@ -495,7 +496,37 @@
           </div>
         {/if}
       {/snippet}
-      <div class="tree-pane">
+      <!-- The pane (not just the row list) is the Bundle-root drop zone, so the
+           empty space below the rows is droppable. Folder/file rows stopPropagation
+           on their own drags, so any drag event reaching here is over bare space
+           and resolves to "move to the Bundle root". -->
+      <div
+        class="tree-pane"
+        class:drop-target={treeDnd.dropTarget === ''}
+        ondragover={(e) => {
+          const from = treeDnd.dragging;
+          if (from === null || !treeDnd.canDrop(from, '')) return;
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          treeDnd.dropTarget = '';
+        }}
+        ondragleave={(e) => {
+          if (
+            e.currentTarget instanceof Node &&
+            e.relatedTarget instanceof Node &&
+            e.currentTarget.contains(e.relatedTarget)
+          )
+            return;
+          if (treeDnd.dropTarget === '') treeDnd.dropTarget = null;
+        }}
+        ondrop={(e) => {
+          e.preventDefault();
+          const from = treeDnd.dragging;
+          treeDnd.end();
+          if (from !== null && treeDnd.canDrop(from, '')) void treeActions.movePath(from, '');
+        }}
+        role="presentation"
+      >
     {#if bundle.loading}
       <p class="status">Loading…</p>
     {:else if bundle.error}
@@ -812,6 +843,13 @@
   /* Padding wrapper for the tree inside the Explorer section body. */
   .tree-pane {
     padding: 0.5rem;
+  }
+
+  /* Whole-pane highlight while a row is dragged over empty space (drop = move to
+     the Bundle root). */
+  .tree-pane.drop-target {
+    box-shadow: inset 0 0 0 1px var(--accent-ring);
+    border-radius: var(--radius-sm);
   }
 
   .editor-pane {

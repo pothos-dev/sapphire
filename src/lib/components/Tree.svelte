@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { TreeNode } from '$lib/types';
+  import { dirname } from '$lib/path';
   import { session } from '$lib/state/session.svelte';
+  import { treeActions } from '$lib/state/treeActions.svelte';
+  import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { isReservedFile, reservedKind, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Self from './Tree.svelte';
 
@@ -38,6 +41,67 @@
 
   const isMarkdown = $derived(!node.isDir && node.name.toLowerCase().endsWith('.md'));
 
+  // Drag-and-drop moving (slice: tree-dnd). Folders and Concepts (`.md` files)
+  // can be dragged. The drop TARGET resolves to a folder: a folder row means
+  // "move INTO this folder"; a file row resolves to its PARENT folder, so a
+  // slightly-off drop onto a sibling Concept is a safe no-op rather than a
+  // surprise move. Dropping onto empty tree space targets the Bundle root — that
+  // zone lives on `.tree-pane` in App.svelte.
+  const draggable = $derived(node.isDir || isMarkdown);
+  const dropDir = $derived(node.isDir ? node.path : dirname(node.path));
+  // Only folder rows show the highlight; a hovered file lights up its PARENT.
+  const isDropTarget = $derived(node.isDir && treeDnd.dropTarget === node.path);
+
+  function onDragStart(e: DragEvent) {
+    if (!draggable) return;
+    treeDnd.start(node.path);
+    // Firefox only initiates a drag once `setData` is called; the path also
+    // rides along as a courtesy for anything reading the dropped payload.
+    e.dataTransfer?.setData('text/plain', node.path);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+
+  // Hovering a collapsed folder mid-drag springs it open after a beat, so a
+  // Concept can be dropped into a nested folder without a separate expand click.
+  let expandTimer: ReturnType<typeof setTimeout> | null = null;
+  function clearExpandTimer() {
+    if (expandTimer !== null) {
+      clearTimeout(expandTimer);
+      expandTimer = null;
+    }
+  }
+
+  function onDragOver(e: DragEvent) {
+    const from = treeDnd.dragging;
+    if (from === null || !treeDnd.canDrop(from, dropDir)) return;
+    e.preventDefault(); // a missing preventDefault here means "not a drop target"
+    e.stopPropagation(); // handled here — don't also trigger the root drop zone
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    treeDnd.dropTarget = dropDir;
+    if (node.isDir && !expanded && expandTimer === null) {
+      expandTimer = setTimeout(() => session.setExpanded(node.path, true), 600);
+    }
+  }
+
+  function onDragLeave(e: DragEvent) {
+    // Ignore leaves into our own descendants; only clear when the pointer
+    // actually exits this row.
+    if (e.currentTarget instanceof Node && e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) {
+      return;
+    }
+    clearExpandTimer();
+    if (treeDnd.dropTarget === dropDir) treeDnd.dropTarget = null;
+  }
+
+  function onDrop(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearExpandTimer();
+    const from = treeDnd.dragging;
+    treeDnd.end();
+    if (from !== null && treeDnd.canDrop(from, dropDir)) void treeActions.movePath(from, dropDir);
+  }
+
   // The tree shows only Concepts (`.md` files) and folders; any other file type
   // in the Bundle is ignored. Displayed names omit the `.md` extension.
   const displayName = $derived(node.isDir ? node.name : node.name.replace(/\.md$/i, ''));
@@ -70,7 +134,22 @@
 </script>
 
 {#if node.isDir}
-  <div class="row dir" data-row-path={node.path} style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected="false" tabindex="-1">
+  <div
+    class="row dir"
+    class:drop-target={isDropTarget}
+    data-row-path={node.path}
+    style="padding-left: {indent}px"
+    oncontextmenu={openMenu}
+    {draggable}
+    ondragstart={onDragStart}
+    ondragend={() => treeDnd.end()}
+    ondragover={onDragOver}
+    ondragleave={onDragLeave}
+    ondrop={onDrop}
+    role="treeitem"
+    aria-selected="false"
+    tabindex="-1"
+  >
     <!-- The disclosure twisty and the folder name are split into two toggle
          buttons so the reserved-file icons (index/log) can sit between them,
          directly in front of the label — matching the Explorer header. The
@@ -121,7 +200,21 @@
     </ul>
   {/if}
 {:else}
-  <div class="row file" data-row-path={node.path} style="padding-left: {indent}px" oncontextmenu={openMenu} role="treeitem" aria-selected={selected === node.path} tabindex="-1">
+  <div
+    class="row file"
+    data-row-path={node.path}
+    style="padding-left: {indent}px"
+    oncontextmenu={openMenu}
+    draggable={isMarkdown}
+    ondragstart={onDragStart}
+    ondragend={() => treeDnd.end()}
+    ondragover={onDragOver}
+    ondragleave={onDragLeave}
+    ondrop={onDrop}
+    role="treeitem"
+    aria-selected={selected === node.path}
+    tabindex="-1"
+  >
     <button
       class="entry file-entry"
       class:selected={selected === node.path}
@@ -152,6 +245,18 @@
      so the split toggle still reads as one row. */
   .row.dir:hover {
     background: var(--hover);
+  }
+
+  /* The folder under the dragged Concept while a move is in flight. */
+  .row.dir.drop-target {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent-ring);
+    border-radius: var(--radius-sm);
+  }
+
+  /* The dragged row dims so it reads as "in transit". */
+  .row[draggable='true']:active {
+    cursor: grabbing;
   }
 
   .reserved-btn {
