@@ -11,14 +11,19 @@
   // and the shared key/tag datalists. This component is value-editor-only: it
   // reports edits back through the callbacks, never mutating `prop` directly.
   //
-  // Keying note (behaviour-preserving): scalar/list edits are dispatched by
-  // `prop.key` (see editScalar/setListItems in Properties), and the "add chip"
-  // draft is held in Properties keyed by `prop.key`. This component is given the
-  // draft for THIS row and bubbles changes back; it does not own draft state.
+  // Keying note: scalar/list edits are dispatched by the row's positional `id`
+  // (the array index into the frontmatter properties — see editScalar/
+  // setListItems in Properties), NOT by `prop.key`. Keying by id targets the
+  // exact row even when two rows share a key (a file authored outside the app).
+  // The "add chip" draft is held in Properties keyed by the same id. This
+  // component is given the id + the draft for THIS row and bubbles changes back;
+  // it does not own draft state.
 
   import type { Property } from '$lib/frontmatter';
 
   interface Props {
+    /** Positional row id (array index) used to address this row on edit. */
+    id: number;
     /** The property whose value this row edits (source of truth). */
     prop: Property;
     /** True when this row is the special `type` scalar (datalist + focus target). */
@@ -27,14 +32,14 @@
     types: string[];
     /** Draft text for this list row's "add chip" input (bound). */
     chipDraft: string;
-    /** Replace the value of the scalar property `key`. */
-    editScalar: (key: string, value: string) => void;
-    /** Append the current chip draft (if non-empty) to the list property `key`. */
-    addChip: (key: string, current: string[]) => void;
-    /** Remove the chip at `index` from the list property `key`. */
-    removeChip: (key: string, current: string[], index: number) => void;
+    /** Replace the value of the scalar property at row `id`. */
+    editScalar: (id: number, value: string) => void;
+    /** Append the current chip draft (if non-empty) to the list property at row `id`. */
+    addChip: (id: number, current: string[]) => void;
+    /** Remove the chip at `index` from the list property at row `id`. */
+    removeChip: (id: number, current: string[], index: number) => void;
     /** Enter-to-add handler for the chip input. */
-    onChipKeydown: (event: KeyboardEvent, key: string, current: string[]) => void;
+    onChipKeydown: (event: KeyboardEvent, id: number, current: string[]) => void;
     /**
      * Bound back to the parent's `typeInput`: the `type` <input> element, which
      * the panel focuses when a new Concept opens. Only set for the `type` row.
@@ -43,6 +48,7 @@
   }
 
   let {
+    id,
     prop,
     isType,
     types,
@@ -68,7 +74,7 @@
       list="type-suggestions"
       bind:this={typeInput}
       value={prop.scalar ?? ''}
-      onchange={(e) => editScalar(prop.key, (e.currentTarget as HTMLInputElement).value)}
+      onchange={(e) => editScalar(id, (e.currentTarget as HTMLInputElement).value)}
     />
     <datalist id="type-suggestions" data-testid="type-suggestions">
       {#each types as t (t)}
@@ -82,7 +88,7 @@
       type="text"
       data-testid={`scalar-${prop.key}`}
       value={prop.scalar ?? ''}
-      onchange={(e) => editScalar(prop.key, (e.currentTarget as HTMLInputElement).value)}
+      onchange={(e) => editScalar(id, (e.currentTarget as HTMLInputElement).value)}
     />
   {:else if prop.kind === 'list'}
     <div class="chips" data-testid={`chips-${prop.key}`}>
@@ -94,7 +100,7 @@
             class="chip-remove"
             aria-label={`Remove ${item}`}
             data-testid={`chip-remove-${prop.key}`}
-            onclick={() => removeChip(prop.key, prop.list ?? [], i)}>×</button
+            onclick={() => removeChip(id, prop.list ?? [], i)}>×</button
           >
         </span>
       {/each}
@@ -106,8 +112,8 @@
         data-testid={`chip-add-${prop.key}`}
         list="tag-suggestions"
         bind:value={chipDraft}
-        onkeydown={(e) => onChipKeydown(e, prop.key, prop.list ?? [])}
-        onblur={() => addChip(prop.key, prop.list ?? [])}
+        onkeydown={(e) => onChipKeydown(e, id, prop.list ?? [])}
+        onblur={() => addChip(id, prop.list ?? [])}
       />
     </div>
   {:else}

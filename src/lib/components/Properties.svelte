@@ -98,8 +98,11 @@
   // rebuilt wholesale on every change, so the id never desyncs from its prop.
   const rows = $derived(properties.map((prop, id) => ({ id, prop })));
 
-  // Draft text for the per-list "add chip" inputs, keyed by property key.
-  let chipDrafts = $state<Record<string, string>>({});
+  // Draft text for the per-list "add chip" inputs, keyed by ROW ID (the
+  // positional index), not by `prop.key`. Keying by id means a duplicate key
+  // (from an externally-authored file) gets a distinct draft per row, and the
+  // draft always attaches to the row actually being edited.
+  let chipDrafts = $state<Record<number, string>>({});
 
   // Local draft text for the key inputs, keyed by row id. `undefined` means the
   // input shows the live key; a string means the user is mid-edit. We reset a
@@ -200,33 +203,40 @@
     onchange(properties.filter((_, i) => i !== id));
   }
 
-  /** Replace the value of the scalar property `key`. */
-  function editScalar(key: string, value: string) {
-    onchange(properties.map((p) => (p.key === key ? { ...p, scalar: value } : p)));
+  // Value edits address the row by its positional `id` (the array index), NOT by
+  // `prop.key`. With duplicate keys forbidden in-app, key and id agree; but an
+  // externally-authored file can still carry duplicate keys, and addressing by
+  // id targets the exact row being edited rather than the first key match. The
+  // id ↔ array-index contract holds: `properties` is rebuilt wholesale on every
+  // change (document order preserved), so the index never desyncs from its prop.
+
+  /** Replace the value of the scalar property at row `id`. */
+  function editScalar(id: number, value: string) {
+    onchange(properties.map((p, i) => (i === id ? { ...p, scalar: value } : p)));
   }
 
-  /** Set the items of the list property `key`. */
-  function setListItems(key: string, items: string[]) {
-    onchange(properties.map((p) => (p.key === key ? { ...p, list: items } : p)));
+  /** Set the items of the list property at row `id`. */
+  function setListItems(id: number, items: string[]) {
+    onchange(properties.map((p, i) => (i === id ? { ...p, list: items } : p)));
   }
 
-  function addChip(key: string, current: string[]) {
-    const draft = (chipDrafts[key] ?? '').trim();
+  function addChip(id: number, current: string[]) {
+    const draft = (chipDrafts[id] ?? '').trim();
     if (draft === '') return;
-    setListItems(key, [...current, draft]);
-    chipDrafts[key] = '';
+    setListItems(id, [...current, draft]);
+    chipDrafts[id] = '';
   }
 
-  function removeChip(key: string, current: string[], index: number) {
+  function removeChip(id: number, current: string[], index: number) {
     const next = current.slice();
     next.splice(index, 1);
-    setListItems(key, next);
+    setListItems(id, next);
   }
 
-  function onChipKeydown(event: KeyboardEvent, key: string, current: string[]) {
+  function onChipKeydown(event: KeyboardEvent, id: number, current: string[]) {
     if (event.key === 'Enter') {
       event.preventDefault();
-      addChip(key, current);
+      addChip(id, current);
     }
   }
 </script>
@@ -301,6 +311,7 @@
       </div>
 
       <PropertyRow
+        {id}
         {prop}
         {isType}
         {types}
@@ -308,7 +319,7 @@
         {addChip}
         {removeChip}
         {onChipKeydown}
-        bind:chipDraft={chipDrafts[prop.key]}
+        bind:chipDraft={chipDrafts[id]}
         bind:typeInput
       />
     </div>

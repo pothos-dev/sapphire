@@ -116,6 +116,24 @@ This Concept has nested and multi-line frontmatter to prove verbatim
 round-tripping when an unrelated scalar is edited.
 `,
 
+  // A Concept whose frontmatter contains DUPLICATE top-level keys (`title`
+  // twice). The in-app key-commit path forbids creating duplicates, but a file
+  // authored OUTSIDE the app can still reach this state — `parseProperties`
+  // yields two separate rows with the same key. This fixture lets the Properties
+  // panel's defensive row-id keying be exercised: editing the SECOND duplicate
+  // row must update the second row, not the first matching key.
+  'concepts/duplicate-keys.md': `---
+type: concept
+title: First Title
+title: Second Title
+tags: [dupdemo]
+---
+
+# Duplicate Keys
+
+This Concept was authored outside the app and has two \`title\` keys.
+`,
+
   // A Concept exercising the broken-link decoration AND the backlink graph:
   // it links to TWO existing Concepts (relative + bundle-absolute) and to TWO
   // non-existent targets (relative + bundle-absolute). Broken links must render
