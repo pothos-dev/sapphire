@@ -1,35 +1,14 @@
-import {
-  EditorView,
-  keymap,
-  highlightActiveLine,
-  drawSelection,
-  Decoration,
-  ViewPlugin,
-  type DecorationSet,
-  type ViewUpdate,
-} from '@codemirror/view';
-import {
-  EditorState,
-  StateField,
-  Annotation,
-  StateEffect,
-  RangeSetBuilder,
-  type Extension,
-} from '@codemirror/state';
-import { syntaxTree } from '@codemirror/language';
+import { EditorView, keymap, highlightActiveLine, drawSelection } from '@codemirror/view';
+import { EditorState, Annotation, type Extension } from '@codemirror/state';
 import {
   history,
   historyKeymap,
   defaultKeymap,
   indentWithTab,
-  invertedEffects,
-  isolateHistory,
 } from '@codemirror/commands';
 import { indentOnInput } from '@codemirror/language';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
-import { resolveLink } from '$lib/links';
 import { joinConcept, serializeFrontmatter, type Property } from '$lib/frontmatter';
 import {
   inlinePreview,
@@ -43,6 +22,29 @@ import {
 // own chunk and only the languages actually used in a document are fetched.
 import { ATOMIC_CODE_LANGUAGES } from '@atomic-editor/editor/code-languages';
 import '@atomic-editor/editor/styles.css';
+
+import {
+  setFrontmatter,
+  frontmatterField,
+  frontmatterUndo,
+} from './frontmatter-field';
+import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-links';
+import { findExtensions, findPanelTheme } from './find';
+
+// The editor's public surface is re-exported here so consumers keep importing
+// from `$lib/editor/cm`. The frontmatter/broken-link/find concerns now live in
+// sibling modules; cm.ts is the editor BUILDER that assembles them.
+export {
+  setFrontmatter,
+  frontmatterField,
+  dispatchFrontmatter,
+} from './frontmatter-field';
+export {
+  refreshBrokenLinks,
+  refreshBrokenLinkDecorations,
+  type BrokenLinkContext,
+} from './broken-links';
+export { openSearch } from './find';
 
 /**
  * Builds the CodeMirror 6 EditorView with the atomic-editor live-preview
@@ -74,164 +76,6 @@ import '@atomic-editor/editor/styles.css';
  * NOT treat it as something to autosave back to disk.
  */
 const programmatic = Annotation.define<boolean>();
-
-// ---------------------------------------------------------------------------
-// Frontmatter as editor state (ADR 0003)
-//
-// The CodeMirror document holds ONLY the markdown body. The Concept's
-// frontmatter lives as a structured `Property[]` in `frontmatterField` — the
-// single source of truth for frontmatter while a Concept is open. The Properties
-// panel reads it (mirrored out via `onFrontmatterChange`) and writes it by
-// dispatching `setFrontmatter`. On any change we recombine `serialize(props) +
-// body` and report it through `onChange` for autosave.
-//
-// Dispatching frontmatter through a StateEffect (rather than rewriting the whole
-// document string) is what lets the unified-undo slice layer `invertedEffects`
-// on top to put frontmatter edits into the editor's history.
-// ---------------------------------------------------------------------------
-
-/** Replace the open Concept's structured frontmatter. */
-export const setFrontmatter = StateEffect.define<Property[]>();
-
-/** Holds the open Concept's frontmatter properties (body lives in the doc). */
-export const frontmatterField = StateField.define<Property[]>({
-  create: () => [],
-  update(value, tr) {
-    for (const e of tr.effects) if (e.is(setFrontmatter)) value = e.value;
-    return value;
-  },
-});
-
-/**
- * Unified undo (ADR 0003 / unified-body-frontmatter-undo): frontmatter lives in
- * a StateField but is mutated via `setFrontmatter` effects, which CodeMirror's
- * history does not know how to reverse on its own. `invertedEffects` teaches it:
- * for any transaction carrying a `setFrontmatter`, we register the INVERSE — a
- * `setFrontmatter` of the PRIOR field value (`tr.startState`) — so undo/redo
- * restore frontmatter exactly the way they restore document text. Body edits are
- * ordinary doc transactions in the same history, so one timeline spans both.
- */
-const frontmatterUndo = invertedEffects.of((tr) => {
-  // Only emit an inverse when this transaction actually changes frontmatter.
-  if (!tr.effects.some((e) => e.is(setFrontmatter))) return [];
-  return [setFrontmatter.of(tr.startState.field(frontmatterField))];
-});
-
-/**
- * Dispatch a USER frontmatter edit so it forms its OWN discrete undo step and
- * never coalesces with body typing. `isolateHistory.of("full")` opens a fresh
- * history event on both sides; the `setFrontmatter` effect carries the new
- * value (and `frontmatterUndo` records the inverse). NOT used for programmatic
- * concept loads — those rebuild the state with empty history (`setEditorConcept`).
- */
-export function dispatchFrontmatter(view: EditorView, props: Property[]): void {
-  view.dispatch({
-    effects: setFrontmatter.of(props),
-    annotations: isolateHistory.of('full'),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Broken-link decoration (slice: bundle-index-broken-links)
-//
-// Internal markdown links whose resolved target does NOT exist in the Bundle
-// index render with a distinct `cm-broken-link` class (dashed/red — see the CSS
-// below). The check is SYNCHRONOUS: it consults a caller-provided predicate
-// (backed by the frontend index store's cached path set) while walking the
-// syntax tree, because CodeMirror decorations cannot await IPC.
-//
-// Links remain fully clickable and navigable — this is styling only, never a
-// block (broken links are tolerated per the OKF spec, CONTEXT.md).
-//
-// Freshness: the decoration re-runs on doc changes AND when the host dispatches
-// `refreshBrokenLinks` (fired on the `file-changed` watcher event and on
-// Concept switch, so created/removed targets restyle without a reload).
-// ---------------------------------------------------------------------------
-
-/** Context the decoration needs: which Concept is open + does a target exist. */
-export interface BrokenLinkContext {
-  /** bundle-relative path of the open Concept (for relative-link resolution). */
-  currentPath: () => string;
-  /** synchronous existence check against the index's cached path set. */
-  exists: (path: string) => boolean;
-}
-
-/** Dispatch this effect to force the broken-link decoration to recompute. */
-export const refreshBrokenLinks = StateEffect.define<null>();
-
-const brokenLinkMark = Decoration.mark({ class: 'cm-broken-link' });
-
-/** Distinct styling for broken internal links: dashed, red. Clickable still. */
-const brokenLinkTheme = EditorView.theme({
-  '.cm-broken-link': {
-    color: 'var(--danger)',
-    textDecoration: 'underline dashed var(--danger)',
-    textUnderlineOffset: '2px',
-  },
-});
-
-/**
- * Build the broken-link decoration set for the current viewport: walk the
- * syntax tree, find `Link` nodes, extract their URL, resolve it the same way
- * the navigation seam does (`resolveLink`), and mark the link's text range
- * broken when it resolves to an internal target absent from the index.
- */
-function computeBrokenLinks(view: EditorView, ctx: BrokenLinkContext): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  const currentPath = ctx.currentPath();
-
-  for (const { from, to } of view.visibleRanges) {
-    syntaxTree(view.state).iterate({
-      from,
-      to,
-      enter(node) {
-        if (node.name !== 'Link') return;
-        // A markdown Link node spans `[text](url)`. Find the `URL` child for the
-        // href, and mark the whole link range so the styling covers the text.
-        let href: string | null = null;
-        const cursor = node.node.cursor();
-        if (cursor.firstChild()) {
-          do {
-            if (cursor.name === 'URL') {
-              href = view.state.sliceDoc(cursor.from, cursor.to);
-              break;
-            }
-          } while (cursor.nextSibling());
-        }
-        if (href === null) return;
-        const resolved = resolveLink(currentPath, href);
-        if (resolved.kind === 'internal' && !ctx.exists(resolved.path)) {
-          builder.add(node.from, node.to, brokenLinkMark);
-        }
-      },
-    });
-  }
-  return builder.finish();
-}
-
-/**
- * The broken-link extension: a ViewPlugin recomputing the decoration on doc /
- * viewport changes and on an explicit `refreshBrokenLinks` effect.
- */
-function brokenLinks(ctx: BrokenLinkContext): Extension {
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      constructor(view: EditorView) {
-        this.decorations = computeBrokenLinks(view, ctx);
-      }
-      update(update: ViewUpdate) {
-        const refreshed = update.transactions.some((tr) =>
-          tr.effects.some((e) => e.is(refreshBrokenLinks)),
-        );
-        if (update.docChanged || update.viewportChanged || refreshed) {
-          this.decorations = computeBrokenLinks(update.view, ctx);
-        }
-      }
-    },
-    { decorations: (v) => v.decorations },
-  );
-}
 
 export interface BuildEditorOptions {
   parent: HTMLElement;
@@ -318,113 +162,6 @@ function defaultLinkClick(url: string): void {
   // else: relative/OKF link — TODO(slice 5): resolve + navigate in-app.
 }
 
-// ---------------------------------------------------------------------------
-// In-Concept Find & Replace (slices: in-concept-find / in-concept-replace)
-//
-// We mount @codemirror/search's BUILT-IN panel ABOVE the editor (`top: true`)
-// rather than hand-rolling a Svelte panel. Defaults give us case-insensitive
-// literal find (`caseSensitive: false`, `literal: false`/regexp off) with the
-// case / whole-word / regexp toggles still present, and replace / replace-all
-// for free. Replace flows through ordinary doc transactions, so it rides the
-// existing autosave (`onChange`) and CM undo/redo with no new persistence path.
-//
-// Scope is the body only: the CodeMirror doc holds only the body (frontmatter
-// lives in `frontmatterField`, ADR 0003), so find/replace never touch it.
-//
-// `Ctrl/Cmd+F` is owned by App.svelte (so it grabs focus app-wide); the search
-// keymap here still provides in-panel bindings (Enter = next, Esc = close, etc.)
-// and the other find affordances. App calls `openSearch(view)` to open + focus.
-//
-// The panel is themed below with Sapphire's design tokens so it reads as editor
-// chrome (matching the nav bar / inputs) rather than CM's default grey panel.
-// ---------------------------------------------------------------------------
-
-/** Theme the built-in search panel with Sapphire's design tokens. */
-const findPanelTheme = EditorView.theme({
-  '.cm-panel.cm-search': {
-    padding: '0.4rem 0.6rem',
-    backgroundColor: 'var(--bg-elevated)',
-    color: 'var(--text)',
-    borderBottom: '1px solid var(--border)',
-    fontFamily: 'var(--font-ui)',
-    fontSize: '0.85rem',
-  },
-  '.cm-panel.cm-search label': {
-    fontSize: '0.78rem',
-    color: 'var(--text-muted)',
-    marginLeft: '0.2rem',
-  },
-  '.cm-panel.cm-search .cm-textfield': {
-    backgroundColor: 'var(--bg)',
-    color: 'var(--text)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '0.2rem 0.4rem',
-    fontFamily: 'var(--font-ui)',
-  },
-  '.cm-panel.cm-search .cm-textfield:focus-visible': {
-    outline: 'none',
-    borderColor: 'var(--accent)',
-    boxShadow: '0 0 0 2px var(--accent-soft)',
-  },
-  '.cm-panel.cm-search .cm-button': {
-    backgroundColor: 'var(--bg)',
-    backgroundImage: 'none',
-    color: 'var(--text)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '0.2rem 0.55rem',
-    fontFamily: 'var(--font-ui)',
-    cursor: 'pointer',
-  },
-  '.cm-panel.cm-search .cm-button:hover': {
-    backgroundColor: 'var(--hover)',
-  },
-  '.cm-panel.cm-search .cm-button:focus-visible': {
-    outline: 'none',
-    boxShadow: '0 0 0 2px var(--accent-soft)',
-  },
-  '.cm-panel.cm-search [name=close]': {
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-  },
-  '.cm-panel.cm-search [name=close]:hover': {
-    color: 'var(--text)',
-  },
-});
-
-/**
- * The find extension set: the built-in search panel mounted above the editor
- * plus its keymap. Tagging the panel with `data-testid` is done in
- * `openSearch`, since the built-in `SearchPanel` class is not exported.
- */
-function findExtensions(): Extension[] {
-  return [search({ top: true }), keymap.of(searchKeymap)];
-}
-
-/**
- * Open (and focus) the in-Concept find panel for `view`. Called by App.svelte's
- * `Ctrl/Cmd+F` handler so the binding works from anywhere in the app. Seeding
- * the find field from the current selection is the built-in panel's default.
- * Also tags the panel DOM with `data-testid` hooks for e2e selection.
- */
-export function openSearch(view: EditorView): void {
-  openSearchPanel(view);
-  // The built-in panel renders synchronously into the DOM; tag it (and its
-  // fields) for stable e2e selection. Idempotent: re-tagging is harmless.
-  const panel = view.dom.querySelector('.cm-search');
-  if (panel) {
-    panel.setAttribute('data-testid', 'find-panel');
-    panel.querySelector('[name=search]')?.setAttribute('data-testid', 'find-input');
-    panel.querySelector('[name=replace]')?.setAttribute('data-testid', 'replace-input');
-    panel.querySelector('[name=next]')?.setAttribute('data-testid', 'find-next');
-    panel.querySelector('[name=prev]')?.setAttribute('data-testid', 'find-prev');
-    panel.querySelector('button[name=replace]')?.setAttribute('data-testid', 'find-replace');
-    panel.querySelector('[name=replaceAll]')?.setAttribute('data-testid', 'find-replace-all');
-    panel.querySelector('[name=close]')?.setAttribute('data-testid', 'find-close');
-  }
-}
-
 /** The atomic-editor live-preview extension set, shared by build paths. */
 function livePreviewExtensions(onLinkClick: (url: string) => void): Extension[] {
   return [
@@ -492,7 +229,8 @@ function editorExtensions(opts: Omit<BuildEditorOptions, 'parent' | 'doc' | 'fro
     // Editing affordances that make the hybrid preview feel like Obsidian.
     history(),
     // Unified undo: record the inverse of each frontmatter mutation so the
-    // editor history can undo/redo frontmatter alongside body edits.
+    // editor history can undo/redo frontmatter alongside body edits. MUST stay
+    // immediately after `history()` (and paired with `frontmatterField`).
     frontmatterUndo,
     drawSelection(),
     indentOnInput(),
@@ -607,15 +345,6 @@ export function setEditorConcept(
     effects: fmChanged ? [setFrontmatter.of(props)] : [],
     annotations: programmatic.of(true),
   });
-}
-
-/**
- * Force the broken-link decoration to recompute (e.g. after the Bundle index's
- * existing-path set changed on a `file-changed` event, or after switching
- * Concepts). Cheap no-op dispatch carrying the `refreshBrokenLinks` effect.
- */
-export function refreshBrokenLinkDecorations(view: EditorView): void {
-  view.dispatch({ effects: refreshBrokenLinks.of(null) });
 }
 
 /**
