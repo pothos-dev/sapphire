@@ -22,4 +22,6 @@ OKF-specific link and frontmatter extensions.
 - We take a dependency on a young (Nov 2025), single-maintainer project. Mitigation: it's MIT
   and its extensions are composable, so we can vendor or replace pieces if it stalls.
 - atomic-editor ships `[[wiki link]]` support, but OKF uses standard markdown links
-  (`/abs.md`, `./rel.md`), so we do not use its link extension — we write our own.
+  (`/abs.md`, `./rel.md`), so we do not use its link extension for the primary format — we
+  write our own. (Wikilinks are later supported as an *optional secondary* format, re-enabling
+  this extension; see [ADR-0004](0004-wikilinks-optional-secondary-name-based.md).)

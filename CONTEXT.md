@@ -15,6 +15,17 @@ A single `.md` file in the Bundle. Carries YAML frontmatter (required `type` fie
 free-form markdown body.
 _Avoid_: note, document, page (use **Concept** as the canonical term; "document" acceptable casually).
 
+**Wikilink**:
+An optional, secondary link format written `[[name]]` (Obsidian-style), supported in addition
+to — never replacing — standard markdown links, which remain the primary/canonical format.
+`name` is matched by **filename** (without `.md`), case-insensitive, bundle-wide; it never
+matches the frontmatter `title`. Duplicate filenames resolve to the shortest bundle path, then
+alphabetically (silent — ambiguity is not flagged broken), matching Obsidian. Partial paths
+(`[[folder/name]]`) match by path **suffix**. Wikilinks are a Sapphire compatibility affordance
+for content authored in Obsidian; OKF itself does not use them.
+_Avoid_: "internal link" (ambiguous — could mean any in-Bundle link; say **Wikilink** or
+**markdown link** specifically).
+
 **Reserved file**:
 A file with OKF-defined special meaning: `index.md` (progressive-disclosure listing) and
 `log.md` (dated change history). Not ordinary Concepts.
@@ -93,8 +104,9 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
 
 - A **Bundle** contains many **Concepts** and **Reserved files**, nested in directories.
 - A **Concept** has one **Frontmatter** block and one markdown body.
-- A **Concept** links to other **Concepts** via standard markdown links: bundle-absolute
-  (`[x](/path.md)`) or relative (`[x](./path.md)`). Links are tolerated even when broken.
+- A **Concept** links to other **Concepts** primarily via standard markdown links: bundle-absolute
+  (`[x](/path.md)`) or relative (`[x](./path.md)`), and optionally via **Wikilinks** (`[[name]]`,
+  resolved by filename). Links are tolerated even when broken.
 - A **Sidebar** contains many **Sections**; each Section shows a view onto the Bundle or the
   open Concept. The **Accordion** is how a Sidebar's Sections share height.
 - A **Region** is any focusable interactive surface; exactly one is the active Region at a time.
