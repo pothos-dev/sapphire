@@ -12,8 +12,9 @@ import { test, expect, type Page } from '@playwright/test';
  *    the duplicate name),
  *  - adding the first property to a frontmatter-less doc synthesizes a valid
  *    `---…---` block,
- *  - a frontmatter-less doc collapses to a single "Add frontmatter" button that
- *    expands to reveal +Text/+List (and shows no required-`type` warning).
+ *  - a frontmatter-less doc opens with the panel COLLAPSED (no +Text/+List, no
+ *    required-`type` warning); toggling the header expands it to reveal the
+ *    +Text/+List controls.
  */
 
 /** Read the persisted raw markdown of a Concept from the fake backend. */
@@ -122,8 +123,8 @@ test('properties: an uncommitted added row writes no empty-key block to disk', a
   const before = await persisted(page, 'concepts/no-frontmatter.md');
   expect(before.startsWith('---')).toBe(false); // genuinely frontmatter-less
 
-  // A frontmatter-less file opens collapsed: reveal the +Text/+List controls.
-  await page.getByTestId('add-frontmatter').click();
+  // A frontmatter-less file opens collapsed: expand it to reveal +Text/+List.
+  await page.getByTestId('properties-toggle').click();
 
   // Add a row but DON'T commit a key. The add dispatches + autosaves, but the
   // not-yet-named row must serialize to nothing — no `"":` line, no empty fences.
@@ -141,13 +142,13 @@ test('properties: adding the first property to a frontmatter-less doc writes a v
   page,
 }) => {
   await open(page, 'concepts/no-frontmatter.md');
-  // No frontmatter -> the collapsed "Add frontmatter" affordance is shown, and
-  // the +Text/+List controls are hidden until it is activated.
-  await expect(page.getByTestId('add-frontmatter')).toBeVisible();
+  // No frontmatter -> the panel opens collapsed, so the +Text/+List controls are
+  // hidden until the header is expanded.
+  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByTestId('add-text')).toHaveCount(0);
 
-  // Reveal the controls, then add the first property.
-  await page.getByTestId('add-frontmatter').click();
+  // Expand the panel, then add the first property.
+  await page.getByTestId('properties-toggle').click();
   await page.getByTestId('add-text').click();
   const newKey = page.getByTestId('key-');
   await newKey.fill('type');
@@ -161,25 +162,27 @@ test('properties: adding the first property to a frontmatter-less doc writes a v
   expect(after).toContain('# No Frontmatter');
 });
 
-test('properties: a frontmatter-less file collapses to "Add frontmatter" and shows no type warning', async ({
+test('properties: a frontmatter-less file opens collapsed and shows no type warning', async ({
   page,
 }) => {
   await open(page, 'concepts/no-frontmatter.md');
 
-  // Collapsed: the single "Add frontmatter" affordance, no +Text/+List, and NO
-  // required-`type` nag (non-OKF files are not pushed toward conformance).
-  await expect(page.getByTestId('add-frontmatter')).toBeVisible();
+  // Collapsed by default: the body (incl. +Text/+List) is hidden, the toggle
+  // reports collapsed, and there is NO required-`type` nag (non-OKF files are
+  // not pushed toward conformance).
+  const toggle = page.getByTestId('properties-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByTestId('add-text')).toHaveCount(0);
   await expect(page.getByTestId('add-list')).toHaveCount(0);
   await expect(page.getByTestId('type-missing')).toHaveCount(0);
   await expect(page.getByText('No frontmatter.')).toHaveCount(0);
 
-  // Clicking it expands the editor (reveals +Text/+List) WITHOUT writing a block
-  // to disk — the markers are materialized only when a property is committed.
+  // Expanding the panel reveals +Text/+List WITHOUT writing a block to disk —
+  // the markers are materialized only when a property is committed.
   const before = await persisted(page, 'concepts/no-frontmatter.md');
-  await page.getByTestId('add-frontmatter').click();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('add-text')).toBeVisible();
   await expect(page.getByTestId('add-list')).toBeVisible();
-  await expect(page.getByTestId('add-frontmatter')).toHaveCount(0);
   expect(await persisted(page, 'concepts/no-frontmatter.md')).toBe(before);
 });

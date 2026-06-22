@@ -70,27 +70,25 @@
     canRedo = false,
   }: Props = $props();
 
-  // Whether the frontmatter editor is expanded. A frontmatter-less Concept opens
-  // COLLAPSED: the grid + add controls are replaced by a single "Add frontmatter"
-  // button so non-OKF files aren't pushed toward a frontmatter block they may not
-  // want. Clicking it (or the keyboard add-row action) reveals the +Text/+List
-  // controls; the `---…---` block itself is materialized on disk only once the
-  // first property is committed (the serializer drops empty frontmatter). A
-  // Concept that already HAS properties is always shown expanded.
-  let expanded = $state(false);
-
-  // Reset the expand state when the open Concept changes, so each frontmatter-less
-  // file starts at the collapsed "Add frontmatter" affordance. Depends only on
-  // `path`, so toggling `expanded` or editing properties never re-collapses.
+  // The whole panel is collapsible (header chevron). By DEFAULT it follows
+  // whether the Concept has frontmatter: a frontmatter-less Concept opens
+  // COLLAPSED (nothing to show, and non-OKF files shouldn't be nagged toward a
+  // frontmatter block), one with properties opens EXPANDED. Expanding a
+  // frontmatter-less Concept reveals the +Text/+List controls directly; the
+  // `---…---` block is materialized on disk only once the first property is
+  // committed (the serializer drops empty frontmatter).
+  //
+  // `manualCollapse` is the user's explicit override (chevron / keyboard); `null`
+  // means "follow the default". It is reset to `null` on every Concept switch, so
+  // each file re-derives its default — and the default tracks `properties`
+  // reactively, which matters because `properties` arrives a tick AFTER `path`
+  // changes (the editor loads + parses the new file asynchronously).
+  let manualCollapse = $state<boolean | null>(null);
   $effect(() => {
     void path;
-    expanded = false;
+    manualCollapse = null;
   });
-
-  // Show the grid + add controls when there are properties to edit OR the user
-  // has expanded an empty panel. Otherwise the panel is the lone add-frontmatter
-  // button.
-  const showFields = $derived(properties.length > 0 || expanded);
+  const collapsed = $derived(manualCollapse ?? properties.length === 0);
 
   // The `type` input element, focused when a new Concept opens so the user
   // lands in `type` (the field they must fill to make the Concept OKF-valid).
@@ -135,30 +133,18 @@
    * at the end of `properties`, so its positional id is the current length.
    */
   function addProperty(prop: Property) {
+    // Adding a property always reveals the body, so a keyboard add (`a`) while
+    // the panel is collapsed can't drop the new row out of sight.
+    manualCollapse = false;
     newRowId = properties.length;
     onchange([...properties, prop]);
   }
 
-  /** Reveal the editor on a collapsed (frontmatter-less) panel. */
-  function addFrontmatter() {
-    expanded = true;
-  }
-
   function addText() {
-    // On a collapsed panel the first add action just expands it (reveals the
-    // +Text/+List controls); the user then picks the kind to add.
-    if (!showFields) {
-      expanded = true;
-      return;
-    }
     addProperty({ key: '', kind: 'scalar', scalar: '' });
   }
 
   function addList() {
-    if (!showFields) {
-      expanded = true;
-      return;
-    }
     addProperty({ key: '', kind: 'list', list: [] });
   }
 
@@ -562,10 +548,26 @@
   onkeydown={onGridKeydown}
   onfocusin={onPanelFocusIn}
 >
-  <!-- Panel header: unified undo/redo over the single body+frontmatter history.
-       Buttons mousedown-prevent default so clicking them does not blur (and thus
-       commit) an in-progress scalar/key edit before the command runs. -->
+  <!-- Panel header: a collapse toggle (left) + unified undo/redo over the single
+       body+frontmatter history (right). The history buttons mousedown-prevent
+       default so clicking them does not blur (and thus commit) an in-progress
+       scalar/key edit before the command runs. The toggle does NOT — clicking it
+       should blur/commit any active edit before the body is hidden. -->
   <div class="panel-header" data-testid="properties-header">
+    <button
+      type="button"
+      class="panel-toggle"
+      aria-expanded={!collapsed}
+      aria-label="Properties"
+      data-testid="properties-toggle"
+      onclick={() => (manualCollapse = !collapsed)}
+    >
+      <span class="chevron" class:open={!collapsed} aria-hidden="true">▸</span>
+      <span class="panel-title">Properties</span>
+      {#if collapsed && properties.length > 0}
+        <span class="panel-count" data-testid="properties-count">{properties.length}</span>
+      {/if}
+    </button>
     <div class="history">
       <button
         type="button"
@@ -590,7 +592,10 @@
     </div>
   </div>
 
-  {#each rows as { id, prop } (id)}
+  <!-- Body: the property grid + add controls. Hidden while the panel is
+       collapsed (the header toggle is then the panel's only affordance). -->
+  {#if !collapsed}
+    {#each rows as { id, prop } (id)}
     {@const isType = prop.key === 'type'}
     {@const keyFocused = isFocusedRow(id) && propertiesNav.cell.col === KEY_COL}
     {@const valueFocused = isFocusedRow(id) && propertiesNav.cell.col === VALUE_COL}
@@ -674,21 +679,17 @@
     {/each}
   </datalist>
 
-  <!-- Add controls. A frontmatter-less Concept (no properties, not yet expanded)
-       shows a single "Add frontmatter" button instead of the +Text/+List row, so
-       non-OKF files aren't nagged toward a frontmatter block. Activating it (click
-       or the keyboard add-row action) expands the panel to reveal +Text/+List.
-       The button still occupies the grid's add-controls row (row = `addRowIndex`,
-       col 0) so it keeps the roving tabindex + nav-mode spotlight. -->
-  {#if showFields}
-    <!-- Create a new scalar (`Text`) or flat-list (`List`) property. The kind is
-         fixed at creation; new rows append after existing ones. The two add
-         buttons ARE the grid's final ("add-controls") row: they carry the
-         `data-cell-row`/`data-cell-col` coordinates (row = `addRowIndex`, one past
-         the last data row) and the roving tabindex, so ↓ from the last row lands
-         here and ←/→ move between them. `.cell-active` mirrors the cells' nav-mode
-         spotlight (programmatic focus doesn't reliably set `:focus-visible`).
-         Clicking still adds regardless of focus. -->
+    <!-- Add controls. Create a new scalar (`Text`) or flat-list (`List`)
+         property. The kind is fixed at creation; new rows append after existing
+         ones. The two add buttons ARE the grid's final ("add-controls") row: they
+         carry the `data-cell-row`/`data-cell-col` coordinates (row = `addRowIndex`,
+         one past the last data row) and the roving tabindex, so ↓ from the last
+         row lands here and ←/→ move between them. `.cell-active` mirrors the cells'
+         nav-mode spotlight (programmatic focus doesn't reliably set
+         `:focus-visible`). Clicking still adds regardless of focus. On a
+         frontmatter-less Concept these are the only body content — expanding the
+         panel surfaces them directly; the `---…---` block is materialized on disk
+         only once the first property is committed. -->
     <div class="add" data-testid="properties-add">
       <button
         type="button"
@@ -715,21 +716,6 @@
         + List
       </button>
     </div>
-  {:else}
-    <div class="add" data-testid="properties-add">
-      <button
-        type="button"
-        class="add-btn add-frontmatter"
-        class:cell-active={addBtnFocused(KEY_COL) && propsActive}
-        data-testid="add-frontmatter"
-        data-cell-row={addRowIndex}
-        data-cell-col={KEY_COL}
-        tabindex={addBtnFocused(KEY_COL) ? 0 : -1}
-        onclick={addFrontmatter}
-      >
-        + Add frontmatter
-      </button>
-    </div>
   {/if}
 </section>
 
@@ -747,8 +733,57 @@
 
   .panel-header {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     align-items: center;
+  }
+
+  /* Collapse toggle: chevron + "Properties" label, styled like the sidebar
+     section headers for consistency. Rotating chevron mirrors `aria-expanded`. */
+  .panel-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0.15rem 0.25rem;
+    border-radius: var(--radius-sm);
+    transition: color 0.12s ease;
+  }
+
+  .panel-toggle:hover {
+    color: var(--text);
+  }
+
+  .panel-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .chevron {
+    display: inline-block;
+    font-size: 0.7rem;
+    transition: transform 0.12s ease;
+  }
+
+  .chevron.open {
+    transform: rotate(90deg);
+  }
+
+  /* Count badge shown beside the title only while collapsed, so the user can see
+     a collapsed panel still holds properties. */
+  .panel-count {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    opacity: 0.8;
+    text-transform: none;
+    letter-spacing: 0;
   }
 
   .history {
@@ -917,12 +952,5 @@
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-
-  /* The collapsed-state affordance spans the row so it reads as the panel's
-     single call to action rather than one of a pair of small add buttons. */
-  .add-frontmatter {
-    flex: 1 1 auto;
-    text-align: center;
   }
 </style>

@@ -68,6 +68,36 @@ test('properties panel: typed inputs, scalar persist, tag chips', async ({ page 
     .toBe(true);
 });
 
+test('properties panel: a Concept with frontmatter opens expanded and the header collapses it', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByTestId('tree')).toBeVisible();
+  await page.locator('[data-path="concepts/codemirror.md"]').click();
+
+  const properties = page.getByTestId('properties');
+  await expect(properties).toBeVisible();
+
+  // A Concept WITH frontmatter opens EXPANDED: the toggle reports expanded and
+  // the property rows are visible.
+  const toggle = page.getByTestId('properties-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('scalar-type')).toBeVisible();
+
+  // Collapsing hides the body and surfaces a count badge (5 properties:
+  // type, title, description, tags, timestamp).
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('scalar-type')).toHaveCount(0);
+  await expect(page.getByTestId('properties-count')).toHaveText('5');
+
+  // Re-expanding restores the rows.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('scalar-type')).toBeVisible();
+  await expect(page.getByTestId('properties-count')).toHaveCount(0);
+});
+
 test('properties panel: complex frontmatter round-trips byte-for-byte', async ({
   page,
 }) => {
