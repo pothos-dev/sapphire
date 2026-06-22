@@ -61,6 +61,109 @@ function normalizeSegments(segments: string[]): string {
  * with a bundle-relative path for OKF links, or `none` for pure anchors / empty
  * hrefs (nothing to navigate to).
  */
+/**
+ * The three components of a raw wikilink target `name|alias#anchor`. `name` is
+ * the part that participates in file resolution (the `.md` is NOT stripped here
+ * — resolution does that); `alias` and `anchor` are kept verbatim for callers
+ * that preserve them (rendering, rename-rewrite). `null` when absent.
+ *
+ * Split order matters and mirrors Obsidian: the alias is everything after the
+ * FIRST `|`; the anchor is everything after the FIRST `#` IN THE NAME PART (an
+ * `#` inside the alias is display text, not an anchor).
+ */
+export interface WikilinkParts {
+  name: string;
+  alias: string | null;
+  anchor: string | null;
+}
+
+/**
+ * Split a raw wikilink inner text (`[[ … ]]` contents) into its `name`, `alias`
+ * (after the first `|`), and `anchor` (after the first `#` in the name part).
+ * Pure string surgery — no trimming of `name` beyond what callers need; the
+ * resolver trims separately.
+ */
+export function splitWikilinkTarget(rawTarget: string): WikilinkParts {
+  let rest = rawTarget;
+  let alias: string | null = null;
+  const pipe = rest.indexOf('|');
+  if (pipe !== -1) {
+    alias = rest.slice(pipe + 1);
+    rest = rest.slice(0, pipe);
+  }
+  let anchor: string | null = null;
+  const hash = rest.indexOf('#');
+  if (hash !== -1) {
+    anchor = rest.slice(hash + 1);
+    rest = rest.slice(0, hash);
+  }
+  return { name: rest, alias, anchor };
+}
+
+/** `path` with a trailing case-insensitive `.md` removed. */
+function dropMdExt(path: string): string {
+  return /\.md$/i.test(path) ? path.slice(0, -3) : path;
+}
+
+/** Filename portion of a '/'-separated path (the part after the last '/'). */
+function basenameOf(path: string): string {
+  const slash = path.lastIndexOf('/');
+  return slash === -1 ? path : path.slice(slash + 1);
+}
+
+/**
+ * Resolve a wikilink target to a bundle path, or `null` if unresolved.
+ *
+ * Name-based (NOT path-based) resolution, matching Obsidian exactly (see
+ * ADR-0004). `allPaths` is every concept `.md` path in the bundle (bundle
+ * relative, no leading slash); `sourcePath` is the Concept the link is written
+ * in; `rawTarget` is the inner text of `[[ … ]]` (may carry `|alias`/`#anchor`).
+ *
+ * Algorithm (identical to the Rust backend and the fake backend):
+ *   - strip `|alias` then `#anchor`, trim; empty (`[[#heading]]`) → `sourcePath`
+ *     (a pure same-file anchor);
+ *   - drop a trailing case-insensitive `.md`;
+ *   - case-insensitive, LITERAL match (no slug/space normalization);
+ *   - bare name → match by basename; partial path (`a/b`) → match by path
+ *     suffix (full path, or ending in `/name`);
+ *   - ties resolve SILENTLY to the shortest path (fewest `/`), then
+ *     lexicographically; no match → `null` (broken, like a broken md link).
+ */
+export function resolveWikilink(
+  allPaths: string[],
+  sourcePath: string,
+  rawTarget: string,
+): { path: string } | null {
+  const { name } = splitWikilinkTarget(rawTarget);
+  const t = dropMdExt(name.trim());
+  if (t === '') return { path: sourcePath }; // pure same-file anchor [[#heading]]
+
+  const L = t.toLowerCase();
+  const candidates = allPaths.filter((p) => p.endsWith('.md'));
+
+  let matches: string[];
+  if (t.includes('/')) {
+    // Partial path → suffix match (whole path, or ending in `/name`).
+    matches = candidates.filter((c) => {
+      const noExt = dropMdExt(c).toLowerCase();
+      return noExt === L || noExt.endsWith(`/${L}`);
+    });
+  } else {
+    // Bare name → basename match.
+    matches = candidates.filter((c) => dropMdExt(basenameOf(c)).toLowerCase() === L);
+  }
+  if (matches.length === 0) return null;
+
+  // Tie-break: shortest path (fewest '/' segments), then lexicographically.
+  matches.sort((a, b) => {
+    const da = (a.match(/\//g) ?? []).length;
+    const db = (b.match(/\//g) ?? []).length;
+    if (da !== db) return da - db;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  return { path: matches[0] };
+}
+
 export function resolveLink(currentPath: string, href: string): ResolvedLink {
   const raw = href.trim();
   if (raw === '') return { kind: 'none' };

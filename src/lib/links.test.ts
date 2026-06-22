@@ -1,7 +1,7 @@
 // Unit tests for OKF markdown link resolution (pure module, no DOM/IPC).
 // Run with `bun test src/lib`. Pins current resolveLink/isExternalLink behavior.
 import { describe, expect, test } from 'bun:test';
-import { isExternalLink, resolveLink } from './links';
+import { isExternalLink, resolveLink, resolveWikilink, splitWikilinkTarget } from './links';
 
 describe('isExternalLink', () => {
   test('scheme URLs are external', () => {
@@ -89,5 +89,100 @@ describe('resolveLink', () => {
   test('absolute href that normalizes to empty is none', () => {
     expect(resolveLink('cur.md', '/')).toEqual({ kind: 'none' });
     expect(resolveLink('cur.md', '/.')).toEqual({ kind: 'none' });
+  });
+});
+
+describe('splitWikilinkTarget', () => {
+  test('bare name has no alias/anchor', () => {
+    expect(splitWikilinkTarget('CodeMirror')).toEqual({
+      name: 'CodeMirror',
+      alias: null,
+      anchor: null,
+    });
+  });
+  test('alias after first | (anchor inside alias stays in alias)', () => {
+    expect(splitWikilinkTarget('Name|Display#Text')).toEqual({
+      name: 'Name',
+      alias: 'Display#Text',
+      anchor: null,
+    });
+  });
+  test('anchor after first # in the name part', () => {
+    expect(splitWikilinkTarget('Name#Heading')).toEqual({
+      name: 'Name',
+      alias: null,
+      anchor: 'Heading',
+    });
+  });
+  test('name#anchor|alias splits all three', () => {
+    expect(splitWikilinkTarget('Name#Heading|Display')).toEqual({
+      name: 'Name',
+      alias: 'Display',
+      anchor: 'Heading',
+    });
+  });
+});
+
+describe('resolveWikilink', () => {
+  const paths = [
+    'index.md',
+    'log.md',
+    'concepts/codemirror.md',
+    'concepts/editor/live-preview.md',
+    'concepts/Live Preview.md',
+    'archive/codemirror.md',
+  ];
+
+  test('bare name matches by basename', () => {
+    expect(resolveWikilink(paths, 'index.md', 'live-preview')).toEqual({
+      path: 'concepts/editor/live-preview.md',
+    });
+  });
+
+  test('case-insensitive, literal (no slug normalization)', () => {
+    // [[live preview]] matches the literal "Live Preview.md", not live-preview.md.
+    expect(resolveWikilink(paths, 'index.md', 'live preview')).toEqual({
+      path: 'concepts/Live Preview.md',
+    });
+    // codemirror.md is duplicated; the tie-break (shortest, then lexicographic)
+    // makes the bare/upper-case match land on archive/ — see the dedicated case.
+    expect(resolveWikilink(paths, 'index.md', 'CODEMIRROR')).toEqual({
+      path: 'archive/codemirror.md',
+    });
+  });
+
+  test('partial path matches by suffix', () => {
+    expect(resolveWikilink(paths, 'index.md', 'editor/live-preview')).toEqual({
+      path: 'concepts/editor/live-preview.md',
+    });
+  });
+
+  test('duplicate basename tie-break: shortest path then lexicographic', () => {
+    // codemirror.md exists at concepts/ and archive/ — shorter path wins; tie on
+    // depth resolves alphabetically (archive < concepts).
+    expect(resolveWikilink(paths, 'index.md', 'codemirror')).toEqual({
+      path: 'archive/codemirror.md',
+    });
+  });
+
+  test('strips .md extension', () => {
+    expect(resolveWikilink(paths, 'index.md', 'log.md')).toEqual({ path: 'log.md' });
+  });
+
+  test('strips |alias and #anchor before matching', () => {
+    expect(resolveWikilink(paths, 'index.md', 'log|Change Log')).toEqual({ path: 'log.md' });
+    expect(resolveWikilink(paths, 'index.md', 'log#today')).toEqual({ path: 'log.md' });
+    expect(resolveWikilink(paths, 'index.md', 'log#today|Change Log')).toEqual({ path: 'log.md' });
+  });
+
+  test('empty target (pure same-file anchor) resolves to the source', () => {
+    expect(resolveWikilink(paths, 'concepts/codemirror.md', '#heading')).toEqual({
+      path: 'concepts/codemirror.md',
+    });
+  });
+
+  test('unresolved name returns null', () => {
+    expect(resolveWikilink(paths, 'index.md', 'does-not-exist')).toBeNull();
+    expect(resolveWikilink(paths, 'index.md', 'wrong/live-preview')).toBeNull();
   });
 });

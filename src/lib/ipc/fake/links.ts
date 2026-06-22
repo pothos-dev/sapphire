@@ -15,9 +15,67 @@
 // Reads the shared `FILES` state (imported live from `store`, never copied).
 
 import type { RewriteSummary } from '$lib/types';
-import { resolveLink, isExternalLink } from '$lib/links';
+import { resolveLink, isExternalLink, resolveWikilink, splitWikilinkTarget } from '$lib/links';
 import { splitFrontmatter } from '$lib/frontmatter';
 import { FILES, conceptPaths } from './store';
+
+/**
+ * Blank out fenced code blocks (``` / ~~~) and inline code spans (`` ` ``) in a
+ * markdown body, preserving length + newlines so offsets stay aligned. Used so
+ * the wikilink scanner never picks up `[[ … ]]` written inside code, matching
+ * Obsidian / the outline scanner's fence handling.
+ */
+function maskCode(body: string): string {
+  const lines = body.split('\n');
+  const fenceRe = /^\s*(`{3,}|~{3,})/;
+  let inFence = false;
+  let fenceMarker = '';
+  const out: string[] = [];
+  for (const line of lines) {
+    const fence = fenceRe.exec(line);
+    if (fence) {
+      const marker = fence[1][0];
+      if (!inFence) {
+        inFence = true;
+        fenceMarker = marker;
+      } else if (marker === fenceMarker) {
+        inFence = false;
+        fenceMarker = '';
+      }
+      out.push(' '.repeat(line.length));
+      continue;
+    }
+    if (inFence) {
+      out.push(' '.repeat(line.length));
+      continue;
+    }
+    // Inline code spans: blank the content between matched backtick runs.
+    out.push(line.replace(/`+[^`]*`+/g, (s) => ' '.repeat(s.length)));
+  }
+  return out.join('\n');
+}
+
+/** Matches a wikilink `[[ inner ]]` but NOT an embed `![[ … ]]` (leading `!`). */
+const WIKILINK_RE = /(!?)\[\[([^\]]*)\]\]/g;
+
+/**
+ * Resolve every wikilink in a (code-masked) body to bundle paths via §1.
+ * Embeds `![[ … ]]` are skipped (out of scope for v1). Returns resolved
+ * targets (may include `sourcePath` for `[[#heading]]`).
+ */
+function wikilinkTargets(sourcePath: string, body: string): string[] {
+  const masked = maskCode(body);
+  const allPaths = conceptPaths();
+  const targets: string[] = [];
+  let m: RegExpExecArray | null;
+  WIKILINK_RE.lastIndex = 0;
+  while ((m = WIKILINK_RE.exec(masked)) !== null) {
+    if (m[1] === '!') continue; // embed, not a link (deferred)
+    const resolved = resolveWikilink(allPaths, sourcePath, m[2]);
+    if (resolved) targets.push(resolved.path);
+  }
+  return targets;
+}
 
 /** Extract outbound internal link targets from a Concept's body, resolved. */
 export function outboundLinks(path: string, content: string): string[] {
@@ -33,6 +91,10 @@ export function outboundLinks(path: string, content: string): string[] {
     const resolved = resolveLink(path, href);
     if (resolved.kind === 'internal') targets.add(resolved.path);
   }
+  // Wikilinks ([[name]]) resolve by name (§1) and also feed backlinks.
+  for (const t of wikilinkTargets(path, body)) targets.add(t);
+  // Drop self-edges (e.g. a pure same-file anchor [[#heading]]).
+  targets.delete(path);
   return [...targets];
 }
 
@@ -99,14 +161,105 @@ function rewriteLinksIn(
   // Match `[text](inner)` but NOT images `![alt](src)`.
   const re = /(!?)(\[[^\]]*\]\()([^)]*)(\))/g;
   let count = 0;
-  const out = content.replace(re, (whole, bang: string, open: string, inner: string, close: string) => {
+  let out = content.replace(re, (whole, bang: string, open: string, inner: string, close: string) => {
     if (bang === '!') return whole; // image
     const rewritten = rewriteTarget(oldSource, newSource, moved, inner, moves);
     if (rewritten === null) return whole;
     count++;
     return `${open}${rewritten}${close}`;
   });
-  return { content: out, count };
+  const wiki = rewriteWikilinksIn(oldSource, out, moves);
+  return { content: wiki.content, count: count + wiki.count };
+}
+
+/**
+ * Old + new bundle path sets, used to resolve wikilinks before/after the move.
+ * The "new" set is the current concept paths with the move map applied.
+ */
+function pathSetsFor(moves: Map<string, string>): { oldPaths: string[]; newPaths: string[] } {
+  const oldPaths = conceptPaths();
+  const newPaths = oldPaths.map((p) => moves.get(p) ?? p);
+  return { oldPaths, newPaths };
+}
+
+/**
+ * Shortest wikilink target that resolves to `newTarget` in the NEW bundle:
+ * try the bare basename first, then progressively longer path suffixes, and
+ * pick the first whose §1 resolution points back at `newTarget`. Falls back to
+ * the full path if no shorter suffix resolves unambiguously.
+ */
+function shortestResolvingSuffix(newPaths: string[], newSource: string, newTarget: string): string {
+  const noExt = newTarget.replace(/\.md$/i, '');
+  const segs = noExt.split('/');
+  for (let take = 1; take <= segs.length; take++) {
+    const candidate = segs.slice(segs.length - take).join('/');
+    const resolved = resolveWikilink(newPaths, newSource, candidate);
+    if (resolved && resolved.path === newTarget) return candidate;
+  }
+  return noExt;
+}
+
+/**
+ * Rewrite wikilinks (`[[ … ]]`, never embeds `![[ … ]]`) that target a moved
+ * Concept (§4). Resolution is from the source's OLD location against the OLD
+ * bundle; only links whose resolved target moved are rewritten:
+ *   - BARE `[[old]]`: rewrites only when the target's basename changed (a pure
+ *     folder move leaves it untouched, since bare names resolve bundle-wide);
+ *   - PARTIAL PATH `[[a/old]]`: rewrites to the shortest suffix that resolves to
+ *     the new path in the new bundle.
+ * `|alias` and `#anchor` are preserved verbatim. Code regions are skipped.
+ */
+function rewriteWikilinksIn(
+  oldSource: string,
+  content: string,
+  moves: Map<string, string>,
+): { content: string; count: number } {
+  const { oldPaths, newPaths } = pathSetsFor(moves);
+  const newSource = moves.get(oldSource) ?? oldSource;
+  const masked = maskCode(content);
+
+  let count = 0;
+  let result = '';
+  let last = 0;
+  let m: RegExpExecArray | null;
+  WIKILINK_RE.lastIndex = 0;
+  while ((m = WIKILINK_RE.exec(masked)) !== null) {
+    if (m[1] === '!') continue; // embed (deferred)
+    const start = m.index;
+    const inner = m[2]; // same offsets in masked & original (length-preserving)
+    const innerStart = start + m[1].length + 2; // after `(!?)[[`
+    const origInner = content.slice(innerStart, innerStart + inner.length);
+
+    const { name, alias, anchor } = splitWikilinkTarget(origInner);
+    const resolved = resolveWikilink(oldPaths, oldSource, origInner);
+    if (!resolved || !moves.has(resolved.path)) continue;
+    const newTarget = moves.get(resolved.path)!;
+
+    const nameTrimmed = name.trim();
+    const isPartial = nameTrimmed.includes('/');
+    let newName: string | null = null;
+    if (isPartial) {
+      newName = shortestResolvingSuffix(newPaths, newSource, newTarget);
+    } else {
+      // Bare name: only rewrite if the basename changed.
+      const oldBase = resolved.path.replace(/\.md$/i, '').split('/').pop()!;
+      const newBase = newTarget.replace(/\.md$/i, '').split('/').pop()!;
+      if (oldBase !== newBase) newName = newBase;
+    }
+    if (newName === null) continue; // no change needed
+
+    // Reassemble inner text, preserving alias/anchor verbatim.
+    const anchorPart = anchor !== null ? `#${anchor}` : '';
+    const aliasPart = alias !== null ? `|${alias}` : '';
+    const newInner = `${newName}${anchorPart}${aliasPart}`;
+    if (newInner === origInner) continue;
+
+    result += content.slice(last, innerStart) + newInner;
+    last = innerStart + inner.length;
+    count++;
+  }
+  result += content.slice(last);
+  return { content: result, count };
 }
 
 /**
