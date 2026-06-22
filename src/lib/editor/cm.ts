@@ -1,5 +1,5 @@
 import { EditorView, keymap, highlightActiveLine, drawSelection } from '@codemirror/view';
-import { EditorState, Annotation, type Extension } from '@codemirror/state';
+import { EditorState, Annotation, Compartment, type Extension } from '@codemirror/state';
 import {
   history,
   historyKeymap,
@@ -29,6 +29,7 @@ import {
   frontmatterUndo,
 } from './frontmatter-field';
 import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-links';
+import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
 import { findExtensions, findPanelTheme } from './find';
 
 // The editor's public surface is re-exported here so consumers keep importing
@@ -44,6 +45,7 @@ export {
   refreshBrokenLinkDecorations,
   type BrokenLinkContext,
 } from './broken-links';
+export { type WikiLinkContext } from './wiki-links';
 export { openSearch } from './find';
 
 /**
@@ -60,7 +62,12 @@ export { openSearch } from './find';
  * blocks have no grammar to highlight with. The grammars load lazily (see the
  * `ATOMIC_CODE_LANGUAGES` import note).
  *
- * We do NOT use atomic-editor's `wikiLinks` — OKF uses standard markdown links.
+ * Wikilinks (`[[name]]`) are supported as an OPTIONAL, name-based SECONDARY
+ * link format alongside primary markdown links (ADR-0004) — Sapphire bundles
+ * often originate as Obsidian vaults. We enable atomic-editor's `wikiLinks`
+ * extension (wrapped in a `Compartment` for cache invalidation) with a Sapphire
+ * resolve/onOpen adapter; see `wiki-links.ts`. (ADR-0001's "we do not use
+ * wikiLinks" is scoped to OKF's own format — this is the deliberate exception.)
  *
  * Theme: the editor root's `data-theme` mirrors the app root's, which is owned
  * by the theme store (`state/theme.svelte.ts`, OS-driven default). We seed it at
@@ -120,6 +127,12 @@ export interface BuildEditorOptions {
    * omitted, broken-link styling is disabled (links render normally).
    */
   brokenLinkContext?: BrokenLinkContext;
+  /**
+   * Context for wikilink rendering/navigation (ADR-0004): the open Concept's
+   * path, the full concept-path list, a synchronous existence check, and an
+   * in-app open callback. When omitted, wikilinks render as plain `[[ ]]` text.
+   */
+  wikiLinkContext?: WikiLinkContext;
 }
 
 /**
@@ -183,8 +196,11 @@ function livePreviewExtensions(onLinkClick: (url: string) => void): Extension[] 
  * on Concept switch, so the two cannot drift. The frontmatter field is seeded
  * separately by each caller (the value differs), but the BEHAVIOUR is here.
  */
-function editorExtensions(opts: Omit<BuildEditorOptions, 'parent' | 'doc' | 'frontmatter'>): Extension[] {
-  const { readOnly = false, onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext } = opts;
+function editorExtensions(
+  opts: Omit<BuildEditorOptions, 'parent' | 'doc' | 'frontmatter'>,
+  wikiCompartment: Compartment,
+): Extension[] {
+  const { readOnly = false, onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext, wikiLinkContext } = opts;
 
   // Notify on user edits to the body OR the frontmatter. Frontmatter edits are
   // carried by `setFrontmatter` effects (no doc change), so we watch for both.
@@ -226,6 +242,12 @@ function editorExtensions(opts: Omit<BuildEditorOptions, 'parent' | 'doc' | 'fro
     // after the live-preview extensions so its mark class layers on top of
     // atomic-editor's `.cm-atomic-link` decoration.
     ...(brokenLinkContext ? [brokenLinks(brokenLinkContext), brokenLinkTheme] : []),
+    // Wikilink rendering/navigation (ADR-0004), wrapped in a Compartment so the
+    // host can reconfigure it on index change to clear the extension's
+    // resolve-cache (it has no invalidation API). The theme stays outside the
+    // compartment (static). Empty config when no context is supplied.
+    wikiCompartment.of(wikiLinkContext ? wikiLinksExtension(wikiLinkContext) : []),
+    ...(wikiLinkContext ? [wikiLinkTheme] : []),
     // Editing affordances that make the hybrid preview feel like Obsidian.
     history(),
     // Unified undo: record the inverse of each frontmatter mutation so the
@@ -263,20 +285,30 @@ const viewOptions = new WeakMap<EditorView, BuildEditorOptions>();
 /** Which Concept path each view is currently showing (for switch detection). */
 const viewPath = new WeakMap<EditorView, string | null>();
 
+/**
+ * The wikilink Compartment per view. Reconfiguring it recreates the `wikiLinks`
+ * StateField, which clears the extension's (un-invalidatable) resolve-cache and
+ * re-resolves the visible links. The host drives this on index change via
+ * `reconfigureWikiLinks`. One instance per view, reused across Concept switches.
+ */
+const viewWikiCompartment = new WeakMap<EditorView, Compartment>();
+
 export function buildEditor(options: BuildEditorOptions): EditorView {
   const { parent, doc, frontmatter = [] } = options;
+  const wikiCompartment = new Compartment();
   const state = EditorState.create({
     doc,
     extensions: [
       // Seed the frontmatter field with the open Concept's properties.
       frontmatterField.init(() => frontmatter),
-      ...editorExtensions(options),
+      ...editorExtensions(options, wikiCompartment),
     ],
   });
 
   const view = new EditorView({ state, parent });
   viewOptions.set(view, options);
   viewPath.set(view, options.path ?? null);
+  viewWikiCompartment.set(view, wikiCompartment);
 
   // Seed the editor root's theme from the app root (the theme store keeps it in
   // sync afterwards). atomic-editor reads `data-theme` on the CodeMirror root.
@@ -317,12 +349,17 @@ export function setEditorConcept(
   if (switched) {
     // Fresh state = fresh history. No history can survive the Concept boundary.
     const options = viewOptions.get(view);
+    // Reuse the view's existing Compartment instance so `reconfigureWikiLinks`
+    // keeps targeting it after the switch. The fresh state re-evaluates the
+    // compartment, so the wikilink cache also starts clean for the new Concept.
+    const wikiCompartment = viewWikiCompartment.get(view) ?? new Compartment();
+    viewWikiCompartment.set(view, wikiCompartment);
     view.setState(
       EditorState.create({
         doc: body,
         extensions: [
           frontmatterField.init(() => props),
-          ...(options ? editorExtensions(options) : []),
+          ...(options ? editorExtensions(options, wikiCompartment) : []),
         ],
       }),
     );
@@ -354,6 +391,20 @@ export function setEditorConcept(
  * from the searched snapshot). Marked programmatic so the selection change is
  * not mistaken for a user edit.
  */
+/**
+ * Reconfigure the view's wikilink Compartment to clear the `wikiLinks`
+ * extension's resolve-cache and re-resolve visible links. Hook this to the SAME
+ * index signal that refreshes broken markdown links (the index's path set
+ * changed → resolutions may now differ). No-op when the view has no wikilink
+ * context. Recreating the extension recreates its StateField → fresh cache.
+ */
+export function reconfigureWikiLinks(view: EditorView): void {
+  const compartment = viewWikiCompartment.get(view);
+  const ctx = viewOptions.get(view)?.wikiLinkContext;
+  if (!compartment || !ctx) return;
+  view.dispatch({ effects: compartment.reconfigure(wikiLinksExtension(ctx)) });
+}
+
 export function scrollToLine(view: EditorView, line: number): void {
   const total = view.state.doc.lines;
   const clamped = Math.max(1, Math.min(line, total));

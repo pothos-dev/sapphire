@@ -14,6 +14,7 @@
     setEditorConcept,
     dispatchFrontmatter,
     refreshBrokenLinkDecorations,
+    reconfigureWikiLinks,
     scrollToLine,
     openSearch,
   } from '$lib/editor/cm';
@@ -25,6 +26,7 @@
     type Property,
   } from '$lib/frontmatter';
   import { resolveLink } from '$lib/links';
+  import { scanHeadings } from '$lib/outline';
   import { isReservedFile, reservedKind, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import TreeCrud from '$lib/components/TreeCrud.svelte';
@@ -118,6 +120,10 @@
   // document has been loaded into the CodeMirror view.
   let searchOpen = $state(false);
   let pendingScrollLine: number | null = null;
+  // A `[[target#heading]]` wikilink stashes its anchor here; once the target
+  // Concept's document is in the view we resolve the heading to a line and
+  // scroll to it (best-effort — cleared if the heading is missing). ADR-0004.
+  let pendingScrollAnchor: string | null = null;
 
   // Index-derived autocomplete sources (Concept paths, `type`/key/tag values)
   // live in the `suggestions` store. Refresh them all whenever the index changes
@@ -413,6 +419,12 @@
           currentPath: () => editor.path ?? '',
           exists: (path) => indexStore.exists(path),
         },
+        wikiLinkContext: {
+          currentPath: () => editor.path ?? '',
+          allPaths: () => indexStore.pathList(),
+          exists: (path) => indexStore.exists(path),
+          open: handleWikiLinkOpen,
+        },
       });
       frontmatterProps = props;
       syncHistoryDepths();
@@ -446,6 +458,17 @@
       scrollToLine(view, pendingScrollLine);
       pendingScrollLine = null;
     }
+
+    // Wikilink anchor (`[[target#heading]]`): after the target document is in
+    // the view, scroll to the matching heading via the same Outline mechanism.
+    // Best-effort — clear regardless so a missing heading doesn't re-trigger.
+    if (pendingScrollAnchor !== null && view) {
+      const heading = scanHeadings(editor.content).find(
+        (h) => h.text.toLowerCase() === pendingScrollAnchor!.toLowerCase(),
+      );
+      if (heading) scrollToOutlineLine(heading.line);
+      pendingScrollAnchor = null;
+    }
   });
 
   // Keep broken-link styling fresh: re-run the decoration whenever the index's
@@ -455,7 +478,13 @@
     // Track both reactive deps so the effect re-runs on either change.
     void indexStore.version;
     void editor.path;
-    if (view) refreshBrokenLinkDecorations(view);
+    if (view) {
+      refreshBrokenLinkDecorations(view);
+      // Same signal clears the wikilink resolve-cache: reconfiguring the
+      // Compartment recreates the wikiLinks StateField so stale resolutions
+      // (created/removed targets) re-resolve. (ADR-0004.)
+      reconfigureWikiLinks(view);
+    }
   });
 
   function openConcept(path: string) {
@@ -734,6 +763,27 @@
       void editor.open(target.path);
     }
     // 'none' (pure anchor / empty): no navigation.
+  }
+
+  // Wikilink navigation (ADR-0004). The editor's wikilink adapter resolves a
+  // clicked `[[name]]` to a bundle path (name-based) and routes here. We open
+  // the target Concept in-app (same single-pane history as markdown links); if
+  // it carried a `#heading` anchor we stash it so the editor-build effect can
+  // scroll to that heading once the target document is loaded. A same-Concept
+  // anchor jump (path unchanged) scrolls immediately.
+  function handleWikiLinkOpen(path: string, anchor: string | null) {
+    focusTypeForPath = null;
+    if (path === (editor.path ?? '')) {
+      if (anchor !== null && view) {
+        const heading = scanHeadings(editor.content).find(
+          (h) => h.text.toLowerCase() === anchor.toLowerCase(),
+        );
+        if (heading) scrollToOutlineLine(heading.line);
+      }
+      return;
+    }
+    pendingScrollAnchor = anchor;
+    void editor.open(path);
   }
 
   // A frontmatter property edit: dispatch the new properties into the editor's

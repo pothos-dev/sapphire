@@ -27,6 +27,16 @@ class IndexStore {
     return this.paths.has(path);
   }
 
+  /**
+   * The full list of existing Concept paths (bundle-relative). The wikilink
+   * resolver (name-based, ADR-0004) needs the whole candidate set, not just a
+   * membership test — it matches a `[[name]]` by basename/suffix across every
+   * concept path. Synchronous, backed by the same cached set `exists` reads.
+   */
+  pathList(): string[] {
+    return [...this.paths];
+  }
+
   /** (Re)load the existing-path set from the backend index. */
   async refresh(): Promise<void> {
     try {
