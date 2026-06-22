@@ -13,10 +13,12 @@ vite.config.ts.timestamp-*
 /src-tauri/target
 /src-tauri/gen
 
-# Playwright artifacts (keep tests/screenshots/, which is committed)
+# Playwright artifacts
 /test-results
 /playwright-report
 /.playwright
+# Test screenshots are regenerated on every run; keep the dir, ignore the images
+/tests/screenshots/*.png
 
 # Local-only example OKF bundle (Google ga4 sample); not shipped in the repo
 /examples
