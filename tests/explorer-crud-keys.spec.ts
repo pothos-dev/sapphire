@@ -45,13 +45,15 @@ test('keyboard CRUD: rename via r / F2 opens the rename dialog on the Focused it
 
   await focusFileRow(page, 'concepts/codemirror.md');
 
-  // `r` opens the rename dialog pre-filled with the node's name.
+  // `r` opens the rename dialog pre-filled with the node's name WITHOUT its
+  // `.md` extension — the extension is implicit for concepts.
   await page.keyboard.press('r');
   await expect(page.getByTestId('tree-dialog')).toContainText('Rename');
-  await expect(page.getByTestId('dialog-input')).toHaveValue('codemirror.md');
+  await expect(page.getByTestId('dialog-input')).toHaveValue('codemirror');
 
-  // Commit a rename; the affected (renamed) row becomes the Focused item.
-  await page.getByTestId('dialog-input').fill('renamed-by-key.md');
+  // Commit a rename WITHOUT typing `.md`; it's re-appended implicitly. The
+  // affected (renamed) row becomes the Focused item.
+  await page.getByTestId('dialog-input').fill('renamed-by-key');
   await page.getByTestId('dialog-confirm').click();
   const renamed = 'concepts/renamed-by-key.md';
   await expect(tree.locator(`[data-path="${renamed}"]`)).toBeVisible();
@@ -61,7 +63,7 @@ test('keyboard CRUD: rename via r / F2 opens the rename dialog on the Focused it
   // `F2` is an alias for rename.
   await page.keyboard.press('F2');
   await expect(page.getByTestId('tree-dialog')).toContainText('Rename');
-  await expect(page.getByTestId('dialog-input')).toHaveValue('renamed-by-key.md');
+  await expect(page.getByTestId('dialog-input')).toHaveValue('renamed-by-key');
 
   // The verbs must NOT fire while typing in the dialog input: typing `a`/`d`/`m`
   // into the field is text entry, not a new CRUD action — the SAME rename dialog

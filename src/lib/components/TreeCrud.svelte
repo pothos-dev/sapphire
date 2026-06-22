@@ -136,9 +136,17 @@
   // path). They resolve the node from the live tree so the dialog state matches
   // exactly what a right-click would produce; the new-target rule is the shared
   // `childDirOf`. No-op when the path is gone (tree changed underfoot).
+  /**
+   * Initial text for the rename input. A `.md` concept is shown WITHOUT its
+   * extension — the `.md` is implicit and re-appended on confirm (mirrors the
+   * tree's display name). Folders and non-`.md` files keep their full name.
+   */
+  function renameSeed(node: TreeNode): string {
+    return node.isDir ? node.name : node.name.replace(/\.md$/i, '');
+  }
   export function requestRename(path: string) {
     const node = nodeAt(path);
-    if (node) dialog = { kind: 'rename', node, value: node.name, viaKeyboard: true };
+    if (node) dialog = { kind: 'rename', node, value: renameSeed(node), viaKeyboard: true };
   }
   export function requestDelete(path: string) {
     const node = nodeAt(path);
@@ -211,7 +219,8 @@
       const path = reservedPath(node.path, kind);
       focusTypeForPath = null; // reserved files have no `type` to focus.
       void treeActions.createReservedFile(node.path, kind, path);
-    } else if (id === 'rename') dialog = { kind: 'rename', node, value: node.name, viaKeyboard: false };
+    } else if (id === 'rename')
+      dialog = { kind: 'rename', node, value: renameSeed(node), viaKeyboard: false };
     else if (id === 'move') dialog = { kind: 'move', node, value: dirname(node.path), viaKeyboard: false };
     else if (id === 'delete') dialog = { kind: 'delete', node, viaKeyboard: false };
   }
@@ -253,8 +262,12 @@
       dialog = null;
       if (ok) commit(path);
     } else if (d.kind === 'rename') {
-      const name = d.value.trim();
-      if (name === '' || name === d.node.name) {
+      const raw = d.value.trim();
+      // `.md` concepts hide their extension in the input, so re-append it unless
+      // the user typed it back themselves. Folders/non-`.md` files are untouched.
+      const isMd = !d.node.isDir && /\.md$/i.test(d.node.name);
+      const name = isMd && !/\.md$/i.test(raw) ? `${raw}.md` : raw;
+      if (raw === '' || name === d.node.name) {
         // No-op rename: nothing changed, so close like a cancel.
         closeDialog();
         return;
