@@ -20,6 +20,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::paths::{bundle_walker, find_byte, resolve_internal, to_rel_string};
+use crate::wikilink;
 
 /// One Concept's indexed data: parsed frontmatter fields we care about plus its
 /// outbound internal links (bundle-relative target paths).
@@ -36,6 +37,11 @@ pub struct ConceptEntry {
     pub keys: Vec<String>,
     /// Outbound internal link targets (bundle-relative, '/'-separated).
     pub links: Vec<String>,
+    /// Raw wikilink inner texts (`[[ ... ]]`, alias/anchor included). Resolved
+    /// to bundle paths in `rebuild_reverse`, which has the full path set —
+    /// name-based resolution needs to see every concept, unlike the path-based
+    /// markdown links above which resolve from this concept's location alone.
+    pub wikilinks: Vec<String>,
 }
 
 /// A tag and how many Concepts carry it. Matches the TS `{ tag, count }`.
@@ -97,6 +103,9 @@ impl Index {
     fn insert_concept(&mut self, rel: &str, content: &str) {
         let (concept_type, tags, keys) = parse_frontmatter(content);
         let links = extract_links(rel, content);
+        // Wikilink inner texts are captured raw here and resolved later in
+        // `rebuild_reverse` (name-based resolution needs the full path set).
+        let wikilinks = wikilink::wikilink_raws(strip_frontmatter(content));
         self.concepts.insert(
             rel.to_string(),
             ConceptEntry {
@@ -104,19 +113,35 @@ impl Index {
                 tags,
                 keys,
                 links,
+                wikilinks,
             },
         );
     }
 
     /// Recompute the reverse (backlink) map from scratch from the forward map.
     fn rebuild_reverse(&mut self) {
+        // The full set of concept paths, needed for name-based wikilink
+        // resolution (basename / path-suffix matching across the whole bundle).
+        let all_paths: Vec<String> = self.concepts.keys().cloned().collect();
         let mut reverse: HashMap<String, BTreeSet<String>> = HashMap::new();
         for (source, entry) in &self.concepts {
+            // Markdown links (already resolved by path).
             for target in &entry.links {
                 reverse
                     .entry(target.clone())
                     .or_default()
                     .insert(source.clone());
+            }
+            // Wikilinks resolve by NAME against every concept. Each resolved
+            // target feeds the same reverse map -> Backlinks works unchanged.
+            // Unresolved (`None`) wikilinks contribute no edge; a self-target
+            // (`[[#heading]]` -> source) creates no self-backlink.
+            for raw in &entry.wikilinks {
+                if let Some(target) = wikilink::resolve_wikilink(&all_paths, source, raw) {
+                    if target != *source {
+                        reverse.entry(target).or_default().insert(source.clone());
+                    }
+                }
             }
         }
         self.reverse = reverse;
@@ -436,6 +461,40 @@ mod tests {
         assert_eq!(idx.backlinks("c.md"), vec!["a.md", "b.md"]);
         assert_eq!(idx.backlinks("b.md"), vec!["a.md"]);
         assert!(idx.backlinks("a.md").is_empty());
+    }
+
+    #[test]
+    fn backlinks_via_wikilink() {
+        // a links to b by bare wikilink (basename match); c links to b by a
+        // partial-path wikilink. Both edges feed the reverse map.
+        let mut idx = Index::default();
+        idx.insert_concept("a.md", "see [[b]] now");
+        idx.insert_concept("sub/b.md", "# B");
+        idx.insert_concept("c.md", "see [[sub/b]] now");
+        idx.rebuild_reverse();
+        assert_eq!(idx.backlinks("sub/b.md"), vec!["a.md", "c.md"]);
+    }
+
+    #[test]
+    fn wikilink_alias_anchor_and_self_anchor() {
+        let mut idx = Index::default();
+        // Alias + anchor are stripped before resolution.
+        idx.insert_concept("a.md", "[[b|Bee]] and [[b#sec]]");
+        idx.insert_concept("b.md", "# B");
+        // A pure same-file anchor must NOT create a self-backlink.
+        idx.insert_concept("c.md", "jump to [[#top]]");
+        idx.rebuild_reverse();
+        assert_eq!(idx.backlinks("b.md"), vec!["a.md"]);
+        assert!(idx.backlinks("c.md").is_empty());
+    }
+
+    #[test]
+    fn unresolved_wikilink_contributes_no_edge() {
+        let mut idx = Index::default();
+        idx.insert_concept("a.md", "[[does-not-exist]]");
+        idx.insert_concept("b.md", "# B");
+        idx.rebuild_reverse();
+        assert!(idx.backlinks("b.md").is_empty());
     }
 
     #[test]

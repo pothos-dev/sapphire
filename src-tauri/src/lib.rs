@@ -6,6 +6,7 @@ mod paths;
 mod rewrite;
 mod search;
 mod watcher;
+mod wikilink;
 
 use std::path::PathBuf;
 

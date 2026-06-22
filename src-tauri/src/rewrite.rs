@@ -39,6 +39,7 @@ use crate::app_state::AppState;
 use crate::bundle;
 use crate::index::Index;
 use crate::paths::{dir_of, find_byte, is_external, resolve_internal};
+use crate::wikilink::{self, find_double_close, parse_target};
 
 /// Summary of an auto-rewrite pass: how many links across how many files were
 /// changed. Matches the TS `{ linksChanged, filesChanged }`.
@@ -65,11 +66,18 @@ pub struct RewriteSummary {
 pub fn plan_rewrites<F>(
     moves: &HashMap<String, String>,
     affected_sources: &[String],
+    all_paths: &[String],
     mut read: F,
 ) -> Result<(Vec<(String, String)>, RewriteSummary), String>
 where
     F: FnMut(&str) -> Result<String, String>,
 {
+    // The NEW bundle path set (old paths with moves applied), used to recompute
+    // the shortest wikilink suffix that resolves to a moved target.
+    let new_paths: Vec<String> = all_paths
+        .iter()
+        .map(|p| moves.get(p).cloned().unwrap_or_else(|| p.clone()))
+        .collect();
     let mut writes: Vec<(String, String)> = Vec::new();
     let mut summary = RewriteSummary::default();
 
@@ -96,7 +104,14 @@ where
             .map(String::as_str)
             .unwrap_or(old_source);
 
-        let (rewritten, count) = rewrite_links_in(old_source, new_source, &content, moves);
+        let (rewritten, count) = rewrite_links_in(
+            old_source,
+            new_source,
+            &content,
+            moves,
+            all_paths,
+            &new_paths,
+        );
         if count > 0 {
             summary.links_changed += count;
             summary.files_changed += 1;
@@ -124,15 +139,85 @@ fn rewrite_links_in(
     new_source: &str,
     content: &str,
     moves: &HashMap<String, String>,
+    all_paths: &[String],
+    new_paths: &[String],
 ) -> (String, usize) {
     let moved = old_source != new_source;
     let mut out = String::with_capacity(content.len());
     let mut count = 0usize;
     let bytes = content.as_bytes();
     let mut i = 0usize;
+    // Code state so wikilinks inside code are left untouched (mirrors the
+    // extraction scanner in `wikilink::wikilink_raws`). Markdown links keep
+    // their original code-agnostic behaviour.
+    let mut in_inline_code = false;
+    let mut fence: Option<u8> = None;
+    let mut at_line_start = true;
 
     while i < bytes.len() {
-        if bytes[i] == b'[' {
+        // --- Fenced code blocks (line-start ``` / ~~~) -------------------
+        if at_line_start {
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            if j + 2 < bytes.len()
+                && (bytes[j] == b'`' || bytes[j] == b'~')
+                && bytes[j + 1] == bytes[j]
+                && bytes[j + 2] == bytes[j]
+            {
+                let ch = bytes[j];
+                match fence {
+                    Some(f) if f == ch => fence = None,
+                    None => fence = Some(ch),
+                    _ => {}
+                }
+                // Copy the whole fence line through verbatim.
+                let line_end = find_byte(bytes, i, b'\n').map(|p| p + 1).unwrap_or(bytes.len());
+                out.push_str(&content[i..line_end]);
+                i = line_end;
+                at_line_start = true;
+                continue;
+            }
+        }
+
+        // --- Wikilink `[[ ... ]]` (name-based) ---------------------------
+        if fence.is_none()
+            && !in_inline_code
+            && bytes[i] == b'['
+            && i + 1 < bytes.len()
+            && bytes[i + 1] == b'['
+        {
+            // Embeds (`![[ ... ]]`) are OUT OF SCOPE for v1 — leave untouched,
+            // like the markdown image branch below. Embed support is DEFERRED.
+            let is_embed = i > 0 && bytes[i - 1] == b'!';
+            if let Some(close) = find_double_close(bytes, i + 2) {
+                let raw = &content[i + 2..close];
+                let replacement = if is_embed {
+                    None
+                } else {
+                    rewrite_wikilink(old_source, raw, moves, all_paths, new_paths)
+                };
+                out.push_str("[[");
+                match replacement {
+                    Some(new_raw) => {
+                        out.push_str(&new_raw);
+                        count += 1;
+                    }
+                    None => out.push_str(raw),
+                }
+                out.push_str("]]");
+                i = close + 2;
+                at_line_start = false;
+                continue;
+            }
+        }
+
+        if bytes[i] == b'`' && fence.is_none() {
+            in_inline_code = !in_inline_code;
+        }
+
+        if fence.is_none() && bytes[i] == b'[' {
             let is_image = i > 0 && bytes[i - 1] == b'!';
             if let Some(close) = find_byte(bytes, i + 1, b']') {
                 if close + 1 < bytes.len() && bytes[close + 1] == b'(' {
@@ -155,12 +240,14 @@ fn rewrite_links_in(
                         }
                         out.push(')');
                         i = paren + 1;
+                        at_line_start = false;
                         continue;
                     }
                 }
             }
         }
         // Default: copy this byte through.
+        at_line_start = bytes[i] == b'\n';
         let ch_len = utf8_len(bytes[i]);
         out.push_str(&content[i..i + ch_len]);
         i += ch_len;
@@ -251,6 +338,107 @@ fn rewrite_target(
     Some(format!(
         "{leading}{angle_open}{new_path}{suffix}{angle_close}{title}"
     ))
+}
+
+/// Decide whether a wikilink (raw inner text of `[[ ... ]]`) needs rewriting
+/// because its resolved target moved, and if so return the new inner text.
+/// `None` leaves the wikilink unchanged. See spec §4.
+///
+/// Resolution uses the OLD bundle state, from the source's OLD location. The
+/// `|alias` and `#anchor` are preserved VERBATIM (they never participate in
+/// resolution). A BARE name only changes when the target's BASENAME changed —
+/// a pure folder move leaves bare wikilinks untouched (they resolve by basename
+/// bundle-wide). A PARTIAL PATH is recomputed to the shortest suffix that still
+/// resolves to the moved file in the NEW bundle state.
+fn rewrite_wikilink(
+    old_source: &str,
+    raw: &str,
+    moves: &HashMap<String, String>,
+    all_paths: &[String],
+    new_paths: &[String],
+) -> Option<String> {
+    let target = parse_target(raw);
+    // A pure same-file anchor (`[[#heading]]`) has no name to rewrite.
+    if target.name.trim().is_empty() {
+        return None;
+    }
+    // Resolve from the OLD bundle state at the source's OLD location.
+    let resolved = wikilink::resolve_wikilink(all_paths, old_source, raw)?;
+    // Only rewrite if the resolved target actually moved.
+    let new_target = moves.get(&resolved)?;
+
+    let is_partial = target.name.contains('/');
+    let new_name = if is_partial {
+        // Shortest suffix of the NEW path that resolves (per §1, against the new
+        // path set) back to `new_target`. Try basename, then progressively add
+        // leading segments; fall back to the full new path.
+        shortest_resolving_suffix(new_paths, old_source, new_target)
+    } else {
+        // Bare name: rewrite to the new BASENAME. If the basename did not change
+        // (folder-only move), this yields no textual change and we leave it.
+        basename_of(new_target).to_string()
+    };
+
+    // Rebuild the inner text from the boundaries of the original `raw`, so the
+    // alias/anchor (and their ORIGINAL delimiters/whitespace) survive verbatim.
+    let rebuilt = rebuild_inner(raw, &new_name);
+    if rebuilt == raw {
+        return None;
+    }
+    Some(rebuilt)
+}
+
+/// Basename (after the last `/`) of a bundle path, with `.md` dropped — the
+/// literal filename to write into a rewritten wikilink (preserves new casing).
+fn basename_of(path: &str) -> &str {
+    let base = match path.rfind('/') {
+        Some(s) => &path[s + 1..],
+        None => path,
+    };
+    if base.len() >= 3 && base[base.len() - 3..].eq_ignore_ascii_case(".md") {
+        &base[..base.len() - 3]
+    } else {
+        base
+    }
+}
+
+/// The shortest path SUFFIX of `target` (a bundle path, `.md` dropped) that,
+/// resolved as a wikilink against `paths`, lands back on `target`. Starts at the
+/// basename and adds leading segments until resolution is unambiguous, falling
+/// back to the full path. Keeps a rewritten partial-path wikilink pointing at
+/// the moved file.
+fn shortest_resolving_suffix(paths: &[String], source: &str, target: &str) -> String {
+    let no_ext = if target.len() >= 3 && target[target.len() - 3..].eq_ignore_ascii_case(".md") {
+        &target[..target.len() - 3]
+    } else {
+        target
+    };
+    let segments: Vec<&str> = no_ext.split('/').collect();
+    // Try suffixes from shortest (basename) to longest (full path).
+    for take in 1..=segments.len() {
+        let suffix = segments[segments.len() - take..].join("/");
+        if wikilink::resolve_wikilink(paths, source, &suffix).as_deref() == Some(target) {
+            return suffix;
+        }
+    }
+    // Fallback: the full path without extension (should always resolve).
+    no_ext.to_string()
+}
+
+/// Rebuild a wikilink inner text, replacing only the NAME portion and keeping
+/// the rest (alias `|...` and/or anchor `#...`) byte-for-byte. The name ends at
+/// whichever of the first `|` or first `#` comes first; everything from there on
+/// is appended verbatim.
+fn rebuild_inner(raw: &str, new_name: &str) -> String {
+    let pipe = raw.find('|');
+    let hash = raw.find('#');
+    let name_end = match (pipe, hash) {
+        (Some(p), Some(h)) => p.min(h),
+        (Some(p), None) => p,
+        (None, Some(h)) => h,
+        (None, None) => raw.len(),
+    };
+    format!("{}{}", new_name, &raw[name_end..])
 }
 
 /// Split a URL into its path part and the `#anchor`/`?query` suffix (preserved
@@ -391,10 +579,13 @@ pub fn rename_and_rewrite(
 
     // 1. Plan: build the move map and read all affected source content from the
     //    CURRENT (pre-move) locations, using a snapshot of the index.
-    let (moves, planned) = {
+    let (moves, all_paths, planned) = {
         let index = state.index.read().map_err(|e| e.to_string())?;
         let moves = build_move_map(&index, from, to);
         let sources = inbound_sources(&index, &moves);
+        // Snapshot of every concept path (OLD bundle state) for name-based
+        // wikilink resolution during rewrite.
+        let all_paths = index.concept_paths();
         // Read content for every source we might rewrite (inbound + moved).
         let mut seen = std::collections::BTreeSet::new();
         let mut contents: Vec<(String, String)> = Vec::new();
@@ -404,7 +595,7 @@ pub fn rename_and_rewrite(
                 contents.push((s.clone(), c));
             }
         }
-        (moves, contents)
+        (moves, all_paths, contents)
     };
 
     // 2. Perform the actual filesystem rename/move.
@@ -416,7 +607,7 @@ pub fn rename_and_rewrite(
         .map(|(p, c)| (p.as_str(), c.as_str()))
         .collect();
     let sources: Vec<String> = planned.iter().map(|(p, _)| p.clone()).collect();
-    let (writes, summary) = plan_rewrites(&moves, &sources, |p| {
+    let (writes, summary) = plan_rewrites(&moves, &sources, &all_paths, |p| {
         lookup
             .get(p)
             .map(|c| c.to_string())
@@ -485,9 +676,10 @@ mod tests {
         // tests we just pass ALL files as candidate sources; plan_rewrites only
         // emits writes for files that actually change.
         let sources: Vec<String> = store.keys().cloned().collect();
+        let all_paths: Vec<String> = store.keys().cloned().collect();
 
         let store_ref = &store;
-        let (writes, summary) = plan_rewrites(moves_map, &sources, |p| {
+        let (writes, summary) = plan_rewrites(moves_map, &sources, &all_paths, |p| {
             store_ref
                 .get(p)
                 .cloned()
@@ -664,5 +856,107 @@ mod tests {
         assert_eq!(relative_path("a/b", "a/c.md"), "../c.md");
         assert_eq!(relative_path("a", "a/c.md"), "./c.md");
         assert_eq!(relative_path("a/b/c", "x.md"), "../../../x.md");
+    }
+
+    // --- Wikilink rename-rewrite (spec §4) -----------------------------------
+
+    #[test]
+    fn bare_wikilink_rewritten_on_basename_rename() {
+        // a links to old.md by bare wikilink. old.md is renamed to new.md.
+        let files = &[("a.md", "see [[old]] here"), ("old.md", "# Old")];
+        let m = moves(&[("old.md", "new.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["a.md"], "see [[new]] here");
+        assert_eq!(summary.links_changed, 1);
+    }
+
+    #[test]
+    fn bare_wikilink_untouched_on_folder_only_move() {
+        // old.md moves into a folder but keeps its basename. A bare wikilink
+        // resolves by basename bundle-wide, so it must NOT be rewritten.
+        let files = &[("a.md", "see [[old]] here"), ("old.md", "# Old")];
+        let m = moves(&[("old.md", "folder/old.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["a.md"], "see [[old]] here");
+        assert_eq!(summary.links_changed, 0);
+    }
+
+    #[test]
+    fn bare_wikilink_preserves_alias_and_anchor() {
+        let files = &[
+            ("a.md", "[[old|Display]] and [[old#sec]]"),
+            ("old.md", "# Old"),
+        ];
+        let m = moves(&[("old.md", "new.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["a.md"], "[[new|Display]] and [[new#sec]]");
+        assert_eq!(summary.links_changed, 2);
+    }
+
+    #[test]
+    fn partial_path_wikilink_recomputed_to_resolving_suffix() {
+        // a links to sub/old.md by partial path. The whole folder sub/ moves to
+        // dest/. The partial-path wikilink must be recomputed so it still
+        // resolves to the moved file. Since the basename `old` is unique in the
+        // new bundle, the shortest resolving suffix is the bare basename.
+        let files = &[
+            ("a.md", "see [[sub/old]] here"),
+            ("sub/old.md", "# Old"),
+        ];
+        let m = moves(&[("sub/old.md", "dest/old.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["a.md"], "see [[old]] here");
+        assert_eq!(summary.links_changed, 1);
+    }
+
+    #[test]
+    fn partial_path_wikilink_keeps_folder_when_basename_is_ambiguous() {
+        // Two files share basename `dup`. a links to sub/dup specifically; sub/
+        // moves to zzz/. The bare basename `dup` would resolve to the OTHER dup
+        // (`aaa/dup.md` sorts first), so the suffix must keep enough path
+        // (`zzz/dup`) to keep pointing at the moved file.
+        let files = &[
+            ("a.md", "[[sub/dup]]"),
+            ("sub/dup.md", "# Sub dup"),
+            ("aaa/dup.md", "# Other dup"),
+        ];
+        let m = moves(&[("sub/dup.md", "zzz/dup.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["a.md"], "[[zzz/dup]]");
+        assert_eq!(summary.links_changed, 1);
+    }
+
+    #[test]
+    fn unresolved_wikilink_is_not_rewritten() {
+        let files = &[("a.md", "[[missing]]"), ("old.md", "# Old")];
+        let m = moves(&[("old.md", "new.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(result["a.md"], "[[missing]]");
+        assert_eq!(summary.links_changed, 0);
+    }
+
+    #[test]
+    fn wikilink_in_code_is_not_rewritten() {
+        let files = &[
+            ("a.md", "real [[old]]\n```\ncode [[old]]\n```\ninline `[[old]]`"),
+            ("old.md", "# Old"),
+        ];
+        let m = moves(&[("old.md", "new.md")]);
+        let (result, summary) = run(files, &m);
+        assert_eq!(
+            result["a.md"],
+            "real [[new]]\n```\ncode [[old]]\n```\ninline `[[old]]`"
+        );
+        assert_eq!(summary.links_changed, 1);
+    }
+
+    #[test]
+    fn wikilink_embed_is_not_rewritten() {
+        let files = &[("a.md", "![[old]] and [[old]]"), ("old.md", "# Old")];
+        let m = moves(&[("old.md", "new.md")]);
+        let (result, summary) = run(files, &m);
+        // Embed left alone; the plain wikilink rewritten.
+        assert_eq!(result["a.md"], "![[old]] and [[new]]");
+        assert_eq!(summary.links_changed, 1);
     }
 }
