@@ -11,7 +11,9 @@ import { test, expect, type Page } from '@playwright/test';
  *  - a duplicate key on a new row is rejected (row discarded, no write under
  *    the duplicate name),
  *  - adding the first property to a frontmatter-less doc synthesizes a valid
- *    `---…---` block.
+ *    `---…---` block,
+ *  - a frontmatter-less doc collapses to a single "Add frontmatter" button that
+ *    expands to reveal +Text/+List (and shows no required-`type` warning).
  */
 
 /** Read the persisted raw markdown of a Concept from the fake backend. */
@@ -120,6 +122,9 @@ test('properties: an uncommitted added row writes no empty-key block to disk', a
   const before = await persisted(page, 'concepts/no-frontmatter.md');
   expect(before.startsWith('---')).toBe(false); // genuinely frontmatter-less
 
+  // A frontmatter-less file opens collapsed: reveal the +Text/+List controls.
+  await page.getByTestId('add-frontmatter').click();
+
   // Add a row but DON'T commit a key. The add dispatches + autosaves, but the
   // not-yet-named row must serialize to nothing — no `"":` line, no empty fences.
   await page.getByTestId('add-text').click();
@@ -136,9 +141,13 @@ test('properties: adding the first property to a frontmatter-less doc writes a v
   page,
 }) => {
   await open(page, 'concepts/no-frontmatter.md');
-  // No frontmatter -> the empty-state marker is shown.
-  await expect(page.getByTestId('properties-empty')).toBeVisible();
+  // No frontmatter -> the collapsed "Add frontmatter" affordance is shown, and
+  // the +Text/+List controls are hidden until it is activated.
+  await expect(page.getByTestId('add-frontmatter')).toBeVisible();
+  await expect(page.getByTestId('add-text')).toHaveCount(0);
 
+  // Reveal the controls, then add the first property.
+  await page.getByTestId('add-frontmatter').click();
   await page.getByTestId('add-text').click();
   const newKey = page.getByTestId('key-');
   await newKey.fill('type');
@@ -150,4 +159,27 @@ test('properties: adding the first property to a frontmatter-less doc writes a v
   expect(after.startsWith('---\n')).toBe(true);
   expect(after).toContain('\n---\n');
   expect(after).toContain('# No Frontmatter');
+});
+
+test('properties: a frontmatter-less file collapses to "Add frontmatter" and shows no type warning', async ({
+  page,
+}) => {
+  await open(page, 'concepts/no-frontmatter.md');
+
+  // Collapsed: the single "Add frontmatter" affordance, no +Text/+List, and NO
+  // required-`type` nag (non-OKF files are not pushed toward conformance).
+  await expect(page.getByTestId('add-frontmatter')).toBeVisible();
+  await expect(page.getByTestId('add-text')).toHaveCount(0);
+  await expect(page.getByTestId('add-list')).toHaveCount(0);
+  await expect(page.getByTestId('type-missing')).toHaveCount(0);
+  await expect(page.getByText('No frontmatter.')).toHaveCount(0);
+
+  // Clicking it expands the editor (reveals +Text/+List) WITHOUT writing a block
+  // to disk — the markers are materialized only when a property is committed.
+  const before = await persisted(page, 'concepts/no-frontmatter.md');
+  await page.getByTestId('add-frontmatter').click();
+  await expect(page.getByTestId('add-text')).toBeVisible();
+  await expect(page.getByTestId('add-list')).toBeVisible();
+  await expect(page.getByTestId('add-frontmatter')).toHaveCount(0);
+  expect(await persisted(page, 'concepts/no-frontmatter.md')).toBe(before);
 });

@@ -29,8 +29,9 @@ a lightweight quick-editing editor.
 Re-serializing the whole block still satisfies OKF v0.1 (see [okf-spec.md](../okf-spec.md), §4.1 and
 §9):
 
-- **Required `type`.** The serializer always emits the `type` key; the required-`type` warning still
-  fires when it is missing or empty.
+- **Required `type`.** The serializer always emits the `type` key when present. (The Properties panel
+  originally surfaced a required-`type` warning when it was missing or empty; that warning was later
+  removed so files in directories that don't follow OKF aren't nagged toward conformance.)
 - **Unknown keys preserved.** Producer-defined keys we don't model specially are classified as
   `complex` and carry their original source text in `raw`; on serialization they are re-emitted
   faithfully from `raw`, so unknown keys, nested maps, multi-line/block scalars, and the like are

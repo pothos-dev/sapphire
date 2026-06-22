@@ -8,8 +8,7 @@ import { test, expect, type Page } from '@playwright/test';
  *  - edits a scalar and asserts it persists via the fake backend,
  *  - adds and removes a tag chip,
  *  - MOST IMPORTANT: opens a Concept with nested/complex frontmatter, edits a
- *    simple scalar, and asserts the complex value round-trips byte-for-byte,
- *  - asserts the missing/empty `type` flag appears.
+ *    simple scalar, and asserts the complex value round-trips byte-for-byte.
  */
 
 /** Read the persisted raw markdown of a Concept from the fake backend. */
@@ -100,9 +99,6 @@ test('properties panel: complex frontmatter round-trips byte-for-byte', async ({
   expect(before).toContain(customLine);
   expect(before).toContain(bodyBlock);
 
-  // The required `type` is empty here -> flagged.
-  await expect(page.getByTestId('type-missing')).toBeVisible();
-
   // Edit a SIMPLE scalar (title). The complex values + unknown key + body must
   // round-trip byte-for-byte.
   const titleInput = page.getByTestId('scalar-title');
@@ -119,11 +115,10 @@ test('properties panel: complex frontmatter round-trips byte-for-byte', async ({
   expect(after).toContain(customLine); // unknown key preserved
   expect(after).toContain(bodyBlock); // body preserved
 
-  // Set the missing `type` -> the flag clears.
+  // Fill the empty `type` scalar; it persists like any other scalar edit.
   const typeInput = page.getByTestId('scalar-type');
   await typeInput.fill('concept');
   await typeInput.blur();
-  await expect(page.getByTestId('type-missing')).toHaveCount(0);
 
   // type set persisted, complex still intact.
   const final = await persisted(page, 'concepts/complex-frontmatter.md');

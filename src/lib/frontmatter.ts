@@ -125,7 +125,7 @@ export function frontmatterLineCount(content: string): number {
 /**
  * Parse the top-level frontmatter entries of a Concept into an ordered list of
  * Properties, classifying each per ADR 0002. Returns an empty list when there
- * is no frontmatter (the panel still renders, flagging missing `type`).
+ * is no frontmatter (the panel renders a collapsed "Add frontmatter" affordance).
  */
 export function parseProperties(content: string): Property[] {
   const { hasFrontmatter, yaml } = splitFrontmatter(content);

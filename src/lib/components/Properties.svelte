@@ -12,8 +12,7 @@
   // it through `onchange`; the app shell dispatches it into the field and the
   // editor recombines `serialize(props) + body` for autosave.
 
-  import { isTypeMissing, renameProperty, type Property } from '$lib/frontmatter';
-  import { isReservedFile } from '$lib/reserved';
+  import { renameProperty, type Property } from '$lib/frontmatter';
   import { focus } from '$lib/state/focus.svelte';
   import { propertiesNav, KEY_COL, VALUE_COL, type CellKind } from '$lib/state/propertiesNav.svelte';
   import { moveCell, nextCellTab, type Cell } from '$lib/propertiesGrid';
@@ -71,15 +70,27 @@
     canRedo = false,
   }: Props = $props();
 
-  // Reserved files (`index.md`/`log.md`) are EXEMPT from the required-`type`
-  // rule (OKF): never flag a missing/empty `type` on them. The raw check lives
-  // in `isTypeMissing`; the exemption is applied here, at the caller.
-  const reserved = $derived(path !== null && isReservedFile(path));
-  const typeMissing = $derived(!reserved && isTypeMissing(properties));
-  // Whether a `type` property exists at all (it may have been renamed/deleted).
-  // When `type` is missing AND there is no row to host the inline flag, we show
-  // a panel-level banner so the required-`type` warning still appears.
-  const hasTypeRow = $derived(properties.some((p) => p.key === 'type'));
+  // Whether the frontmatter editor is expanded. A frontmatter-less Concept opens
+  // COLLAPSED: the grid + add controls are replaced by a single "Add frontmatter"
+  // button so non-OKF files aren't pushed toward a frontmatter block they may not
+  // want. Clicking it (or the keyboard add-row action) reveals the +Text/+List
+  // controls; the `---…---` block itself is materialized on disk only once the
+  // first property is committed (the serializer drops empty frontmatter). A
+  // Concept that already HAS properties is always shown expanded.
+  let expanded = $state(false);
+
+  // Reset the expand state when the open Concept changes, so each frontmatter-less
+  // file starts at the collapsed "Add frontmatter" affordance. Depends only on
+  // `path`, so toggling `expanded` or editing properties never re-collapses.
+  $effect(() => {
+    void path;
+    expanded = false;
+  });
+
+  // Show the grid + add controls when there are properties to edit OR the user
+  // has expanded an empty panel. Otherwise the panel is the lone add-frontmatter
+  // button.
+  const showFields = $derived(properties.length > 0 || expanded);
 
   // The `type` input element, focused when a new Concept opens so the user
   // lands in `type` (the field they must fill to make the Concept OKF-valid).
@@ -128,11 +139,26 @@
     onchange([...properties, prop]);
   }
 
+  /** Reveal the editor on a collapsed (frontmatter-less) panel. */
+  function addFrontmatter() {
+    expanded = true;
+  }
+
   function addText() {
+    // On a collapsed panel the first add action just expands it (reveals the
+    // +Text/+List controls); the user then picks the kind to add.
+    if (!showFields) {
+      expanded = true;
+      return;
+    }
     addProperty({ key: '', kind: 'scalar', scalar: '' });
   }
 
   function addList() {
+    if (!showFields) {
+      expanded = true;
+      return;
+    }
     addProperty({ key: '', kind: 'list', list: [] });
   }
 
@@ -564,21 +590,11 @@
     </div>
   </div>
 
-  {#if properties.length === 0}
-    <p class="empty" data-testid="properties-empty">No frontmatter.</p>
-  {/if}
-
-  {#if typeMissing && !hasTypeRow}
-    <p class="banner" data-testid="type-missing" role="alert">
-      The required <code>type</code> field is missing.
-    </p>
-  {/if}
-
   {#each rows as { id, prop } (id)}
     {@const isType = prop.key === 'type'}
     {@const keyFocused = isFocusedRow(id) && propertiesNav.cell.col === KEY_COL}
     {@const valueFocused = isFocusedRow(id) && propertiesNav.cell.col === VALUE_COL}
-    <div class="row" class:flagged={isType && typeMissing} data-key={prop.key}>
+    <div class="row" data-key={prop.key}>
       <!-- KEY cell: the roving-tabindex wrapper is the nav-mode focus target;
            the <input> inside it is the edit-mode target. -->
       <div
@@ -605,11 +621,6 @@
           onblur={() => commitKey(id)}
           onkeydown={(e) => onKeyKeydown(e, id)}
         />
-        {#if isType && typeMissing}
-          <span class="flag" data-testid="type-missing" title="The required `type` field is missing or empty"
-            >required</span
-          >
-        {/if}
         <button
           type="button"
           class="row-remove"
@@ -663,41 +674,63 @@
     {/each}
   </datalist>
 
-  <!-- Add controls: create a new scalar (`Text`) or flat-list (`List`) property.
-       The kind is fixed at creation. Shown in both the empty and populated
-       states; new rows append after existing ones. -->
-  <!-- The two add buttons ARE the grid's final ("add-controls") row: they carry
-       the `data-cell-row`/`data-cell-col` coordinates (row = `addRowIndex`, one
-       past the last data row) and the roving tabindex, so ↓ from the last row
-       lands here and ←/→ move between them. `.cell-active` mirrors the cells'
-       nav-mode spotlight (programmatic focus doesn't reliably set
-       `:focus-visible`). Clicking still adds regardless of focus. -->
-  <div class="add" data-testid="properties-add">
-    <button
-      type="button"
-      class="add-btn"
-      class:cell-active={addBtnFocused(KEY_COL) && propsActive}
-      data-testid="add-text"
-      data-cell-row={addRowIndex}
-      data-cell-col={KEY_COL}
-      tabindex={addBtnFocused(KEY_COL) ? 0 : -1}
-      onclick={addText}
-    >
-      + Text
-    </button>
-    <button
-      type="button"
-      class="add-btn"
-      class:cell-active={addBtnFocused(VALUE_COL) && propsActive}
-      data-testid="add-list"
-      data-cell-row={addRowIndex}
-      data-cell-col={VALUE_COL}
-      tabindex={addBtnFocused(VALUE_COL) ? 0 : -1}
-      onclick={addList}
-    >
-      + List
-    </button>
-  </div>
+  <!-- Add controls. A frontmatter-less Concept (no properties, not yet expanded)
+       shows a single "Add frontmatter" button instead of the +Text/+List row, so
+       non-OKF files aren't nagged toward a frontmatter block. Activating it (click
+       or the keyboard add-row action) expands the panel to reveal +Text/+List.
+       The button still occupies the grid's add-controls row (row = `addRowIndex`,
+       col 0) so it keeps the roving tabindex + nav-mode spotlight. -->
+  {#if showFields}
+    <!-- Create a new scalar (`Text`) or flat-list (`List`) property. The kind is
+         fixed at creation; new rows append after existing ones. The two add
+         buttons ARE the grid's final ("add-controls") row: they carry the
+         `data-cell-row`/`data-cell-col` coordinates (row = `addRowIndex`, one past
+         the last data row) and the roving tabindex, so ↓ from the last row lands
+         here and ←/→ move between them. `.cell-active` mirrors the cells' nav-mode
+         spotlight (programmatic focus doesn't reliably set `:focus-visible`).
+         Clicking still adds regardless of focus. -->
+    <div class="add" data-testid="properties-add">
+      <button
+        type="button"
+        class="add-btn"
+        class:cell-active={addBtnFocused(KEY_COL) && propsActive}
+        data-testid="add-text"
+        data-cell-row={addRowIndex}
+        data-cell-col={KEY_COL}
+        tabindex={addBtnFocused(KEY_COL) ? 0 : -1}
+        onclick={addText}
+      >
+        + Text
+      </button>
+      <button
+        type="button"
+        class="add-btn"
+        class:cell-active={addBtnFocused(VALUE_COL) && propsActive}
+        data-testid="add-list"
+        data-cell-row={addRowIndex}
+        data-cell-col={VALUE_COL}
+        tabindex={addBtnFocused(VALUE_COL) ? 0 : -1}
+        onclick={addList}
+      >
+        + List
+      </button>
+    </div>
+  {:else}
+    <div class="add" data-testid="properties-add">
+      <button
+        type="button"
+        class="add-btn add-frontmatter"
+        class:cell-active={addBtnFocused(KEY_COL) && propsActive}
+        data-testid="add-frontmatter"
+        data-cell-row={addRowIndex}
+        data-cell-col={KEY_COL}
+        tabindex={addBtnFocused(KEY_COL) ? 0 : -1}
+        onclick={addFrontmatter}
+      >
+        + Add frontmatter
+      </button>
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -756,26 +789,6 @@
   .hist-btn:disabled {
     opacity: 0.35;
     cursor: default;
-  }
-
-  .empty {
-    margin: 0;
-    color: var(--text-muted);
-    font-style: italic;
-  }
-
-  .banner {
-    margin: 0;
-    padding: 0.3rem 0.5rem;
-    border-radius: var(--radius-sm);
-    background: var(--danger);
-    color: var(--danger-contrast);
-    font-size: 0.78rem;
-    font-weight: 600;
-  }
-
-  .banner code {
-    font-family: var(--font-mono);
   }
 
   .row {
@@ -846,12 +859,6 @@
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
-  .row.flagged .key,
-  .row.flagged .key-input {
-    color: var(--danger);
-    font-weight: 600;
-  }
-
   .row-remove {
     flex: 0 0 auto;
     border: none;
@@ -876,18 +883,6 @@
   .row-remove:hover {
     background: var(--hover);
     color: var(--danger);
-  }
-
-  .flag {
-    display: inline-block;
-    margin-left: 0.3rem;
-    padding: 0 0.35rem;
-    border-radius: var(--radius-pill);
-    background: var(--danger);
-    color: var(--danger-contrast);
-    font-size: 0.65rem;
-    font-weight: 600;
-    vertical-align: middle;
   }
 
   .add {
@@ -922,5 +917,12 @@
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  /* The collapsed-state affordance spans the row so it reads as the panel's
+     single call to action rather than one of a pair of small add buttons. */
+  .add-frontmatter {
+    flex: 1 1 auto;
+    text-align: center;
   }
 </style>

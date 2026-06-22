@@ -99,7 +99,9 @@ test('properties: deleting the last property drops the frontmatter block', async
     await page.getByTestId(`delete-${key}`).click();
   }
 
-  await expect(page.getByTestId('properties-empty')).toBeVisible();
+  // With no properties left the panel collapses to the "Add frontmatter"
+  // affordance (the +Text/+List controls are gone until it is re-expanded).
+  await expect(page.getByTestId('add-frontmatter')).toBeVisible();
   await expect
     .poll(() => persisted(page, 'concepts/bundle.md'))
     .not.toContain('---');
