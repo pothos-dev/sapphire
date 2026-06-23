@@ -20,6 +20,8 @@
  * path and drops the anchor (anchor scrolling is a later slice).
  */
 
+import { basename, stripMd } from './path';
+
 export type ResolvedLink =
   | { kind: 'external'; href: string }
   | { kind: 'internal'; path: string }
@@ -100,17 +102,6 @@ export function splitWikilinkTarget(rawTarget: string): WikilinkParts {
   return { name: rest, alias, anchor };
 }
 
-/** `path` with a trailing case-insensitive `.md` removed. */
-function dropMdExt(path: string): string {
-  return /\.md$/i.test(path) ? path.slice(0, -3) : path;
-}
-
-/** Filename portion of a '/'-separated path (the part after the last '/'). */
-function basenameOf(path: string): string {
-  const slash = path.lastIndexOf('/');
-  return slash === -1 ? path : path.slice(slash + 1);
-}
-
 /**
  * Resolve a wikilink target to a bundle path, or `null` if unresolved.
  *
@@ -135,7 +126,7 @@ export function resolveWikilink(
   rawTarget: string,
 ): { path: string } | null {
   const { name } = splitWikilinkTarget(rawTarget);
-  const t = dropMdExt(name.trim());
+  const t = stripMd(name.trim());
   if (t === '') return { path: sourcePath }; // pure same-file anchor [[#heading]]
 
   const L = t.toLowerCase();
@@ -145,12 +136,12 @@ export function resolveWikilink(
   if (t.includes('/')) {
     // Partial path → suffix match (whole path, or ending in `/name`).
     matches = candidates.filter((c) => {
-      const noExt = dropMdExt(c).toLowerCase();
+      const noExt = stripMd(c).toLowerCase();
       return noExt === L || noExt.endsWith(`/${L}`);
     });
   } else {
     // Bare name → basename match.
-    matches = candidates.filter((c) => dropMdExt(basenameOf(c)).toLowerCase() === L);
+    matches = candidates.filter((c) => stripMd(basename(c)).toLowerCase() === L);
   }
   if (matches.length === 0) return null;
 
