@@ -101,7 +101,11 @@ impl Index {
     /// NOT touch the reverse map — call `rebuild_reverse` after a batch, or use
     /// `reindex_concept` for the incremental single-file path.
     fn insert_concept(&mut self, rel: &str, content: &str) {
-        let (concept_type, tags, keys) = parse_frontmatter(content);
+        let ParsedFrontmatter {
+            concept_type,
+            tags,
+            keys,
+        } = parse_frontmatter(content);
         let links = extract_links(rel, content);
         // Wikilink inner texts are captured raw here and resolved later in
         // `rebuild_reverse` (name-based resolution needs the full path set).
@@ -249,21 +253,34 @@ impl Index {
 // Frontmatter parsing
 // ---------------------------------------------------------------------------
 
+/// The frontmatter fields the index cares about, parsed from a Concept's leading
+/// YAML block. The Properties panel owns verbatim round-tripping; the index only
+/// needs these aggregates.
+#[derive(Debug, Default, Clone)]
+struct ParsedFrontmatter {
+    /// `type` scalar, if present and non-empty.
+    concept_type: Option<String>,
+    /// `tags` flat list; empty when absent.
+    tags: Vec<String>,
+    /// Distinct top-level frontmatter keys.
+    keys: Vec<String>,
+}
+
 /// Parse the leading YAML frontmatter block (delimited by `---`) and extract
 /// `type` (scalar), `tags` (flat list), and the distinct top-level keys.
-/// Tolerates missing/invalid frontmatter: returns `(None, [], [])` rather than
-/// erroring (CONTEXT.md — broken Concepts are never blocked). The Properties
-/// panel owns verbatim round-tripping; the index only needs these aggregates.
-fn parse_frontmatter(content: &str) -> (Option<String>, Vec<String>, Vec<String>) {
+/// Tolerates missing/invalid frontmatter: returns a default (all-empty)
+/// `ParsedFrontmatter` rather than erroring (CONTEXT.md — broken Concepts are
+/// never blocked).
+fn parse_frontmatter(content: &str) -> ParsedFrontmatter {
     let Some(block) = frontmatter_block(content) else {
-        return (None, Vec::new(), Vec::new());
+        return ParsedFrontmatter::default();
     };
     let value: serde_yaml::Value = match serde_yaml::from_str(block) {
         Ok(v) => v,
-        Err(_) => return (None, Vec::new(), Vec::new()),
+        Err(_) => return ParsedFrontmatter::default(),
     };
     let Some(map) = value.as_mapping() else {
-        return (None, Vec::new(), Vec::new());
+        return ParsedFrontmatter::default();
     };
 
     let concept_type = map
@@ -287,7 +304,11 @@ fn parse_frontmatter(content: &str) -> (Option<String>, Vec<String>, Vec<String>
         .filter_map(|k| k.as_str().map(|s| s.to_string()))
         .collect();
 
-    (concept_type, tags, keys)
+    ParsedFrontmatter {
+        concept_type,
+        tags,
+        keys,
+    }
 }
 
 /// Return the YAML text between the leading `---` fences, or `None` if the
@@ -398,26 +419,26 @@ mod tests {
     #[test]
     fn parses_type_and_tags() {
         let md = "---\ntype: concept\ntags: [a, b]\n---\n\n# Body\n";
-        let (t, tags, keys) = parse_frontmatter(md);
-        assert_eq!(t.as_deref(), Some("concept"));
-        assert_eq!(tags, vec!["a", "b"]);
-        assert_eq!(keys, vec!["type", "tags"]);
+        let fm = parse_frontmatter(md);
+        assert_eq!(fm.concept_type.as_deref(), Some("concept"));
+        assert_eq!(fm.tags, vec!["a", "b"]);
+        assert_eq!(fm.keys, vec!["type", "tags"]);
     }
 
     #[test]
     fn tolerates_missing_frontmatter() {
-        let (t, tags, keys) = parse_frontmatter("# Just a body, no frontmatter\n");
-        assert!(t.is_none());
-        assert!(tags.is_empty());
-        assert!(keys.is_empty());
+        let fm = parse_frontmatter("# Just a body, no frontmatter\n");
+        assert!(fm.concept_type.is_none());
+        assert!(fm.tags.is_empty());
+        assert!(fm.keys.is_empty());
     }
 
     #[test]
     fn tolerates_empty_type() {
-        let (t, _, keys) = parse_frontmatter("---\ntype:\ntitle: x\n---\n");
-        assert!(t.is_none());
+        let fm = parse_frontmatter("---\ntype:\ntitle: x\n---\n");
+        assert!(fm.concept_type.is_none());
         // Even when `type` is empty, its KEY is still present (autocomplete).
-        assert_eq!(keys, vec!["type", "title"]);
+        assert_eq!(fm.keys, vec!["type", "title"]);
     }
 
     #[test]
