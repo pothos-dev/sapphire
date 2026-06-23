@@ -45,15 +45,56 @@ test('reserved files: stripped from leaves, opened via folder affordances', asyn
   await expect(page.getByTestId('properties')).toHaveCount(0);
   await expect(page.getByTestId('editor')).toContainText('Knowledge Base');
 
-  // --- Subfolder affordance: concepts/ has index.md surfaced on its folder row ---
-  await expect(
-    tree.locator('[data-reserved-path="concepts/index.md"]'),
-  ).toHaveCount(1);
-  await tree.locator('[data-reserved-path="concepts/index.md"]').click({ force: true });
+  // --- Subfolder index: concepts/ has index.md, reached by CLICKING THE FOLDER
+  // NAME (there is no separate index icon on folder rows). The index page opens
+  // body-only, exactly like the root affordance. ---
+  await expect(tree.locator('[data-reserved-path="concepts/index.md"]')).toHaveCount(0);
+  await tree.locator('[data-row-path="concepts"] .name-toggle').click();
   await expect(page.getByTestId('properties')).toHaveCount(0);
   await expect(page.getByTestId('editor')).toContainText('Concepts');
 
   await page.screenshot({ path: 'tests/screenshots/reserved-files.png', fullPage: true });
+});
+
+test('reserved files: folder name opens index, then toggles; the twisty always toggles', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+  const concepts = tree.locator('[data-row-path="concepts"]');
+
+  // concepts/ is default-expanded; collapse it via the twisty so we have a known
+  // expansion baseline that is independent of the index-open state.
+  if ((await concepts.getAttribute('aria-expanded')) === 'true') {
+    await concepts.locator('.twisty-toggle').click();
+  }
+  await expect(concepts).toHaveAttribute('aria-expanded', 'false');
+
+  // First name-click on a folder WITH an index page opens the index — it does
+  // NOT toggle expansion.
+  await concepts.locator('.name-toggle').click();
+  await expect(page.getByTestId('editor')).toContainText('Concepts');
+  await expect(concepts).toHaveAttribute('aria-expanded', 'false');
+
+  // Second name-click, now that the index is already open, toggles expansion.
+  await concepts.locator('.name-toggle').click();
+  await expect(concepts).toHaveAttribute('aria-expanded', 'true');
+
+  // The twisty is a dedicated expand control — it toggles regardless of index.
+  await concepts.locator('.twisty-toggle').click();
+  await expect(concepts).toHaveAttribute('aria-expanded', 'false');
+
+  // A folder WITHOUT an index page (concepts/editor) toggles on the FIRST
+  // name-click and opens nothing new.
+  await concepts.locator('.twisty-toggle').click(); // re-expand to reveal editor/
+  const editorFolder = tree.locator('[data-row-path="concepts/editor"]');
+  const wasExpanded = (await editorFolder.getAttribute('aria-expanded')) === 'true';
+  await editorFolder.locator('.name-toggle').click();
+  await expect(editorFolder).toHaveAttribute('aria-expanded', String(!wasExpanded));
+  // The open Concept is unchanged (still the concepts index from above).
+  await expect(page.getByTestId('editor')).toContainText('Concepts');
 });
 
 test('reserved files: no Properties panel, body editing still works', async ({ page }) => {

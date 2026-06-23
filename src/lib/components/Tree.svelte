@@ -40,6 +40,21 @@
     toggle();
   }
 
+  // Clicking a folder's NAME (slice: reserved-files / explorer tree). A folder
+  // that has an index page opens it on the first click; once that index page is
+  // already open, a further click toggles expansion instead. A folder WITHOUT an
+  // index page just toggles expansion on every click. The disclosure twisty
+  // (`toggleAndFocus`) always toggles, so expansion stays one click away either
+  // way.
+  function onNameClick() {
+    focusRow();
+    if (indexPath !== null && selected !== indexPath) {
+      onopen(indexPath);
+    } else {
+      toggle();
+    }
+  }
+
   function openMenu(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -52,7 +67,7 @@
   // and the sensible default. Toggling reports back to the store, which persists.
   const expanded = $derived(node.isDir && session.isExpanded(node.path));
 
-  const indent = $derived(depth * 12);
+  const indent = $derived(depth * 16);
 
   function toggle() {
     session.setExpanded(node.path, !expanded);
@@ -135,14 +150,26 @@
     ),
   );
 
-  // The reserved files this folder directly contains, in a stable order, each as
-  // { kind, path } so the affordance can open it. The icon opens it like any
-  // other Concept (normal markdown editing — no special rendered view).
+  // This folder's index page (`index.md`), if it has one. There is no longer an
+  // index icon: clicking the folder name opens it (see `onNameClick`), so the
+  // path is all we need here.
+  const indexPath = $derived(
+    node.isDir
+      ? ((node.children ?? []).find(
+          (c) => !c.isDir && isReservedFile(c.path) && reservedKind(c.path) === 'index',
+        )?.path ?? null)
+      : null,
+  );
+
+  // The reserved files surfaced as folder-row icons, in a stable order, each as
+  // { kind, path } so the affordance can open it. `index` is deliberately
+  // excluded — it is reached by clicking the folder name instead — leaving just
+  // `log`. The icon opens it like any other Concept (normal markdown editing).
   const RESERVED_ORDER: ReservedKind[] = ['index', 'log'];
   const reservedAffordances = $derived(
     node.isDir
       ? (node.children ?? [])
-          .filter((c) => !c.isDir && isReservedFile(c.path))
+          .filter((c) => !c.isDir && isReservedFile(c.path) && reservedKind(c.path) !== 'index')
           .map((c) => ({ kind: reservedKind(c.path) as ReservedKind, path: c.path }))
           .sort((a, b) => RESERVED_ORDER.indexOf(a.kind) - RESERVED_ORDER.indexOf(b.kind))
       : [],
@@ -171,14 +198,16 @@
     aria-expanded={expanded}
     tabindex={isFocusedItem ? 0 : -1}
   >
-    <!-- The disclosure twisty and the folder name are split into two toggle
-         buttons so the reserved-file icons (index/log) can sit between them,
-         directly in front of the label — matching the Explorer header. The
-         twisty button is the accessible control (carries aria-expanded + the
-         folder's accessible name); the name button is a redundant click target
-         hidden from assistive tech to avoid a duplicate announcement. -->
+    <!-- The disclosure twisty sits in a fixed-width caret column so folder and
+         file labels line up at the same depth (files get an equal-width spacer)
+         and children indent cleanly past their parent. The twisty button is the
+         accessible control (carries aria-expanded + the folder's accessible
+         name) and always toggles expansion; the name button (below) opens the
+         index page when there is one, and is hidden from assistive tech to avoid
+         a duplicate announcement. Any reserved-file icons (just `log` now) sit
+         between the caret and the label. -->
     <button
-      class="entry dir-toggle twisty-toggle"
+      class="caret-col twisty-toggle"
       type="button"
       tabindex="-1"
       onclick={toggleAndFocus}
@@ -206,7 +235,7 @@
     <button
       class="entry dir-toggle name-toggle"
       type="button"
-      onclick={toggleAndFocus}
+      onclick={onNameClick}
       tabindex="-1"
       aria-hidden="true"
     >
@@ -239,6 +268,9 @@
     aria-selected={selected === node.path}
     tabindex={isFocusedItem ? 0 : -1}
   >
+    <!-- Empty caret column: keeps file labels aligned with folder labels at the
+         same depth (folders fill this column with their twisty). -->
+    <span class="caret-col spacer" aria-hidden="true"></span>
     <button
       class="entry file-entry"
       class:selected={selected === node.path}
@@ -365,20 +397,29 @@
     background: var(--hover);
   }
 
-  /* Split folder toggle: twisty on the left, name takes the rest. Kept
-     transparent — the row owns the hover highlight (see `.row.dir:hover`). */
-  .twisty-toggle {
+  /* Fixed-width disclosure column. Folders fill it with the twisty; files get an
+     empty spacer of the same width (`.spacer`), so labels line up across rows at
+     the same depth and each nesting level indents cleanly by `--indent-step`.
+     Flex-centred so the caret glyph sits on the row's optical centre. */
+  .caret-col {
     flex: 0 0 auto;
-    gap: 0;
-    padding-right: 0;
+    width: 1.25rem;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .twisty-toggle:hover {
+  /* The twisty half is a bare button (no .entry chrome) — the row owns the hover
+     highlight (see `.row.dir:hover`), so it stays transparent. */
+  .twisty-toggle {
+    border: none;
     background: none;
-  }
-
-  .name-toggle {
-    padding-left: 0.25rem;
+    color: inherit;
+    font: inherit;
+    padding: 0;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
   }
 
   .name-toggle:hover {
@@ -401,8 +442,9 @@
   }
 
   .twisty {
-    display: inline-block;
-    width: 1em;
+    display: block;
+    font-size: 0.7rem;
+    line-height: 1;
     transition: transform 0.1s ease;
     color: var(--text-muted);
   }
