@@ -57,14 +57,14 @@ tags: [okf]
   'concepts/codemirror.md': `---
 type: concept
 title: CodeMirror
-description: The editor core used by Emerald.
+description: The editor core used by Sapphire.
 tags: [editor, dependency]
 timestamp: 2026-06-15T10:00:00Z
 ---
 
 # CodeMirror
 
-CodeMirror 6 is the editor core. Emerald layers OKF-aware extensions on top.
+CodeMirror 6 is the editor core. Sapphire layers OKF-aware extensions on top.
 
 The distinctive word marmalade appears here so full-text search has a target.
 
@@ -74,13 +74,13 @@ It powers the [Live preview](./editor/live-preview.md) experience.
   'concepts/bundle.md': `---
 type: concept
 title: Bundle
-description: The root folder opened by Emerald.
+description: The root folder opened by Sapphire.
 tags: [okf, core]
 ---
 
 # Bundle
 
-A **Bundle** is the root folder opened by Emerald — a tree of Concepts and
+A **Bundle** is the root folder opened by Sapphire — a tree of Concepts and
 reserved files, per the OKF spec.
 
 A second mention of Marmalade lives here to prove cross-Concept full-text search.

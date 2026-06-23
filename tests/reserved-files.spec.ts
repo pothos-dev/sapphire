@@ -118,8 +118,8 @@ test('reserved files: no Properties panel, body editing still works', async ({ p
     .poll(async () =>
       page.evaluate(
         (m) =>
-          (window as unknown as { __emeraldFake: { files: Record<string, string> } })
-            .__emeraldFake.files['log.md'].includes(m),
+          (window as unknown as { __sapphireFake: { files: Record<string, string> } })
+            .__sapphireFake.files['log.md'].includes(m),
         marker,
       ),
     )
@@ -128,8 +128,8 @@ test('reserved files: no Properties panel, body editing still works', async ({ p
   // Stripping the frontmatter entirely keeps the panel hidden (no crash).
   await page.evaluate(() => {
     const fake = (window as unknown as {
-      __emeraldFake: { simulateExternalChange: (k: string, p: string, c?: string) => void };
-    }).__emeraldFake;
+      __sapphireFake: { simulateExternalChange: (k: string, p: string, c?: string) => void };
+    }).__sapphireFake;
     fake.simulateExternalChange('modified', 'log.md', '# Just a heading\n');
   });
   await expect(editor).toContainText('Just a heading');
@@ -170,8 +170,8 @@ test('reserved files: right-click a folder offers to create the missing one', as
   // The created log.md has a minimal stub (a heading), no `type` field.
   const content = await page.evaluate(
     () =>
-      (window as unknown as { __emeraldFake: { files: Record<string, string> } })
-        .__emeraldFake.files['concepts/log.md'],
+      (window as unknown as { __sapphireFake: { files: Record<string, string> } })
+        .__sapphireFake.files['concepts/log.md'],
   );
   expect(content).toContain('#');
   expect(content).not.toContain('type:');

@@ -61,7 +61,7 @@ test('right sidebar starts collapsed, expands to reveal Backlinks, and persists'
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('emerald:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as { rightSidebarOpen?: boolean };
       }),

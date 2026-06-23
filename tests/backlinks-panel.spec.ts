@@ -76,12 +76,12 @@ test('backlinks panel refreshes when links change on disk', async ({ page }) => 
   await page.evaluate(() => {
     const fake = (
       window as unknown as {
-        __emeraldFake: {
+        __sapphireFake: {
           simulateExternalChange: (kind: string, path: string, content?: string) => void;
           files: Record<string, string>;
         };
       }
-    ).__emeraldFake;
+    ).__sapphireFake;
     const updated =
       fake.files['concepts/bundle.md'] +
       '\n\nNow links to [Complex](./complex-frontmatter.md).\n';

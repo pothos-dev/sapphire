@@ -22,8 +22,8 @@ import { test, expect } from '@playwright/test';
 async function fileContent(page: import('@playwright/test').Page, path: string) {
   return page.evaluate(
     (p) =>
-      (window as unknown as { __emeraldFake: { files: Record<string, string> } })
-        .__emeraldFake.files[p],
+      (window as unknown as { __sapphireFake: { files: Record<string, string> } })
+        .__sapphireFake.files[p],
     path,
   );
 }
@@ -113,11 +113,11 @@ test('Replace (single) and Replace-all edit the body and persist via autosave', 
   const editor = page.getByTestId('editor');
   await expect(editor).toContainText('CodeMirror 6 is the editor core');
 
-  // --- Replace single: the body says "Emerald layers OKF-aware extensions";
-  // replace that single body occurrence of "Emerald" with "Sapphire". ---
+  // --- Replace single: the body says "Sapphire layers OKF-aware extensions";
+  // replace that single body occurrence of "Sapphire" with "Sapphire". ---
   await page.keyboard.press('Control+f');
   await expect(page.getByTestId('find-panel')).toBeVisible();
-  await page.getByTestId('find-input').pressSequentially('Emerald');
+  await page.getByTestId('find-input').pressSequentially('Sapphire');
   await expect(editor.locator('.cm-searchMatch').first()).toBeVisible();
   await page.getByTestId('replace-input').pressSequentially('Sapphire');
   // Select the current match first (Enter = find next), then replace it.
@@ -147,9 +147,9 @@ test('Replace (single) and Replace-all edit the body and persist via autosave', 
   expect(after).toContain('Sapphire 6 is the editor core');
 
   // --- Frontmatter is untouched: the YAML block (incl. `title: CodeMirror`
-  // and the `description: ... used by Emerald.`) survives intact (ADR 0003). ---
+  // and the `description: ... used by Sapphire.`) survives intact (ADR 0003). ---
   expect(after).toContain('title: CodeMirror');
-  expect(after).toContain('used by Emerald.');
+  expect(after).toContain('used by Sapphire.');
   expect(after.startsWith('---\n')).toBe(true);
 
   // Persists across navigation (reopen shows the replaced body).
