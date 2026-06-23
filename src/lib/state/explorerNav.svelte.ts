@@ -135,7 +135,10 @@ class ExplorerNavStore {
         }
         return true;
       }
-      case 'Enter': {
+      case 'Enter':
+      case ' ': {
+        // Space mirrors Enter (native button affordance, matching the Tags
+        // browser): toggle a folder's expansion, or open a Concept on a file.
         if (!row) return false;
         if (row.isDir) {
           actions.setExpanded(row.path, !row.expanded);
