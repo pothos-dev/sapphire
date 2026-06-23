@@ -105,3 +105,25 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..b7847c047ee1795053a2e1533f1d2f62
          previewFrozenField,
          inlinePreviewPlugin,
          freezeMousePlugin,
+diff --git a/dist/index.js b/dist/index.js
+index 955ad2f..0577bf5 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -10,4 +10,5 @@ export { tables } from './table-widget';
+ export { wikiLinks } from './wiki-links';
+ export { atomicEditorTheme, atomicMarkdownSyntax } from './atomic-theme';
+ export { autoCloseCodeFence, extendEmphasisPair } from './edit-helpers';
++export { treeGrowthEffect, treeProgressPlugin } from './tree-progress';
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 9e17e82..dd472ca 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -9,4 +9,5 @@ export { wikiLinks } from './wiki-links';
+ export type { WikiLinkResolvedTarget, WikiLinkStatus, WikiLinkSuggestion, WikiLinksConfig, } from './wiki-links';
+ export { atomicEditorTheme, atomicMarkdownSyntax } from './atomic-theme';
+ export { autoCloseCodeFence, extendEmphasisPair } from './edit-helpers';
++export { treeGrowthEffect, treeProgressPlugin } from './tree-progress';
+ //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file

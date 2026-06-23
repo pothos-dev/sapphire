@@ -29,6 +29,8 @@ import {
   frontmatterUndo,
 } from './frontmatter-field';
 import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-links';
+import { mermaidBlocks, setMermaidTheme } from './mermaid';
+import type { ResolvedTheme } from './mermaidBlocks';
 import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
 import { findExtensions, findPanelTheme } from './find';
 
@@ -221,6 +223,10 @@ function modeExtensions(mode: EditorMode, onLinkClick: (url: string) => void): E
   return [
     tables({ onLinkClick }),
     imageBlocks(),
+    // Render ` ```mermaid ` fences as Diagrams (ADR-0005). Active in hybrid and
+    // view only — `edit` returned early above, so source mode shows the raw
+    // fence. `reading` (view): always rendered; hybrid: cursor inside reveals raw.
+    mermaidBlocks(reading),
     inlinePreview({ onLinkClick, alwaysRender: reading }),
     ...(reading ? [] : [highlightActiveLine()]),
     // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits at
@@ -463,6 +469,17 @@ export function reconfigureWikiLinks(view: EditorView): void {
   const ctx = viewOptions.get(view)?.wikiLinkContext;
   if (!compartment || !ctx) return;
   view.dispatch({ effects: compartment.reconfigure(wikiLinksExtension(ctx)) });
+}
+
+/**
+ * Tell the mermaid block-render field which resolved app theme to render
+ * diagrams in (theme-sync, ADR-0005). A baked diagram SVG lives outside Svelte
+ * reactivity, so a theme flip can't recolour it via CSS — App.svelte calls this
+ * from the `$effect` that mirrors `theme.resolved`, dispatching a `StateEffect`
+ * the field rebuilds on, re-rendering existing diagrams in the new colours.
+ */
+export function setEditorMermaidTheme(view: EditorView, resolved: ResolvedTheme): void {
+  view.dispatch({ effects: setMermaidTheme.of(resolved) });
 }
 
 /** The view's current mode (`hybrid` if the view predates mode tracking). */
