@@ -4,6 +4,28 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-23
+
+### Added
+
+- Mermaid diagrams: ` ```mermaid ` fenced blocks render as diagrams in Live and
+  Read modes, themed to match the app's light/dark palette and font. Double-click
+  (or the Source toggle) to edit; invalid diagrams show an inline error with the
+  source.
+- CLI `--detached` / `-d` flag to launch the app detached from the spawning
+  console, returning the shell prompt immediately.
+
+### Changed
+
+- CLI argument handling: `--version` and `--help` now print to the console and
+  exit without opening a window, and unknown options or extra arguments are
+  rejected with an error.
+
+### Fixed
+
+- Bundle identifier no longer ends in `.app` (renamed to `md.sapphire.editor`),
+  resolving the macOS application-bundle extension collision warning.
+
 ## [0.10.0] - 2026-06-23
 
 ### Added
