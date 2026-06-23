@@ -23,3 +23,6 @@ vite.config.ts.timestamp-*
 # Local-only example OKF bundle (Google ga4 sample); not shipped in the repo
 /examples
 
+
+# Local editor workspace file (machine-specific)
+/.workspace
