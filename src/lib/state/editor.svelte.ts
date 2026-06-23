@@ -1,6 +1,7 @@
 import { backend } from '$lib/ipc';
 import { createDebouncer } from '$lib/debounce';
 import { errMessage } from '$lib/errors';
+import { remapPath } from '$lib/path';
 
 /** Autosave debounce: save this long after the user stops typing. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
@@ -145,21 +146,15 @@ class EditorStore {
    * removed/created events cannot convey it). Returns the new open path, if any.
    */
   followRename(from: string, to: string): string | null {
-    const remap = (p: string): string | null => {
-      if (p === from) return to;
-      if (p.startsWith(`${from}/`)) return `${to}/${p.slice(from.length + 1)}`;
-      return null;
-    };
-
     // Rewrite any affected history entries so Back/Forward stay valid.
     let changed = false;
     this.history = this.history.map((p) => {
-      const next = remap(p);
+      const next = remapPath(p, from, to);
       if (next !== null) changed = true;
       return next ?? p;
     });
 
-    const openNext = this.path === null ? null : remap(this.path);
+    const openNext = this.path === null ? null : remapPath(this.path, from, to);
     if (openNext !== null) this.path = openNext;
 
     return changed || openNext !== null ? (this.path ?? null) : null;

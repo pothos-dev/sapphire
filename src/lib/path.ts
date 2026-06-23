@@ -39,3 +39,26 @@ export function splitPath(path: string): { dir: string; base: string } {
   if (slash === -1) return { dir: '', base: path };
   return { dir: path.slice(0, slash + 1), base: path.slice(slash + 1) };
 }
+
+/**
+ * Rewrite a path `p` to follow a rename/move of `from` → `to`. Returns the new
+ * path when `p` IS `from` or sits beneath it (`from/...`), or `null` when `p` is
+ * unaffected. The `${from}/` guard ensures a sibling like `foobar` is not
+ * matched by a rename of `foo`. Pure string surgery, used to keep open-Concept
+ * and history paths valid across a tree rename.
+ */
+export function remapPath(p: string, from: string, to: string): string | null {
+  if (p === from) return to;
+  if (p.startsWith(`${from}/`)) return `${to}/${p.slice(from.length + 1)}`;
+  return null;
+}
+
+/**
+ * The destination path `from` would land at when moved into folder `toDir`,
+ * keeping its basename (`''` = Bundle root). Tolerates a trailing slash on
+ * `toDir` and a trailing slash on `from` (folder paths).
+ */
+export function moveDestination(from: string, toDir: string): string {
+  const name = from.split('/').filter(Boolean).pop() ?? from;
+  return joinPath(toDir.replace(/\/+$/, ''), name);
+}
