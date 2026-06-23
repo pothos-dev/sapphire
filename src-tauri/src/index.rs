@@ -19,7 +19,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::paths::{bundle_walker, find_byte, resolve_internal, to_rel_string};
+use crate::paths::{find_byte, md_files, resolve_internal};
 use crate::wikilink;
 
 /// One Concept's indexed data: parsed frontmatter fields we care about plus its
@@ -68,31 +68,10 @@ impl Index {
     /// walker settings (hidden + gitignore aware) and only indexes `.md` files.
     pub fn build(root: &Path) -> Self {
         let mut index = Index::default();
-        let walker = bundle_walker(root).build();
-
-        for result in walker {
-            let entry = match result {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                continue;
-            }
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                continue;
-            }
-            let rel = match path.strip_prefix(root) {
-                Ok(r) => to_rel_string(r),
-                Err(_) => continue,
-            };
-            if rel.is_empty() {
-                continue;
-            }
-            let content = std::fs::read_to_string(path).unwrap_or_default();
+        for (path, rel) in md_files(root) {
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
             index.insert_concept(&rel, &content);
         }
-
         index.rebuild_reverse();
         index
     }

@@ -19,7 +19,7 @@ use grep_searcher::sinks::UTF8;
 use grep_searcher::{BinaryDetection, SearcherBuilder};
 use serde::Serialize;
 
-use crate::paths::{bundle_walker, to_rel_string};
+use crate::paths::md_files;
 
 /// Hard cap on the number of matches returned, so a query like a single common
 /// letter over a huge Bundle cannot flood the IPC channel or the UI list. The
@@ -59,26 +59,7 @@ pub fn search(root: &Path, query: &str) -> Result<Vec<SearchHit>, String> {
 
     let mut hits: Vec<SearchHit> = Vec::new();
 
-    let walker = bundle_walker(root).build();
-
-    'walk: for result in walker {
-        let entry = match result {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        // Files only, and only `.md` Concepts.
-        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            continue;
-        }
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-        let rel = match path.strip_prefix(root) {
-            Ok(r) => to_rel_string(r),
-            Err(_) => continue,
-        };
-
+    'walk: for (path, rel) in md_files(root) {
         let mut searcher = SearcherBuilder::new()
             .binary_detection(BinaryDetection::quit(b'\x00'))
             .line_number(true)
