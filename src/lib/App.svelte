@@ -86,6 +86,11 @@
   // render it. Updated by the editor's `onFrontmatterChange` callback.
   let frontmatterProps = $state<Property[]>([]);
 
+  // The Properties panel's raw collapse state, bound out of the component so the
+  // Region registration below can treat a collapsed panel as not-visible and
+  // transiently reveal it on directional focus (properties-auto-reveal).
+  let propertiesCollapsed = $state(false);
+
   // Unified undo/redo (unified-body-frontmatter-undo): one CodeMirror history
   // spans body + frontmatter. These mirror `undoDepth`/`redoDepth` so the
   // Properties-panel buttons can enable/disable reactively. They are NOT derived
@@ -1130,11 +1135,18 @@
         data-region="properties"
         use:region={{
           id: 'properties',
-          // Properties is never collapse-hidden — it is chrome inside the Editor
-          // pane, present iff a non-reserved Concept is open, absent otherwise
-          // (skipped, never revealed). Presence == visibility here.
+          // Properties is chrome inside the Editor pane: PRESENT iff a non-reserved
+          // Concept is open (absent → skipped, never revealed). It is also
+          // COLLAPSIBLE (the header chevron), so — like the Sidebar Sections — a
+          // collapsed panel is present-but-not-visible: directional focus into it
+          // transiently reveals the body and lands focus in the grid
+          // (properties-auto-reveal).
           isPresent: () => editor.path !== null && !isReservedFile(editor.path),
-          isVisible: () => editor.path !== null && !isReservedFile(editor.path),
+          isVisible: () =>
+            editor.path !== null &&
+            !isReservedFile(editor.path) &&
+            (!propertiesCollapsed || session.propertiesRevealed),
+          reveal: () => session.revealProperties(),
         }}
       >
         <Properties
@@ -1149,6 +1161,7 @@
           onRedo={doRedo}
           {canUndo}
           {canRedo}
+          bind:collapsed={propertiesCollapsed}
         />
       </div>
     {/if}

@@ -14,6 +14,7 @@
 
   import { renameProperty, type Property } from '$lib/frontmatter';
   import { focus } from '$lib/state/focus.svelte';
+  import { session } from '$lib/state/session.svelte';
   import { propertiesNav, KEY_COL, VALUE_COL, type CellKind } from '$lib/state/propertiesNav.svelte';
   import { moveCell, nextCellTab, type Cell } from '$lib/propertiesGrid';
   import PropertyRow from './PropertyRow.svelte';
@@ -54,6 +55,13 @@
     onRedo?: () => void;
     canUndo?: boolean;
     canRedo?: boolean;
+    /**
+     * Whether the panel is COLLAPSED (raw collapse state, ignoring any transient
+     * reveal). Bound out so the app shell's Region registration can treat a
+     * collapsed panel as not-visible and transiently reveal it on directional
+     * focus, the same way the Sidebar Sections auto-reveal (properties-auto-reveal).
+     */
+    collapsed?: boolean;
   }
 
   let {
@@ -68,6 +76,7 @@
     onRedo,
     canUndo = false,
     canRedo = false,
+    collapsed = $bindable(false),
   }: Props = $props();
 
   // The whole panel is collapsible (header chevron). By DEFAULT it follows
@@ -88,7 +97,22 @@
     void path;
     manualCollapse = null;
   });
-  const collapsed = $derived(manualCollapse ?? properties.length === 0);
+  // The raw collapse state (default + manual override), ignoring any transient
+  // reveal. Synced out to the `collapsed` bindable so the app shell can drive the
+  // auto-reveal seam.
+  const rawCollapsed = $derived(manualCollapse ?? properties.length === 0);
+  $effect(() => {
+    collapsed = rawCollapsed;
+  });
+
+  // The body renders when the panel is expanded OR transiently revealed. The
+  // transient reveal (properties-auto-reveal) mirrors the Sidebar Sections:
+  // directional focus into a collapsed panel flips `session.propertiesRevealed`,
+  // the body renders so focus can land in the grid, and leaving the Region clears
+  // the flag — snapping the panel back to collapsed. The header (chevron + count
+  // + undo/redo) tracks this EFFECTIVE shown state, so a peeked panel reads as
+  // open while revealed.
+  const bodyShown = $derived(!rawCollapsed || session.propertiesRevealed);
 
   // The `type` input element, focused when a new Concept opens so the user
   // lands in `type` (the field they must fill to make the Concept OKF-valid).
@@ -557,14 +581,20 @@
     <button
       type="button"
       class="panel-toggle"
-      aria-expanded={!collapsed}
+      aria-expanded={bodyShown}
       aria-label="Properties"
       data-testid="properties-toggle"
-      onclick={() => (manualCollapse = !collapsed)}
+      onclick={() => {
+        // Flip the EFFECTIVE shown state, and drop any transient reveal so a
+        // click while peeked doesn't leave the panel fighting the auto-reveal
+        // (the explicit toggle takes over as the source of truth).
+        manualCollapse = bodyShown;
+        session.propertiesRevealed = false;
+      }}
     >
-      <span class="chevron" class:open={!collapsed} aria-hidden="true">▸</span>
+      <span class="chevron" class:open={bodyShown} aria-hidden="true">▸</span>
       <span class="panel-title">Properties</span>
-      {#if collapsed && properties.length > 0}
+      {#if !bodyShown && properties.length > 0}
         <span class="panel-count" data-testid="properties-count">{properties.length}</span>
       {/if}
     </button>
@@ -593,8 +623,9 @@
   </div>
 
   <!-- Body: the property grid + add controls. Hidden while the panel is
-       collapsed (the header toggle is then the panel's only affordance). -->
-  {#if !collapsed}
+       collapsed AND not transiently revealed (the header toggle is then the
+       panel's only affordance). -->
+  {#if bodyShown}
     {#each rows as { id, prop } (id)}
     {@const isType = prop.key === 'type'}
     {@const keyFocused = isFocusedRow(id) && propertiesNav.cell.col === KEY_COL}

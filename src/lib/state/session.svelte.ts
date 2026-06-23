@@ -84,6 +84,16 @@ class SessionStore {
   outlineRevealed = $state<boolean>(false);
   backlinksRevealed = $state<boolean>(false);
   /**
+   * Properties panel transient reveal (slice: properties-auto-reveal). Unlike the
+   * Sidebar Sections, the Properties panel owns its collapse state inside its
+   * component (a per-Concept default + the header-chevron override), so there is
+   * no persisted `propertiesOpen` here — only this ephemeral flag. Directional
+   * focus into a COLLAPSED Properties panel flips it so the panel renders its body
+   * and focus can land in the grid; focus leaving the Region clears it, snapping
+   * the panel back to collapsed.
+   */
+  propertiesRevealed = $state<boolean>(false);
+  /**
    * True only after the FULL restore sequence (load + seed defaults + reopen the
    * last Concept) has completed. Persistence is gated on this so a reactive
    * `$effect` observing a transient default (e.g. `editor.path === null` before
@@ -266,6 +276,17 @@ class SessionStore {
     if (!this.rightSidebarOpen) this.rightSidebarRevealed = true;
     if (section === 'outline' && !this.outlineOpen) this.outlineRevealed = true;
     if (section === 'backlinks' && !this.backlinksOpen) this.backlinksRevealed = true;
+  }
+
+  /**
+   * Transiently reveal the Properties panel (slice: properties-auto-reveal).
+   * Called by the focus backbone only when directional movement targets a
+   * present-but-collapsed Properties Region, so it can flip unconditionally — the
+   * panel's effective collapse lives in its component, not here. Cleared on focus
+   * leaving the Region via `clearTransientRevealsExcept`.
+   */
+  revealProperties(): void {
+    this.propertiesRevealed = true;
   }
 
   /**

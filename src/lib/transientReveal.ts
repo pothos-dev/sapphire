@@ -24,7 +24,8 @@ export type TransientFlag =
   | 'explorerRevealed'
   | 'tagsRevealed'
   | 'outlineRevealed'
-  | 'backlinksRevealed';
+  | 'backlinksRevealed'
+  | 'propertiesRevealed';
 
 export const ALL_TRANSIENT_FLAGS: readonly TransientFlag[] = [
   'leftSidebarRevealed',
@@ -33,14 +34,16 @@ export const ALL_TRANSIENT_FLAGS: readonly TransientFlag[] = [
   'tagsRevealed',
   'outlineRevealed',
   'backlinksRevealed',
+  'propertiesRevealed',
 ];
 
 /**
  * The transient flags that keep `region` shown — i.e. the ones that must be
  * PRESERVED when focus lands in `region` while every other peeked Region is
- * snapped back. A collapse-hideable Region needs both its Sidebar's flag and
- * its own Section flag; the never-collapsible Regions (Editor, Properties) keep
- * none. Empty for an unknown id (total + safe).
+ * snapped back. A Sidebar Section needs both its Sidebar's flag and its own
+ * Section flag; Properties (collapsible chrome inside the Editor pane) keeps its
+ * single panel flag; the only never-collapsible Region (Editor) keeps none.
+ * Empty for an unknown id (total + safe).
  */
 export function revealFlagsFor(region: RegionId): readonly TransientFlag[] {
   switch (region) {
@@ -52,8 +55,9 @@ export function revealFlagsFor(region: RegionId): readonly TransientFlag[] {
       return ['rightSidebarRevealed', 'outlineRevealed'];
     case 'backlinks':
       return ['rightSidebarRevealed', 'backlinksRevealed'];
-    case 'editor':
     case 'properties':
+      return ['propertiesRevealed'];
+    case 'editor':
       return [];
   }
 }

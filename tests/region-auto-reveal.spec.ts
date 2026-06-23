@@ -175,6 +175,66 @@ test('absent (no Concept → Properties/Editor) and empty (no tags → Tags) Reg
   await expect(page.getByTestId('tags-section')).toHaveCount(0);
 });
 
+test('a collapsed Properties panel is transiently revealed on Alt-in and re-collapses on leave', async ({
+  page,
+}) => {
+  await openConcept(page);
+
+  // codemirror.md has frontmatter, so the Properties panel opens EXPANDED.
+  // Collapse it via the header chevron — its body unmounts, leaving the panel
+  // present (a Concept is open) but hidden purely by a collapse.
+  const toggle = page.getByTestId('properties-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('scalar-type')).toHaveCount(0);
+
+  // Clicking the toggle moved focus into the Properties header; return to the
+  // Editor (row1, col1) so the next Alt+Up is a real cross-Region move.
+  await page.getByTestId('editor').locator('.cm-content').click();
+  await expectActive(page, 'editor');
+
+  // Alt+Up toward Properties (row0, col1): present-but-collapsed → transiently
+  // reveal the body and land focus in the grid (like the Sidebar Sections).
+  await altPress(page, 'ArrowUp');
+  await expectActive(page, 'properties');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('scalar-type')).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const region = document.querySelector('[data-region="properties"]');
+      return region?.contains(document.activeElement) ?? false;
+    }),
+  ).toBe(true);
+
+  // Leave the Region (Escape → Editor). The peek was NOT manually expanded
+  // beforehand, so it snaps back: the panel re-collapses.
+  await page.keyboard.press('Escape');
+  await expectActive(page, 'editor');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('scalar-type')).toHaveCount(0);
+});
+
+test('a manually-expanded Properties panel stays open after focus leaves', async ({
+  page,
+}) => {
+  await openConcept(page);
+
+  // codemirror.md opens with the Properties panel EXPANDED (it has frontmatter).
+  const toggle = page.getByTestId('properties-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+  // Alt+Up into Properties (already shown — no reveal needed), then leave.
+  await altPress(page, 'ArrowUp');
+  await expectActive(page, 'properties');
+  await page.keyboard.press('Escape');
+  await expectActive(page, 'editor');
+
+  // It was expanded BEFORE the visit, so it STAYS open (no re-collapse).
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('scalar-type')).toBeVisible();
+});
+
 test('Section-collapsed Tags (left Sidebar open) is transiently revealed on Alt-Down from the Explorer', async ({
   page,
 }) => {
