@@ -1,3 +1,28 @@
+diff --git a/node_modules/@atomic-editor/editor/.bun-tag-b078cfe0b0463c9b b/.bun-tag-b078cfe0b0463c9b
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 9e17e82ee7ef8a8a558dbd0444faf2ab2f8836dc..dd472ca33425b6bf1c4ff5b9ca39c5ec044ab4de 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -9,4 +9,5 @@ export { wikiLinks } from './wiki-links';
+ export type { WikiLinkResolvedTarget, WikiLinkStatus, WikiLinkSuggestion, WikiLinksConfig, } from './wiki-links';
+ export { atomicEditorTheme, atomicMarkdownSyntax } from './atomic-theme';
+ export { autoCloseCodeFence, extendEmphasisPair } from './edit-helpers';
++export { treeGrowthEffect, treeProgressPlugin } from './tree-progress';
+ //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
+diff --git a/dist/index.js b/dist/index.js
+index 955ad2f60d19dc8619d5a35fa1778f15c2e1ef15..0577bf5f3093fcff15679fab28a2ef3a534d3269 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -10,4 +10,5 @@ export { tables } from './table-widget';
+ export { wikiLinks } from './wiki-links';
+ export { atomicEditorTheme, atomicMarkdownSyntax } from './atomic-theme';
+ export { autoCloseCodeFence, extendEmphasisPair } from './edit-helpers';
++export { treeGrowthEffect, treeProgressPlugin } from './tree-progress';
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
 diff --git a/dist/inline-preview.d.ts b/dist/inline-preview.d.ts
 index 4951e264cdf8f9e1c2f52936ed6e4cb6558769e1..fbf13f0ec66ab9d62a205de2447af577f6ab9c66 100644
 --- a/dist/inline-preview.d.ts
@@ -105,25 +130,87 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..b7847c047ee1795053a2e1533f1d2f62
          previewFrozenField,
          inlinePreviewPlugin,
          freezeMousePlugin,
-diff --git a/dist/index.js b/dist/index.js
-index 955ad2f..0577bf5 100644
---- a/dist/index.js
-+++ b/dist/index.js
-@@ -10,4 +10,5 @@ export { tables } from './table-widget';
- export { wikiLinks } from './wiki-links';
- export { atomicEditorTheme, atomicMarkdownSyntax } from './atomic-theme';
- export { autoCloseCodeFence, extendEmphasisPair } from './edit-helpers';
-+export { treeGrowthEffect, treeProgressPlugin } from './tree-progress';
- //# sourceMappingURL=index.js.map
-\ No newline at end of file
-diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 9e17e82..dd472ca 100644
---- a/dist/index.d.ts
-+++ b/dist/index.d.ts
-@@ -9,4 +9,5 @@ export { wikiLinks } from './wiki-links';
- export type { WikiLinkResolvedTarget, WikiLinkStatus, WikiLinkSuggestion, WikiLinksConfig, } from './wiki-links';
- export { atomicEditorTheme, atomicMarkdownSyntax } from './atomic-theme';
- export { autoCloseCodeFence, extendEmphasisPair } from './edit-helpers';
-+export { treeGrowthEffect, treeProgressPlugin } from './tree-progress';
- //# sourceMappingURL=index.d.ts.map
-\ No newline at end of file
+diff --git a/dist/styles/inline-preview.css b/dist/styles/inline-preview.css
+index de6e2618e9b0bd8c788aea16f95d6a9181f84e67..d1f599a46008ed100c896eb2d8a6faa74ecb4e77 100644
+--- a/dist/styles/inline-preview.css
++++ b/dist/styles/inline-preview.css
+@@ -457,6 +457,7 @@
+ .cm-atomic-table-cell-source .cm-atomic-strong-wrap.active > .cm-atomic-mark,
+ .cm-atomic-table-cell-source .cm-atomic-em-wrap.active > .cm-atomic-mark,
+ .cm-atomic-table-cell-source .cm-atomic-strike-wrap.active > .cm-atomic-mark,
++.cm-atomic-table-cell-source .cm-atomic-code-wrap.active > .cm-atomic-mark,
+ .cm-atomic-table-cell-source .cm-atomic-link-wrap.active > .cm-atomic-mark {
+   display: inline;
+   color: var(--atomic-editor-fg-faint, #666);
+diff --git a/dist/table-widget.d.ts b/dist/table-widget.d.ts
+index 1915826e8e0122832658bdd15e8fee8649f5499f..9f10d96ce3b9ca82d668ed5884a20b218d9f4a23 100644
+--- a/dist/table-widget.d.ts
++++ b/dist/table-widget.d.ts
+@@ -19,6 +19,10 @@ type CellToken = {
+ } | {
+     type: 'strike';
+     children: CellToken[];
++} | {
++    type: 'code';
++    delim: string;
++    text: string;
+ } | {
+     type: 'link';
+     textChildren: CellToken[];
+diff --git a/dist/table-widget.js b/dist/table-widget.js
+index 55756c13971b3d3ec582f8e8df61a1c232292cd2..bdd7fd8a2a5319128c61713c43c83a31a1bb5527 100644
+--- a/dist/table-widget.js
++++ b/dist/table-widget.js
+@@ -134,9 +134,21 @@ export function parseCellInline(raw) {
+ }
+ function matchCellMarkAt(raw, from) {
+     const rest = raw.slice(from);
++    // Inline code: a run of backticks, content, a matching-length run.
++    // Checked first because a code span binds tighter than emphasis in
++    // CommonMark (backticks inside `**` win), and its content is LITERAL —
++    // never parsed for nested marks (so the token carries raw text, not
++    // children). `(?!`)` stops the closer matching a longer run.
++    let m = rest.match(/^(`+)(.+?)\1(?!`)/);
++    if (m) {
++        return {
++            token: { type: 'code', delim: m[1], text: m[2] },
++            end: from + m[0].length,
++        };
++    }
+     // Bold with `**` or `__` — greedy on the outside, lazy on the
+     // content so we catch the nearest closer.
+-    let m = rest.match(/^\*\*([\s\S]+?)\*\*/);
++    m = rest.match(/^\*\*([\s\S]+?)\*\*/);
+     if (m) {
+         return {
+             token: { type: 'strong', delim: '**', children: parseCellInline(m[1]) },
+@@ -248,6 +260,21 @@ function renderCellToken(tok) {
+         wrap.appendChild(makeCellMark('~~'));
+         return wrap;
+     }
++    if (tok.type === 'code') {
++        // Inline code. The inner `.cm-atomic-inline-code` span reuses the
++        // outer-editor's global monospace styling; the backtick delimiters
++        // are faint marks (hidden until the caret enters the wrap). Content
++        // is a literal text node — code spans have no nested marks.
++        const wrap = document.createElement('span');
++        wrap.className = 'cm-atomic-code-wrap';
++        wrap.appendChild(makeCellMark(tok.delim));
++        const inner = document.createElement('span');
++        inner.className = 'cm-atomic-inline-code';
++        inner.textContent = tok.text;
++        wrap.appendChild(inner);
++        wrap.appendChild(makeCellMark(tok.delim));
++        return wrap;
++    }
+     // Link. Shape mirrors the outer-editor markup: `.cm-atomic-link` on
+     // the visible text (picks up link color + external-link icon via
+     // `::after`), faint marks for `[`, `]`, `(`, URL, `)`. `data-url`
+@@ -358,6 +385,7 @@ const MARK_WRAP_CLASSES = [
+     'cm-atomic-strong-wrap',
+     'cm-atomic-em-wrap',
+     'cm-atomic-strike-wrap',
++    'cm-atomic-code-wrap',
+     'cm-atomic-link-wrap',
+ ];
+ function isMarkWrap(el) {
