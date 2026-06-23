@@ -1,5 +1,6 @@
 mod app_state;
 mod bundle;
+mod cli;
 mod config;
 mod index;
 mod paths;
@@ -195,13 +196,13 @@ fn capture_window_state(window: &tauri::WebviewWindow) -> Option<WindowState> {
 
 /// Resolve the Bundle root, then canonicalize it. Resolution order:
 ///   1. `SAPPHIRE_BUNDLE` env var, if set,
-///   2. the first positional CLI arg, if given,
+///   2. the positional CLI path (already parsed by `cli::parse_args`), if given,
 ///   3. the per-build default (see `default_bundle_root`).
-fn resolve_bundle_root() -> PathBuf {
+fn resolve_bundle_root(cli_path: Option<String>) -> PathBuf {
     let explicit = std::env::var("SAPPHIRE_BUNDLE")
         .ok()
         .filter(|s| !s.is_empty())
-        .or_else(|| std::env::args().nth(1));
+        .or(cli_path);
     let path = explicit.map(PathBuf::from).unwrap_or_else(default_bundle_root);
     path.canonicalize().unwrap_or(path)
 }
@@ -225,10 +226,29 @@ fn default_bundle_root() -> PathBuf {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Parse the command line BEFORE starting Tauri so `--version`/`--help` print
+    // to the terminal and exit without ever opening a window, and unknown options
+    // are rejected instead of being treated as a Bundle path.
+    let cli_path = match cli::parse_args(std::env::args().skip(1)) {
+        cli::CliAction::Run(path) => path,
+        cli::CliAction::Version => {
+            println!("{}", cli::version_string());
+            return;
+        }
+        cli::CliAction::Help => {
+            print!("{}", cli::help_string());
+            return;
+        }
+        cli::CliAction::Error(msg) => {
+            eprintln!("error: {msg}");
+            std::process::exit(2);
+        }
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            let bundle_root = resolve_bundle_root();
+        .setup(move |app| {
+            let bundle_root = resolve_bundle_root(cli_path);
 
             // Restore the saved window geometry for this Bundle (size always;
             // position only if we have one). Window state lives in Rust so the
