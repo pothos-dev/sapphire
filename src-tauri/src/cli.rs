@@ -1,17 +1,27 @@
 //! Command-line argument parsing.
 //!
-//! Sapphire is CLI-launched (`sapphire ./docs`). The only arguments are an
-//! optional positional Bundle path plus the conventional `--help`/`--version`
-//! flags. We hand-roll the parse (no `clap`) to keep the dependency surface
-//! small; the grammar is tiny and the logic is pure so it can be unit-tested.
+//! Sapphire is CLI-launched (`sapphire ./docs`). The arguments are an optional
+//! positional Bundle path, the conventional `--help`/`--version` flags, and
+//! `--detached`/`-d` (run detached from the spawning console). We hand-roll the
+//! parse (no `clap`) to keep the dependency surface small; the grammar is tiny
+//! and the logic is pure so it can be unit-tested.
+
+/// Options for launching the app (the `Run` action).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct RunOptions {
+    /// The Bundle root from the command line; `None` means "fall back to
+    /// `SAPPHIRE_BUNDLE` / the per-build default" (see `resolve_bundle_root`).
+    pub bundle: Option<String>,
+    /// Detach from the spawning console: re-spawn the UI as an independent
+    /// process and return the shell prompt immediately (see `lib.rs`).
+    pub detached: bool,
+}
 
 /// What the parsed command line tells the binary to do.
 #[derive(Debug, PartialEq, Eq)]
 pub enum CliAction {
-    /// Launch the app. The optional path is the Bundle root from the command
-    /// line; `None` means "fall back to `SAPPHIRE_BUNDLE` / the per-build
-    /// default" (see `resolve_bundle_root`).
-    Run(Option<String>),
+    /// Launch the app with the given options.
+    Run(RunOptions),
     /// Print version information to stdout and exit successfully.
     Version,
     /// Print usage help to stdout and exit successfully.
@@ -23,20 +33,22 @@ pub enum CliAction {
 /// Parse the CLI arguments, which MUST already have the program name stripped
 /// (i.e. pass `std::env::args().skip(1)`).
 ///
-/// Grammar: at most one positional Bundle path, plus the flags `-h`/`--help`
-/// and `-V`/`--version`. `--help`/`--version` take precedence wherever they
-/// appear. Any unrecognised flag, or a second positional argument, is rejected.
+/// Grammar: at most one positional Bundle path, plus the flags `-h`/`--help`,
+/// `-V`/`--version` and `-d`/`--detached`. `--help`/`--version` take precedence
+/// wherever they appear. Any unrecognised flag, or a second positional
+/// argument, is rejected.
 pub fn parse_args<I, S>(args: I) -> CliAction
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    let mut path: Option<String> = None;
+    let mut opts = RunOptions::default();
     for arg in args {
         let a = arg.as_ref();
         match a {
             "-h" | "--help" => return CliAction::Help,
             "-V" | "--version" => return CliAction::Version,
+            "-d" | "--detached" => opts.detached = true,
             // Anything else starting with '-' is an unknown option. A lone "-"
             // is treated as a positional (harmless; not a recognised flag).
             _ if a.starts_with('-') && a != "-" => {
@@ -45,16 +57,16 @@ where
                 ));
             }
             _ => {
-                if path.is_some() {
+                if opts.bundle.is_some() {
                     return CliAction::Error(format!(
                         "unexpected extra argument '{a}'\n\nTry 'sapphire --help' for usage."
                     ));
                 }
-                path = Some(a.to_string());
+                opts.bundle = Some(a.to_string());
             }
         }
     }
-    CliAction::Run(path)
+    CliAction::Run(opts)
 }
 
 /// The `--version` line, e.g. `sapphire 0.10.0`.
@@ -76,8 +88,9 @@ Arguments:
   BUNDLE        Path to the folder to open as a Bundle (default: current directory)
 
 Options:
-  -h, --help    Print this help and exit
-  -V, --version Print version information and exit
+  -d, --detached Run detached from this console (returns the prompt immediately)
+  -h, --help     Print this help and exit
+  -V, --version  Print version information and exit
 ",
         name = env!("CARGO_PKG_NAME"),
         version = env!("CARGO_PKG_VERSION"),
@@ -88,17 +101,34 @@ Options:
 mod tests {
     use super::*;
 
+    /// Build the expected `Run` action concisely.
+    fn run(bundle: Option<&str>, detached: bool) -> CliAction {
+        CliAction::Run(RunOptions {
+            bundle: bundle.map(str::to_string),
+            detached,
+        })
+    }
+
     #[test]
     fn no_args_runs_with_no_path() {
-        assert_eq!(parse_args(Vec::<String>::new()), CliAction::Run(None));
+        assert_eq!(parse_args(Vec::<String>::new()), run(None, false));
     }
 
     #[test]
     fn positional_is_the_bundle_path() {
-        assert_eq!(
-            parse_args(["./docs"]),
-            CliAction::Run(Some("./docs".to_string()))
-        );
+        assert_eq!(parse_args(["./docs"]), run(Some("./docs"), false));
+    }
+
+    #[test]
+    fn detached_flags_set_detached() {
+        assert_eq!(parse_args(["--detached"]), run(None, true));
+        assert_eq!(parse_args(["-d"]), run(None, true));
+    }
+
+    #[test]
+    fn detached_combines_with_a_path_in_any_order() {
+        assert_eq!(parse_args(["-d", "./docs"]), run(Some("./docs"), true));
+        assert_eq!(parse_args(["./docs", "-d"]), run(Some("./docs"), true));
     }
 
     #[test]
@@ -144,7 +174,7 @@ mod tests {
 
     #[test]
     fn lone_dash_is_a_positional_not_a_flag() {
-        assert_eq!(parse_args(["-"]), CliAction::Run(Some("-".to_string())));
+        assert_eq!(parse_args(["-"]), run(Some("-"), false));
     }
 
     #[test]

@@ -224,13 +224,52 @@ fn default_bundle_root() -> PathBuf {
     PathBuf::from(".")
 }
 
+/// Env marker set on the re-spawned child of a `--detached` launch, so the child
+/// runs the UI normally instead of detaching again (which would loop forever).
+const DETACHED_CHILD_ENV: &str = "SAPPHIRE_DETACHED_CHILD";
+
+/// Re-spawn this executable as a console-independent child and let the parent
+/// return immediately, freeing the terminal (`--detached` / `-d`). The child is
+/// given its own process group (so terminal job-control signals — Ctrl+C, and
+/// SIGHUP on terminal close — don't reach it) with stdio detached to null; on
+/// Windows it gets `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`. The Bundle
+/// path is forwarded; `SAPPHIRE_BUNDLE` and the rest of the environment are
+/// inherited. The `DETACHED_CHILD_ENV` marker stops the child from detaching
+/// again.
+fn spawn_detached(bundle: &Option<String>) -> std::io::Result<()> {
+    use std::process::{Command, Stdio};
+    let exe = std::env::current_exe()?;
+    let mut cmd = Command::new(exe);
+    if let Some(path) = bundle {
+        cmd.arg(path);
+    }
+    cmd.env(DETACHED_CHILD_ENV, "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // New process group, detached from the terminal's job control.
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    cmd.spawn().map(|_| ())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Parse the command line BEFORE starting Tauri so `--version`/`--help` print
     // to the terminal and exit without ever opening a window, and unknown options
     // are rejected instead of being treated as a Bundle path.
-    let cli_path = match cli::parse_args(std::env::args().skip(1)) {
-        cli::CliAction::Run(path) => path,
+    let opts = match cli::parse_args(std::env::args().skip(1)) {
+        cli::CliAction::Run(opts) => opts,
         cli::CliAction::Version => {
             println!("{}", cli::version_string());
             return;
@@ -244,6 +283,21 @@ pub fn run() {
             std::process::exit(2);
         }
     };
+
+    // `--detached`: re-spawn ourselves as a console-independent process and let
+    // this (parent) process exit, returning the shell prompt. Skip when we ARE
+    // the re-spawned child (marker set), so the child runs the UI normally.
+    if opts.detached && std::env::var_os(DETACHED_CHILD_ENV).is_none() {
+        match spawn_detached(&opts.bundle) {
+            Ok(()) => return,
+            Err(e) => {
+                eprintln!("error: failed to launch detached: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let cli_path = opts.bundle;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
