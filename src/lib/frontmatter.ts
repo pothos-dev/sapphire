@@ -28,6 +28,12 @@ export interface Property {
   scalar?: string;
   /** Whether the scalar parsed as a boolean (affects re-serialization). */
   boolean?: boolean;
+  /**
+   * Whether the scalar parsed as a number (int/float). Re-serialized unquoted
+   * so an integer/float keeps its YAML type across a round-trip instead of
+   * being force-quoted into a string (ADR 0003).
+   */
+  number?: boolean;
   /** Flat list items as strings. Only for `list`. */
   list?: string[];
   /** Verbatim source text of the VALUE (shown read-only for `complex`). */
@@ -212,6 +218,9 @@ function classify(key: string, value: unknown, yamlSrc: string): Property {
     if (typeof v === 'boolean') {
       return { key, kind: 'scalar', scalar: String(v), boolean: true };
     }
+    if (typeof v === 'number' || typeof v === 'bigint') {
+      return { key, kind: 'scalar', scalar: String(v), number: true };
+    }
     if (v === null) return { key, kind: 'scalar', scalar: '' };
     // A string scalar that itself spans multiple lines is also not a simple
     // single-line field — preserve verbatim.
@@ -288,7 +297,10 @@ export function serializeFrontmatter(props: Property[]): string {
       const v = p.scalar ?? '';
       // Empty scalar -> bare `key:` (matches the new-Concept scaffold and reads
       // cleaner than `key: ''`); both parse back to an empty/flagged value.
-      yaml += v === '' ? `${key}:\n` : `${key}: ${serializeScalar(v, p.boolean ?? false)}\n`;
+      yaml +=
+        v === ''
+          ? `${key}:\n`
+          : `${key}: ${serializeScalar(v, p.boolean ?? false, p.number ?? false)}\n`;
     }
   }
   // All properties were unnamed (e.g. a single just-added, not-yet-committed
@@ -350,11 +362,18 @@ function serializeKey(key: string): string {
  * Serialize a scalar value the way YAML would, but minimally — we want clean
  * output without disturbing surrounding text. Quote only when necessary.
  */
-function serializeScalar(value: string, asBoolean: boolean): string {
+function serializeScalar(value: string, asBoolean: boolean, asNumber = false): string {
   if (asBoolean) {
     const v = value.trim().toLowerCase();
     if (v === 'true' || v === 'false') return v;
     // No longer a boolean -> fall through to string handling.
+  }
+  if (asNumber) {
+    // Preserve the original numeric type: emit unquoted while the value still
+    // parses as a number. If the user edited it to something non-numeric, fall
+    // through to string handling (which will quote as needed).
+    const v = value.trim();
+    if (/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(v)) return v;
   }
   if (value === '') return "''";
   if (needsQuoting(value)) {

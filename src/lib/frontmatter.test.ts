@@ -92,6 +92,25 @@ describe('serializeFrontmatter / joinConcept round-trip', () => {
       '---\ntype:\n---\n',
     );
   });
+
+  test('numeric scalars round-trip as numbers, not quoted strings', () => {
+    // Regression: re-serializing parsed frontmatter (which happens on every
+    // autosave under ADR 0003) must not change an integer/float into a quoted
+    // string, which would mutate its YAML type on disk.
+    const content = '---\ntype: note\norder: 3\nweight: 1.5\n---\nBody\n';
+    const { body } = splitFrontmatter(content);
+    const props = parseProperties(content);
+    expect(joinConcept(props, body)).toBe(content);
+  });
+
+  test('an originally-quoted numeric string stays a quoted string', () => {
+    // The inverse guarantee: a value the author quoted on purpose keeps its
+    // string type across the round-trip.
+    const content = '---\ntype: note\nid: "3"\n---\nBody\n';
+    const { body } = splitFrontmatter(content);
+    const props = parseProperties(content);
+    expect(joinConcept(props, body)).toBe(content);
+  });
 });
 
 describe('frontmatterLineCount', () => {
