@@ -39,7 +39,7 @@ use crate::app_state::AppState;
 use crate::bundle;
 use crate::index::Index;
 use crate::paths::{dir_of, find_byte, is_external, resolve_internal};
-use crate::wikilink::{self, find_double_close, parse_target};
+use crate::wikilink::{self, basename, drop_md, find_double_close, parse_target};
 
 /// Summary of an auto-rewrite pass: how many links across how many files were
 /// changed. Matches the TS `{ linksChanged, filesChanged }`.
@@ -391,15 +391,7 @@ fn rewrite_wikilink(
 /// Basename (after the last `/`) of a bundle path, with `.md` dropped — the
 /// literal filename to write into a rewritten wikilink (preserves new casing).
 fn basename_of(path: &str) -> &str {
-    let base = match path.rfind('/') {
-        Some(s) => &path[s + 1..],
-        None => path,
-    };
-    if base.len() >= 3 && base[base.len() - 3..].eq_ignore_ascii_case(".md") {
-        &base[..base.len() - 3]
-    } else {
-        base
-    }
+    drop_md(basename(path))
 }
 
 /// The shortest path SUFFIX of `target` (a bundle path, `.md` dropped) that,
@@ -408,11 +400,7 @@ fn basename_of(path: &str) -> &str {
 /// back to the full path. Keeps a rewritten partial-path wikilink pointing at
 /// the moved file.
 fn shortest_resolving_suffix(paths: &[String], source: &str, target: &str) -> String {
-    let no_ext = if target.len() >= 3 && target[target.len() - 3..].eq_ignore_ascii_case(".md") {
-        &target[..target.len() - 3]
-    } else {
-        target
-    };
+    let no_ext = drop_md(target);
     let segments: Vec<&str> = no_ext.split('/').collect();
     // Try suffixes from shortest (basename) to longest (full path).
     for take in 1..=segments.len() {
