@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import type { TreeNode } from './types';
 import {
+  defaultOpenFolders,
   flattenVisible,
   indexOfPath,
   neighborAfterRemoval,
   nextIndexClamped,
+  ordinaryChildren,
   prevIndexClamped,
 } from './treeNav';
 
@@ -161,5 +163,25 @@ describe('prevIndexClamped', () => {
   });
   test('returns 0 for an empty list', () => {
     expect(prevIndexClamped(0, 0)).toBe(0);
+  });
+});
+
+describe('ordinaryChildren', () => {
+  test('keeps folders and .md Concepts, drops reserved + non-markdown', () => {
+    const root = tree.children![2]; // concepts/
+    expect(ordinaryChildren(root).map((c) => c.path)).toEqual([
+      'concepts/codemirror.md',
+      'concepts/editor',
+    ]);
+  });
+});
+
+describe('defaultOpenFolders', () => {
+  test('collects folders shallower than maxDepth, excluding the root', () => {
+    // Depth 0: concepts/. Depth 1: concepts/editor. maxDepth 2 -> both.
+    expect(defaultOpenFolders(tree, 2)).toEqual(['concepts', 'concepts/editor']);
+  });
+  test('maxDepth 1 keeps only the top-level folders', () => {
+    expect(defaultOpenFolders(tree, 1)).toEqual(['concepts']);
   });
 });

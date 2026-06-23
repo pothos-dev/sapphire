@@ -30,14 +30,31 @@ export interface VisibleRow {
 
 /**
  * The ordinary children of `node` in render order: folders and Concepts (`.md`),
- * excluding reserved files and any non-markdown file. Mirrors the filter applied
- * by `Tree.svelte` / the App root listing, so the flattened order matches the
- * DOM exactly.
+ * excluding reserved files and any non-markdown file. The single source of truth
+ * for this filter, reused by `Tree.svelte` / the App root listing so the
+ * flattened order matches the DOM exactly.
  */
-function ordinaryChildren(node: TreeNode): TreeNode[] {
+export function ordinaryChildren(node: TreeNode): TreeNode[] {
   return (node.children ?? []).filter(
     (c) => c.isDir || (c.name.toLowerCase().endsWith('.md') && !isReservedFile(c.path)),
   );
+}
+
+/**
+ * Bundle-relative paths of every directory shallower than `maxDepth`, used to
+ * seed the default-expanded folders of a FRESH Bundle. `root` is the Bundle-root
+ * node (`path: ''`), which is itself excluded; its direct child folders are
+ * depth 0, so `maxDepth` of 2 expands the top two folder levels.
+ */
+export function defaultOpenFolders(root: TreeNode, maxDepth: number): string[] {
+  const out: string[] = [];
+  const walk = (node: TreeNode, depth: number): void => {
+    if (!node.isDir) return;
+    if (depth >= 0 && depth < maxDepth && node.path !== '') out.push(node.path);
+    for (const child of node.children ?? []) walk(child, depth + 1);
+  };
+  walk(root, -1);
+  return out;
 }
 
 /**

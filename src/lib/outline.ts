@@ -75,3 +75,15 @@ export function scanHeadings(content: string): OutlineHeading[] {
   }
   return headings;
 }
+
+/**
+ * The full-document line of the first heading whose text matches `anchor`
+ * (case-insensitive), or `null` when none matches. Used to scroll to a
+ * `[[target#heading]]` wikilink anchor. Anchor matching mirrors the Outline's
+ * own text (the `#` markers and surrounding space already stripped).
+ */
+export function findHeadingLine(content: string, anchor: string): number | null {
+  const target = anchor.toLowerCase();
+  const heading = scanHeadings(content).find((h) => h.text.toLowerCase() === target);
+  return heading ? heading.line : null;
+}
