@@ -12,7 +12,7 @@
 // its own pure module with unit tests.
 
 import type { TreeNode } from '$lib/types';
-import { isReservedFile } from '$lib/reserved';
+import { isReservedFile, reservedKind, type ReservedKind } from '$lib/reserved';
 
 /** One row in the flattened visible-rows list. */
 export interface VisibleRow {
@@ -38,6 +38,27 @@ export function ordinaryChildren(node: TreeNode): TreeNode[] {
   return (node.children ?? []).filter(
     (c) => c.isDir || (c.name.toLowerCase().endsWith('.md') && !isReservedFile(c.path)),
   );
+}
+
+/** A reserved file surfaced as a folder affordance: its path and kind. */
+export interface ReservedEntry {
+  path: string;
+  kind: ReservedKind;
+}
+
+/** Canonical display order of reserved-file affordances. */
+const RESERVED_ORDER: ReservedKind[] = ['index', 'log'];
+
+/**
+ * The reserved files (`index.md`/`log.md`) directly under a node, as ordered
+ * `{ path, kind }` entries (index before log). Used to render a folder's
+ * reserved-file affordances; the ordinary children come from `ordinaryChildren`.
+ */
+export function reservedChildren(node: TreeNode): ReservedEntry[] {
+  return (node.children ?? [])
+    .filter((c) => !c.isDir && isReservedFile(c.path))
+    .map((c) => ({ path: c.path, kind: reservedKind(c.path) as ReservedKind }))
+    .sort((a, b) => RESERVED_ORDER.indexOf(a.kind) - RESERVED_ORDER.indexOf(b.kind));
 }
 
 /**

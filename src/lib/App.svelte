@@ -29,7 +29,7 @@
   } from '$lib/frontmatter';
   import { resolveLink } from '$lib/links';
   import { findHeadingLine } from '$lib/outline';
-  import { isReservedFile, reservedKind, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
+  import { isReservedFile, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import TreeCrud from '$lib/components/TreeCrud.svelte';
   import QuickNav from '$lib/components/QuickNav.svelte';
@@ -43,7 +43,13 @@
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
   import { explorerNav } from '$lib/state/explorerNav.svelte';
-  import { defaultOpenFolders, flattenVisible, neighborAfterRemoval } from '$lib/treeNav';
+  import {
+    defaultOpenFolders,
+    flattenVisible,
+    neighborAfterRemoval,
+    ordinaryChildren,
+    reservedChildren,
+  } from '$lib/treeNav';
   import { outlineNav, backlinksNav } from '$lib/state/listFocusNav.svelte';
   import { propertiesNav } from '$lib/state/propertiesNav.svelte';
   import { region } from '$lib/region';
@@ -822,23 +828,8 @@
   // reserved-file handling lives here: strip reserved files from the root leaf
   // listing and surface them as affordances on a root header row (slice:
   // reserved-files — index.md can appear at ANY level, including the root).
-  const rootChildren = $derived(bundle.tree?.children ?? []);
-  const rootOrdinary = $derived(
-    rootChildren.filter(
-      (c) => c.isDir || (c.name.toLowerCase().endsWith('.md') && !isReservedFile(c.path)),
-    ),
-  );
-  const rootReserved = $derived(
-    rootChildren
-      .filter((c) => !c.isDir && isReservedFile(c.path))
-      .map((c) => ({ path: c.path, kind: reservedKind(c.path) as ReservedKind })),
-  );
-  const ROOT_RESERVED_ORDER: ReservedKind[] = ['index', 'log'];
-  const rootReservedSorted = $derived(
-    [...rootReserved].sort(
-      (a, b) => ROOT_RESERVED_ORDER.indexOf(a.kind) - ROOT_RESERVED_ORDER.indexOf(b.kind),
-    ),
-  );
+  const rootOrdinary = $derived(bundle.tree ? ordinaryChildren(bundle.tree) : []);
+  const rootReservedSorted = $derived(bundle.tree ? reservedChildren(bundle.tree) : []);
   const ROOT_RESERVED_GLYPH: Record<ReservedKind, string> = { index: '☰', log: '🕑' };
 
   // Auto-dismiss the link-rewrite notice a few seconds after it appears. Keyed

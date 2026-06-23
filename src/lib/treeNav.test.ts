@@ -8,6 +8,7 @@ import {
   nextIndexClamped,
   ordinaryChildren,
   prevIndexClamped,
+  reservedChildren,
 } from './treeNav';
 
 // A small Bundle tree: a `concepts/` folder with a nested `editor/` folder,
@@ -172,6 +173,30 @@ describe('ordinaryChildren', () => {
     expect(ordinaryChildren(root).map((c) => c.path)).toEqual([
       'concepts/codemirror.md',
       'concepts/editor',
+    ]);
+  });
+});
+
+describe('reservedChildren', () => {
+  test('returns reserved files in canonical order (index before log)', () => {
+    const node: TreeNode = {
+      name: '',
+      path: '',
+      isDir: true,
+      children: [
+        { name: 'log.md', path: 'log.md', isDir: false },
+        { name: 'readme.md', path: 'readme.md', isDir: false },
+        { name: 'index.md', path: 'index.md', isDir: false },
+      ],
+    };
+    expect(reservedChildren(node)).toEqual([
+      { path: 'index.md', kind: 'index' },
+      { path: 'log.md', kind: 'log' },
+    ]);
+  });
+  test('empty when there are no reserved files', () => {
+    expect(reservedChildren(tree.children![2])).toEqual([
+      { path: 'concepts/index.md', kind: 'index' },
     ]);
   });
 });
