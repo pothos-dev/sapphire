@@ -10,7 +10,7 @@ import {
   findMermaidBlocks,
   hasMermaidBlock,
   mermaidCacheKey,
-  mermaidThemeFor,
+  mermaidThemeConfig,
   selectionTouches,
 } from './mermaidBlocks';
 
@@ -111,12 +111,35 @@ describe('selectionTouches', () => {
   });
 });
 
-describe('mermaidThemeFor', () => {
-  test("maps 'dark' to mermaid's 'dark' theme", () => {
-    expect(mermaidThemeFor('dark')).toBe('dark');
+describe('mermaidThemeConfig', () => {
+  // A reader that echoes the var name back, so we can assert which app token maps
+  // to which mermaid variable without a real DOM / getComputedStyle.
+  const echo = (name: string) => name;
+
+  test("always uses mermaid's overridable 'base' theme", () => {
+    expect(mermaidThemeConfig(echo, 'light').theme).toBe('base');
+    expect(mermaidThemeConfig(echo, 'dark').theme).toBe('base');
   });
-  test("maps 'light' to mermaid's 'default' theme", () => {
-    expect(mermaidThemeFor('light')).toBe('default');
+
+  test('drives nodes from the app palette: surface fill, foreground border + text', () => {
+    const { themeVariables } = mermaidThemeConfig(echo, 'dark');
+    expect(themeVariables.primaryColor).toBe('--bg-elevated');
+    expect(themeVariables.mainBkg).toBe('--bg-elevated');
+    expect(themeVariables.primaryBorderColor).toBe('--text');
+    expect(themeVariables.nodeBorder).toBe('--text');
+    expect(themeVariables.primaryTextColor).toBe('--text');
+    expect(themeVariables.lineColor).toBe('--text-muted');
+  });
+
+  test('uses the app UI font (top-level and in themeVariables)', () => {
+    const cfg = mermaidThemeConfig(echo, 'light');
+    expect(cfg.fontFamily).toBe('--font-ui');
+    expect(cfg.themeVariables.fontFamily).toBe('--font-ui');
+  });
+
+  test('sets darkMode from the resolved theme', () => {
+    expect(mermaidThemeConfig(echo, 'dark').themeVariables.darkMode).toBe(true);
+    expect(mermaidThemeConfig(echo, 'light').themeVariables.darkMode).toBe(false);
   });
 });
 

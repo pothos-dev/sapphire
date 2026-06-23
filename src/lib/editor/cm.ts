@@ -29,7 +29,7 @@ import {
   frontmatterUndo,
 } from './frontmatter-field';
 import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-links';
-import { mermaidBlocks, setMermaidTheme } from './mermaid';
+import { mermaidBlocks } from './mermaid';
 import type { ResolvedTheme } from './mermaidBlocks';
 import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
 import { findExtensions, findPanelTheme } from './find';
@@ -214,7 +214,11 @@ function livePreviewBase(): Extension[] {
  * The active-line highlight is included for the editable modes only — reading
  * view has no editing caret to anchor it.
  */
-function modeExtensions(mode: EditorMode, onLinkClick: (url: string) => void): Extension[] {
+function modeExtensions(
+  mode: EditorMode,
+  onLinkClick: (url: string) => void,
+  theme: ResolvedTheme,
+): Extension[] {
   // EDIT (source): no live-preview decorations — raw markup stays visible.
   if (mode === 'edit') {
     return [highlightActiveLine(), EditorState.readOnly.of(false), EditorView.editable.of(true)];
@@ -226,7 +230,8 @@ function modeExtensions(mode: EditorMode, onLinkClick: (url: string) => void): E
     // Render ` ```mermaid ` fences as Diagrams (ADR-0005). Active in hybrid and
     // view only — `edit` returned early above, so source mode shows the raw
     // fence. `reading` (view): always rendered; hybrid: cursor inside reveals raw.
-    mermaidBlocks(reading),
+    // `theme` bakes the diagram colours; a flip reconfigures this Compartment.
+    mermaidBlocks(reading, theme),
     inlinePreview({ onLinkClick, alwaysRender: reading }),
     ...(reading ? [] : [highlightActiveLine()]),
     // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits at
@@ -248,6 +253,7 @@ function editorExtensions(
   wikiCompartment: Compartment,
   livePreviewCompartment: Compartment,
   mode: EditorMode,
+  theme: ResolvedTheme,
 ): Extension[] {
   const { onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext, wikiLinkContext } = opts;
 
@@ -284,7 +290,7 @@ function editorExtensions(
     ...livePreviewBase(),
     // Mode-dependent slice (decorations + read-only gating) in a Compartment so
     // `setEditorMode` can switch edit/hybrid/view without rebuilding the view.
-    livePreviewCompartment.of(modeExtensions(mode, onLinkClick ?? defaultLinkClick)),
+    livePreviewCompartment.of(modeExtensions(mode, onLinkClick ?? defaultLinkClick, theme)),
     // In-Concept Find & Replace: built-in search panel (mounted above the
     // editor) + its keymap, themed as editor chrome. Ctrl/Cmd+F is opened by
     // App.svelte via `openSearch`; the keymap supplies in-panel bindings.
@@ -350,17 +356,28 @@ const viewLivePreviewCompartment = new WeakMap<EditorView, Compartment>();
 /** The current view mode per view, so it survives Concept switches (state rebuild). */
 const viewMode = new WeakMap<EditorView, EditorMode>();
 
+/**
+ * The resolved app theme each view renders diagrams in, so it survives Concept
+ * switches AND mode switches (both rebuild the mode slice). Updated by
+ * `setEditorMermaidTheme`, which reconfigures the mode Compartment to re-render
+ * every diagram in the new scheme (ADR-0005, theme-sync).
+ */
+const viewMermaidTheme = new WeakMap<EditorView, ResolvedTheme>();
+
 export function buildEditor(options: BuildEditorOptions): EditorView {
   const { parent, doc, frontmatter = [] } = options;
   const wikiCompartment = new Compartment();
   const livePreviewCompartment = new Compartment();
   const mode = options.initialMode ?? DEFAULT_EDITOR_MODE;
+  // Seed diagrams with the theme inherited from the app root, so the first paint
+  // matches the app scheme without waiting for the host's theme effect.
+  const theme = inheritedTheme(parent);
   const state = EditorState.create({
     doc,
     extensions: [
       // Seed the frontmatter field with the open Concept's properties.
       frontmatterField.init(() => frontmatter),
-      ...editorExtensions(options, wikiCompartment, livePreviewCompartment, mode),
+      ...editorExtensions(options, wikiCompartment, livePreviewCompartment, mode, theme),
     ],
   });
 
@@ -370,10 +387,11 @@ export function buildEditor(options: BuildEditorOptions): EditorView {
   viewWikiCompartment.set(view, wikiCompartment);
   viewLivePreviewCompartment.set(view, livePreviewCompartment);
   viewMode.set(view, mode);
+  viewMermaidTheme.set(view, theme);
 
   // Seed the editor root's theme from the app root (the theme store keeps it in
   // sync afterwards). atomic-editor reads `data-theme` on the CodeMirror root.
-  view.dom.setAttribute('data-theme', inheritedTheme(parent));
+  view.dom.setAttribute('data-theme', theme);
 
   return view;
 }
@@ -420,12 +438,15 @@ export function setEditorConcept(
     const livePreviewCompartment = viewLivePreviewCompartment.get(view) ?? new Compartment();
     viewLivePreviewCompartment.set(view, livePreviewCompartment);
     const mode = viewMode.get(view) ?? DEFAULT_EDITOR_MODE;
+    const theme = viewMermaidTheme.get(view) ?? 'light';
     view.setState(
       EditorState.create({
         doc: body,
         extensions: [
           frontmatterField.init(() => props),
-          ...(options ? editorExtensions(options, wikiCompartment, livePreviewCompartment, mode) : []),
+          ...(options
+            ? editorExtensions(options, wikiCompartment, livePreviewCompartment, mode, theme)
+            : []),
         ],
       }),
     );
@@ -472,14 +493,25 @@ export function reconfigureWikiLinks(view: EditorView): void {
 }
 
 /**
- * Tell the mermaid block-render field which resolved app theme to render
- * diagrams in (theme-sync, ADR-0005). A baked diagram SVG lives outside Svelte
- * reactivity, so a theme flip can't recolour it via CSS — App.svelte calls this
- * from the `$effect` that mirrors `theme.resolved`, dispatching a `StateEffect`
- * the field rebuilds on, re-rendering existing diagrams in the new colours.
+ * Tell the editor which resolved app theme to render diagrams in (theme-sync,
+ * ADR-0005). A baked diagram SVG lives outside Svelte reactivity AND CodeMirror
+ * does NOT reconcile block-widget DOM for an in-place decoration change, so a
+ * StateEffect would leave existing diagrams stale. Instead we RECONFIGURE the
+ * mode Compartment with the new theme — a full rebuild of the mode slice that
+ * re-runs every diagram's `toDOM`, re-rendering it in the new scheme. App.svelte
+ * calls this from the `$effect` mirroring `theme.resolved`. No-op when the theme
+ * is unchanged or in `edit` mode (no diagrams) / before the compartment exists.
  */
 export function setEditorMermaidTheme(view: EditorView, resolved: ResolvedTheme): void {
-  view.dispatch({ effects: setMermaidTheme.of(resolved) });
+  const compartment = viewLivePreviewCompartment.get(view);
+  if (!compartment || viewMermaidTheme.get(view) === resolved) return;
+  viewMermaidTheme.set(view, resolved);
+  const mode = getEditorMode(view);
+  // `edit` mode has no diagrams; just remember the theme for when a render mode
+  // is next active (a mode switch rebuilds the slice with this remembered theme).
+  if (mode === 'edit') return;
+  const onLinkClick = viewOptions.get(view)?.onLinkClick ?? defaultLinkClick;
+  view.dispatch({ effects: compartment.reconfigure(modeExtensions(mode, onLinkClick, resolved)) });
 }
 
 /** The view's current mode (`hybrid` if the view predates mode tracking). */
@@ -498,7 +530,8 @@ export function setEditorMode(view: EditorView, mode: EditorMode): void {
   if (!compartment || getEditorMode(view) === mode) return;
   viewMode.set(view, mode);
   const onLinkClick = viewOptions.get(view)?.onLinkClick ?? defaultLinkClick;
-  view.dispatch({ effects: compartment.reconfigure(modeExtensions(mode, onLinkClick)) });
+  const theme = viewMermaidTheme.get(view) ?? 'light';
+  view.dispatch({ effects: compartment.reconfigure(modeExtensions(mode, onLinkClick, theme)) });
 }
 
 export function scrollToLine(view: EditorView, line: number): void {

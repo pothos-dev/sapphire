@@ -1,4 +1,4 @@
-import { StateEffect, StateField, type Extension } from '@codemirror/state';
+import { StateField, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 // `treeGrowthEffect`/`treeProgressPlugin` are re-exported from the package root
 // via our patch (see patches/@atomic-editor%2Feditor@0.4.3.patch) — the package
@@ -10,7 +10,7 @@ import {
   findMermaidBlocks,
   hasMermaidBlock,
   mermaidCacheKey,
-  mermaidThemeFor,
+  mermaidThemeConfig,
   selectionTouches,
   type MermaidBlock,
   type ResolvedTheme,
@@ -41,11 +41,15 @@ import {
 //   - error-state:   DONE (error-state slice). A failed `mermaid.render()` now
 //                    paints a bordered error panel (mermaid's message + raw
 //                    source) via `buildErrorPanel`, distinct from a code block.
-//   - theme-sync:    DONE (theme-sync slice). The resolved app theme is mapped
-//                    (`mermaidThemeFor`) to a mermaid theme, re-applied per
-//                    render via `initialize({ theme })`, and threaded into the
-//                    widget key. `App.svelte` dispatches `setMermaidTheme` on a
-//                    theme flip; the field rebuilds on it (like treeGrowthEffect).
+//   - theme-sync:    DONE (theme-sync slice). Diagrams are themed with the app's
+//                    OWN palette + font (`mermaidThemeConfig` → mermaid's `base`
+//                    theme with `themeVariables` resolved from CSS custom props
+//                    on the editor root), not mermaid's generic dark/default. On
+//                    a light/dark flip `App.svelte` calls `setEditorMermaidTheme`,
+//                    which RECONFIGURES the mode Compartment (cm.ts) — rebuilding
+//                    this field so every diagram re-renders. (A StateEffect was
+//                    insufficient: CodeMirror does not reconcile block-widget DOM
+//                    for an in-place decoration change.)
 //   - edit-affordance: DONE (edit-affordance slice). In hybrid the widget shows
 //                    a hover hint (cursor:pointer + "✎ edit") and a double-click
 //                    handler dispatches a selection INTO the fence to lift the
@@ -65,15 +69,6 @@ import {
  * one import.
  */
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
-
-/**
- * A theme-changed signal. `App.svelte` dispatches this with the new resolved
- * theme when the app's light/dark scheme flips; the field rebuilds on it (same
- * shape as the `treeGrowthEffect` branch) so baked SVGs re-render in the new
- * theme — CSS-variable inheritance can't recolour an SVG that lives outside
- * Svelte reactivity (ADR-0005, theme-sync).
- */
-export const setMermaidTheme = StateEffect.define<ResolvedTheme>();
 
 function ensureMermaid(): Promise<typeof import('mermaid').default> {
   if (mermaidPromise) return mermaidPromise;
@@ -162,7 +157,12 @@ function buildErrorPanel(message: string, source: string): HTMLElement {
  */
 const hostGeneration = new WeakMap<HTMLElement, number>();
 
-function renderInto(host: HTMLElement, source: string, theme: ResolvedTheme): void {
+function renderInto(
+  host: HTMLElement,
+  source: string,
+  theme: ResolvedTheme,
+  view: EditorView,
+): void {
   // Claim a fresh generation for this render; any earlier in-flight render for
   // this host is now stale and must not paint.
   const generation = (hostGeneration.get(host) ?? 0) + 1;
@@ -179,6 +179,14 @@ function renderInto(host: HTMLElement, source: string, theme: ResolvedTheme): vo
     return;
   }
 
+  // Resolve the app palette/font from the THEMED editor root NOW (synchronously,
+  // before the async render). `view.dom` already carries the current `data-theme`
+  // (App.svelte sets it before dispatching the theme flip), so `getComputedStyle`
+  // yields the active light/dark token values. Concrete values are required —
+  // mermaid bakes colours into the SVG at render time (ADR-0005, theme-sync).
+  const cs = getComputedStyle(view.dom);
+  const themeConfig = mermaidThemeConfig((name) => cs.getPropertyValue(name).trim(), theme);
+
   const placeholder = document.createElement('div');
   placeholder.className = 'cm-mermaid-loading';
   placeholder.textContent = 'Rendering diagram…';
@@ -188,10 +196,11 @@ function renderInto(host: HTMLElement, source: string, theme: ResolvedTheme): vo
   const id = `cm-mermaid-${renderSeq++}`;
   ensureMermaid()
     .then((mermaid) => {
-      // Apply the resolved theme per render — mermaid bakes colours into the SVG
-      // at `render` time, so re-`initialize` before each render keeps the diagram
-      // in step with the app's light/dark scheme (ADR-0005 option 5a).
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: mermaidThemeFor(theme) });
+      // Theme the diagram with the app's own palette + font (mermaid's `base`
+      // theme with our `themeVariables`), not mermaid's generic dark/default.
+      // mermaid bakes colours in at `render` time, so re-`initialize` per render
+      // keeps the diagram in step with the app's light/dark scheme (option 5a).
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', ...themeConfig });
       return mermaid.render(id, source);
     })
     .then(({ svg }) => {
@@ -252,7 +261,7 @@ class MermaidWidget extends WidgetType {
     const render = document.createElement('div');
     render.className = 'cm-mermaid-render';
     wrap.appendChild(render);
-    renderInto(render, this.source, this.theme);
+    renderInto(render, this.source, this.theme, view);
 
     // Edit-affordance (ADR-0005, options 6a+6b): a `block: true` replace has no
     // source text to click into, so add a discoverable way to start editing —
@@ -323,50 +332,36 @@ function buildDecorations(
 }
 
 /**
- * The field's value: the replace-decoration set plus the resolved app theme it
- * was built for. The theme rides on the field value (rather than a module
- * global) so it survives across transactions and the next rebuild renders in the
- * current theme. Diagram-free states still carry the last-known theme.
- */
-interface MermaidState {
-  readonly deco: DecorationSet;
-  readonly theme: ResolvedTheme;
-}
-
-/**
  * The mermaid StateField. Rebuilds:
  *   - on `treeGrowthEffect`, so fences parsed after the initial budgeted parse
  *     (long documents) still render — same contract as `imageBlocks`/`tables`;
- *   - on `setMermaidTheme`, so a light/dark flip re-renders baked SVGs in the new
- *     colours (theme-sync, ADR-0005) — same shape as the `treeGrowthEffect` arm;
  *   - on doc change (a fence may have been added/removed/edited);
  *   - on selection change (hybrid reveal: cursor entering/leaving a fence).
  *
- * `reading` is fixed when the field is constructed (the mode Compartment in
- * `cm.ts` rebuilds the mode-dependent slice on mode switch), so a single field
- * instance always knows whether it is the `view`-mode or `hybrid`-mode variant.
- * The theme is seeded to `'light'`; `App.svelte`'s effect dispatches the real
- * resolved theme on mount, so the first paint matches the app scheme.
+ * Both `reading` and `theme` are FIXED when the field is constructed. The field
+ * lives in the mode Compartment (`cm.ts`), which is reconfigured — rebuilding
+ * the field — both on a mode switch AND on a light/dark flip (`setEditorMode` /
+ * `setEditorMermaidTheme`). A compartment reconfigure forces a full re-render of
+ * every diagram (CodeMirror does NOT reconcile block-widget DOM for an in-place
+ * decoration change, so a pure StateEffect would leave baked SVGs stale — see
+ * ADR-0005, theme-sync). So a flip rebuilds the field with the new `theme`,
+ * which threads into each widget's `(source, theme)` key and the baked colours.
  */
-function mermaidField(reading: boolean): StateField<MermaidState> {
-  return StateField.define<MermaidState>({
-    create: (state) => ({ deco: buildDecorations(state, reading, 'light'), theme: 'light' }),
-    update(value, tr) {
+function mermaidField(reading: boolean, theme: ResolvedTheme): StateField<DecorationSet> {
+  return StateField.define<DecorationSet>({
+    create: (state) => buildDecorations(state, reading, theme),
+    update(deco, tr) {
       for (const effect of tr.effects) {
-        if (effect.is(setMermaidTheme)) {
-          const theme = effect.value;
-          return { deco: buildDecorations(tr.state, reading, theme), theme };
-        }
         if (effect.is(treeGrowthEffect)) {
-          return { deco: buildDecorations(tr.state, reading, value.theme), theme: value.theme };
+          return buildDecorations(tr.state, reading, theme);
         }
       }
       if (tr.docChanged || tr.selection) {
-        return { deco: buildDecorations(tr.state, reading, value.theme), theme: value.theme };
+        return buildDecorations(tr.state, reading, theme);
       }
-      return value;
+      return deco;
     },
-    provide: (f) => EditorView.decorations.from(f, (value) => value.deco),
+    provide: (f) => EditorView.decorations.from(f),
   });
 }
 
@@ -386,6 +381,13 @@ const mermaidTheme = EditorView.theme({
     maxWidth: '100%',
     height: 'auto',
   },
+  // Belt-and-suspenders: mermaid sets fonts inline from `fontFamily`, but force
+  // the app UI font across all diagram text (incl. htmlLabel spans) so a Diagram
+  // never falls back to mermaid's default sans (ADR-0005, theme-sync).
+  '.cm-mermaid svg, .cm-mermaid svg text, .cm-mermaid svg .nodeLabel, .cm-mermaid svg .edgeLabel, .cm-mermaid svg span':
+    {
+      fontFamily: 'var(--font-ui) !important',
+    },
   // Edit-affordance (edit-affordance slice): a rendered diagram in hybrid is
   // double-clickable to reveal its raw source, so signal that with a pointer
   // cursor and a subtle hover hint. Positioned relative so the hint can anchor.
@@ -463,10 +465,15 @@ export { hasMermaidBlock };
  * and `view` ONLY (NOT `edit` — source mode shows the raw fence). `reading` is
  * true for `view` (always rendered), false for `hybrid` (cursor reveals raw).
  *
+ * `theme` is the resolved app scheme to render diagrams in. It is baked into the
+ * field at construction; a light/dark flip reconfigures the mode Compartment
+ * (`setEditorMermaidTheme`), rebuilding this extension with the new theme so
+ * every diagram re-renders (ADR-0005, theme-sync).
+ *
  * Includes `treeProgressPlugin` so the field's `treeGrowthEffect` rebuild
  * actually fires on long documents (the plugin is idempotent across the other
  * block fields that also include it — CM6 dedups identical extensions).
  */
-export function mermaidBlocks(reading: boolean): Extension {
-  return [mermaidField(reading), mermaidTheme, treeProgressPlugin];
+export function mermaidBlocks(reading: boolean, theme: ResolvedTheme): Extension {
+  return [mermaidField(reading, theme), mermaidTheme, treeProgressPlugin];
 }

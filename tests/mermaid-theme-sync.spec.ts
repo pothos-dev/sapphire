@@ -4,9 +4,12 @@ import { test, expect } from '@playwright/test';
  * Slice: mermaid-theme-sync (ADR-0005, option 5a).
  *
  * A rendered Diagram is a baked SVG inside a CodeMirror StateField (outside
- * Svelte reactivity), so a light/dark flip can't recolour it via CSS. App.svelte
- * dispatches a theme-changed StateEffect on `theme.resolved` change; the mermaid
- * field rebuilds and re-renders existing diagrams in the new mermaid theme.
+ * Svelte reactivity), so a light/dark flip can't recolour it via CSS — AND
+ * CodeMirror does not reconcile block-widget DOM for an in-place decoration
+ * change. So on a `theme.resolved` change App.svelte calls `setEditorMermaidTheme`,
+ * which RECONFIGURES the mode Compartment: the mermaid field is rebuilt with the
+ * new theme and every diagram's `toDOM` re-runs, re-rendering it in the app's
+ * palette (mermaid `base` theme + `themeVariables` from the app's CSS tokens).
  *
  * The app theme is OS-driven (`prefers-color-scheme`), so we flip the emulated
  * media and assert the diagram re-rendered: each `mermaid.render()` uses a fresh
