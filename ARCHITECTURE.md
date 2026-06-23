@@ -24,6 +24,7 @@ src/
     debounce.ts              # createDebouncer (shared autosave/persist timer)
     listNav.ts               # clamp/wrap index math shared by QuickNav + SearchPanel
     frontmatter.ts links.ts outline.ts fuzzy.ts reserved.ts   # pure, unit-tested utils
+    highlight.ts             # search-snippet match splitting (pure, unit-tested)
     ipc/
       backend.ts             # Backend interface — the ONLY boundary to Rust
       tauri.ts               # real impl (invoke + event)
@@ -46,11 +47,14 @@ src-tauri/src/
   lib.rs                     # builder, manages AppState, registers commands
   app_state.rs               # BundleRoot + index handle + self-write tracker
   bundle.rs                  # tree walking, concept read/write, path resolution
-  index.rs                   # in-memory index (frontmatter + links + reverse map)
-  paths.rs                   # shared walker + bundle-relative + link-resolution helpers
+  index.rs                   # in-memory index (Index struct + queries + reverse map)
+    index/frontmatter.rs     #   frontmatter parse (ParsedFrontmatter, frontmatter_block)
+    index/links.rs           #   markdown link-href extraction
+  paths.rs                   # shared walker + md_files iterator + bundle-relative + link-resolution
   watcher.rs                 # notify watcher -> emits events to frontend
   search.rs                  # ripgrep-crate full-text search
   rewrite.rs                 # link auto-rewrite on rename/move (+ rename_and_rewrite)
+    rewrite/paths.rs         #   pure path math (relative_path, split_suffix, basename_of, ...)
   config.rs                  # per-Bundle session state (OS config dir)
 ```
 
