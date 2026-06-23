@@ -4,6 +4,27 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-23
+
+### Added
+
+- Wikilinks: `[[name]]` parsing with bundle-wide name resolution, rendering and
+  navigation in live preview, backlinks, and automatic link rewriting on rename.
+- Tri-state editor view mode toggle: Source / Live / Read.
+- Collapsible frontmatter Properties panel, auto-revealed when it gains focus.
+- Support for non-OKF folders: empty frontmatter collapses and the missing-`type`
+  nag is dropped, so any plain markdown folder opens cleanly.
+- Tidier Explorer folder rows: aligned caret, click-to-open index, child indent.
+
+### Changed
+
+- The rename input hides the implicit `.md` extension and re-appends it on confirm.
+
+### Fixed
+
+- Numeric frontmatter values (e.g. `order: 3`) are no longer silently quoted into
+  strings on save, preserving their YAML type across the round-trip.
+
 ## [0.9.0] - 2026-06-18
 
 First public release. Sapphire is a Tauri-based markdown knowledge editor.
