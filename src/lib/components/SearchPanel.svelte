@@ -13,6 +13,7 @@
    * Style mirrors the QuickNav palette for consistency.
    */
   import { backend } from '$lib/ipc';
+  import { highlightParts } from '$lib/highlight';
   import { clampIndex, nextIndex, prevIndex } from '$lib/listNav';
   import { splitPath } from '$lib/path';
   import { focus } from '$lib/state/focus.svelte';
@@ -112,27 +113,6 @@
     }, SEARCH_DEBOUNCE_MS);
   }
 
-  /** Split a path into [dir, basename] for display. */
-
-  /** Split a snippet around the (case-insensitive) match for highlighting. */
-  function highlightParts(snippet: string): { text: string; match: boolean }[] {
-    const q = query.trim();
-    if (q === '') return [{ text: snippet, match: false }];
-    const lower = snippet.toLowerCase();
-    const needle = q.toLowerCase();
-    const parts: { text: string; match: boolean }[] = [];
-    let i = 0;
-    let found = lower.indexOf(needle, i);
-    while (found !== -1) {
-      if (found > i) parts.push({ text: snippet.slice(i, found), match: false });
-      parts.push({ text: snippet.slice(found, found + needle.length), match: true });
-      i = found + needle.length;
-      found = lower.indexOf(needle, i);
-    }
-    if (i < snippet.length) parts.push({ text: snippet.slice(i), match: false });
-    return parts;
-  }
-
   function choose(hit: SearchHit) {
     onopen(hit.path, hit.line);
     onclose();
@@ -211,7 +191,7 @@
               <span class="fts-line">:{r.line}</span>
             </span>
             <span class="fts-snippet" data-testid="search-snippet">
-              {#each highlightParts(r.snippet) as part}
+              {#each highlightParts(r.snippet, query) as part}
                 {#if part.match}<mark class="fts-mark">{part.text}</mark>{:else}{part.text}{/if}
               {/each}
             </span>
