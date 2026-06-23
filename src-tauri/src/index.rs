@@ -19,8 +19,14 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::paths::{find_byte, md_files, resolve_internal};
+use crate::paths::md_files;
 use crate::wikilink;
+
+mod frontmatter;
+mod links;
+
+use frontmatter::{parse_frontmatter, strip_frontmatter, ParsedFrontmatter};
+use links::extract_links;
 
 /// One Concept's indexed data: parsed frontmatter fields we care about plus its
 /// outbound internal links (bundle-relative target paths).
@@ -228,228 +234,9 @@ impl Index {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Frontmatter parsing
-// ---------------------------------------------------------------------------
-
-/// The frontmatter fields the index cares about, parsed from a Concept's leading
-/// YAML block. The Properties panel owns verbatim round-tripping; the index only
-/// needs these aggregates.
-#[derive(Debug, Default, Clone)]
-struct ParsedFrontmatter {
-    /// `type` scalar, if present and non-empty.
-    concept_type: Option<String>,
-    /// `tags` flat list; empty when absent.
-    tags: Vec<String>,
-    /// Distinct top-level frontmatter keys.
-    keys: Vec<String>,
-}
-
-/// Parse the leading YAML frontmatter block (delimited by `---`) and extract
-/// `type` (scalar), `tags` (flat list), and the distinct top-level keys.
-/// Tolerates missing/invalid frontmatter: returns a default (all-empty)
-/// `ParsedFrontmatter` rather than erroring (CONTEXT.md — broken Concepts are
-/// never blocked).
-fn parse_frontmatter(content: &str) -> ParsedFrontmatter {
-    let Some(block) = frontmatter_block(content) else {
-        return ParsedFrontmatter::default();
-    };
-    let value: serde_yaml::Value = match serde_yaml::from_str(block) {
-        Ok(v) => v,
-        Err(_) => return ParsedFrontmatter::default(),
-    };
-    let Some(map) = value.as_mapping() else {
-        return ParsedFrontmatter::default();
-    };
-
-    let concept_type = map
-        .get(serde_yaml::Value::from("type"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty());
-
-    let tags = map
-        .get(serde_yaml::Value::from("tags"))
-        .and_then(|v| v.as_sequence())
-        .map(|seq| {
-            seq.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let keys = map
-        .keys()
-        .filter_map(|k| k.as_str().map(|s| s.to_string()))
-        .collect();
-
-    ParsedFrontmatter {
-        concept_type,
-        tags,
-        keys,
-    }
-}
-
-/// Return the YAML text between the leading `---` fences, or `None` if the
-/// content does not open with a frontmatter block. The block must start on the
-/// very first line (`---\n`) per the OKF/Obsidian convention.
-fn frontmatter_block(content: &str) -> Option<&str> {
-    let rest = content.strip_prefix("---\n").or_else(|| {
-        // Tolerate a leading BOM / CRLF opener.
-        content.strip_prefix("---\r\n")
-    })?;
-    // Find the closing fence: a line that is exactly `---`.
-    let mut offset = 0usize;
-    for line in rest.split_inclusive('\n') {
-        let trimmed = line.trim_end_matches(['\r', '\n']);
-        if trimmed == "---" {
-            return Some(&rest[..offset]);
-        }
-        offset += line.len();
-    }
-    None
-}
-
-// ---------------------------------------------------------------------------
-// Outbound link extraction + resolution (mirrors src/lib/links.ts)
-// ---------------------------------------------------------------------------
-
-/// Extract all internal markdown link targets from a Concept body, resolved to
-/// bundle-relative paths. External (`scheme:`), pure-anchor, and empty links are
-/// skipped. De-duplicated, insertion order preserved-ish (sorted for stability).
-fn extract_links(current_path: &str, content: &str) -> Vec<String> {
-    let body = strip_frontmatter(content);
-    let mut out: BTreeSet<String> = BTreeSet::new();
-    for href in markdown_link_hrefs(body) {
-        if let Some(target) = resolve_internal(current_path, &href) {
-            out.insert(target);
-        }
-    }
-    out.into_iter().collect()
-}
-
-/// Strip the leading frontmatter block so a `---` or link-like text inside it is
-/// not mistaken for body content.
-fn strip_frontmatter(content: &str) -> &str {
-    if let Some(block) = frontmatter_block(content) {
-        // body starts after `---\n` + block + closing `---` line.
-        // Recompute the offset robustly by locating the block within content.
-        if let Some(start) = content.find(block) {
-            let after_block = start + block.len();
-            // Skip the closing fence line.
-            if let Some(rel) = content[after_block..].find('\n') {
-                return &content[after_block + rel + 1..];
-            }
-        }
-    }
-    content
-}
-
-/// Find every markdown inline-link `href`: the `target` in `[text](target)`.
-/// Image links `![alt](src)` are skipped (images are not Concept links).
-/// Handles a trailing `"title"` inside the parens. Reference-style links are
-/// out of scope (the fixtures and OKF Concepts use inline links).
-fn markdown_link_hrefs(body: &str) -> Vec<String> {
-    let bytes = body.as_bytes();
-    let mut hrefs = Vec::new();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'[' {
-            // Skip image links: a `!` immediately before `[`.
-            let is_image = i > 0 && bytes[i - 1] == b'!';
-            // Find the matching `]` (no nested brackets in OKF link text).
-            if let Some(close) = find_byte(bytes, i + 1, b']') {
-                // Must be immediately followed by `(`.
-                if close + 1 < bytes.len() && bytes[close + 1] == b'(' {
-                    if let Some(paren) = find_byte(bytes, close + 2, b')') {
-                        if !is_image {
-                            let raw = &body[close + 2..paren];
-                            hrefs.push(extract_href(raw));
-                        }
-                        i = paren + 1;
-                        continue;
-                    }
-                }
-                i = close + 1;
-                continue;
-            }
-        }
-        i += 1;
-    }
-    hrefs
-}
-
-/// From the inside of a link's parens (`target "title"`), return just the
-/// target (drop a trailing title and surrounding whitespace / angle brackets).
-fn extract_href(raw: &str) -> String {
-    let trimmed = raw.trim();
-    // A title is ` "..."` or ` '...'` after the URL.
-    let url = trimmed
-        .split_once(char::is_whitespace)
-        .map(|(u, _)| u)
-        .unwrap_or(trimmed);
-    url.trim_matches(['<', '>']).to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parses_type_and_tags() {
-        let md = "---\ntype: concept\ntags: [a, b]\n---\n\n# Body\n";
-        let fm = parse_frontmatter(md);
-        assert_eq!(fm.concept_type.as_deref(), Some("concept"));
-        assert_eq!(fm.tags, vec!["a", "b"]);
-        assert_eq!(fm.keys, vec!["type", "tags"]);
-    }
-
-    #[test]
-    fn tolerates_missing_frontmatter() {
-        let fm = parse_frontmatter("# Just a body, no frontmatter\n");
-        assert!(fm.concept_type.is_none());
-        assert!(fm.tags.is_empty());
-        assert!(fm.keys.is_empty());
-    }
-
-    #[test]
-    fn tolerates_empty_type() {
-        let fm = parse_frontmatter("---\ntype:\ntitle: x\n---\n");
-        assert!(fm.concept_type.is_none());
-        // Even when `type` is empty, its KEY is still present (autocomplete).
-        assert_eq!(fm.keys, vec!["type", "title"]);
-    }
-
-    #[test]
-    fn resolves_relative_and_absolute_links() {
-        assert_eq!(
-            resolve_internal("concepts/bundle.md", "./codemirror.md").as_deref(),
-            Some("concepts/codemirror.md")
-        );
-        assert_eq!(
-            resolve_internal("concepts/bundle.md", "/index.md").as_deref(),
-            Some("index.md")
-        );
-        assert_eq!(
-            resolve_internal("a/b/c.md", "../x.md").as_deref(),
-            Some("a/x.md")
-        );
-    }
-
-    #[test]
-    fn ignores_external_and_anchor_links() {
-        assert!(resolve_internal("a.md", "https://example.com").is_none());
-        assert!(resolve_internal("a.md", "mailto:x@y.z").is_none());
-        assert!(resolve_internal("a.md", "#section").is_none());
-        assert!(resolve_internal("a.md", "").is_none());
-    }
-
-    #[test]
-    fn extracts_links_skipping_images() {
-        let body = "See [A](./a.md) and ![img](./pic.png) and [ext](https://x).";
-        let links = extract_links("dir/cur.md", body);
-        assert_eq!(links, vec!["dir/a.md"]);
-    }
 
     #[test]
     fn builds_reverse_map_and_backlinks() {
