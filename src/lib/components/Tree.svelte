@@ -5,6 +5,7 @@
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { explorerNav } from '$lib/state/explorerNav.svelte';
+  import { ordinaryChildren as ordinaryChildrenOf } from '$lib/treeNav';
   import { isReservedFile, reservedKind, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Self from './Tree.svelte';
 
@@ -144,11 +145,7 @@
   // they are surfaced as per-folder affordances on the containing folder row
   // instead. Strip them — and any non-markdown file — from the normal child
   // listing here (slice: reserved-files).
-  const ordinaryChildren = $derived(
-    (node.children ?? []).filter(
-      (c) => c.isDir || (c.name.toLowerCase().endsWith('.md') && !isReservedFile(c.path)),
-    ),
-  );
+  const ordinaryChildren = $derived(ordinaryChildrenOf(node));
 
   // This folder's index page (`index.md`), if it has one. There is no longer an
   // index icon: clicking the folder name opens it (see `onNameClick`), so the

@@ -8,7 +8,7 @@
 //!
 //! Pure-ish module logic — `lib.rs` just calls `start` in setup.
 
-use std::path::{Component, Path};
+use std::path::Path;
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -135,14 +135,7 @@ fn classify(kind: &EventKind) -> Option<&'static str> {
 /// bundle-relative string. Returns `None` if the path is outside the root.
 fn to_bundle_relative(root: &Path, abs: &Path) -> Option<String> {
     let rel = abs.strip_prefix(root).ok()?;
-    let s = rel
-        .components()
-        .filter_map(|c| match c {
-            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/");
+    let s = crate::paths::to_rel_string(rel);
     if s.is_empty() {
         None
     } else {

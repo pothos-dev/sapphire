@@ -6,6 +6,7 @@ import { indexStore } from '$lib/state/index.svelte';
 import { session } from '$lib/state/session.svelte';
 import { isReservedFile, reservedStub, type ReservedKind } from '$lib/reserved';
 import { scaffoldConcept } from '$lib/frontmatter';
+import { moveDestination } from '$lib/path';
 import type { RewriteSummary } from '$lib/types';
 
 /**
@@ -125,8 +126,7 @@ class TreeActionsStore {
    * new path (e.g. to refocus the Explorer there) before awaiting the move.
    */
   resolveMove(from: string, toDir: string): string {
-    const name = from.split('/').filter(Boolean).pop() ?? from;
-    return toDir === '' ? name : `${toDir.replace(/\/+$/, '')}/${name}`;
+    return moveDestination(from, toDir);
   }
 
   /** Move `from` into the folder `toDir` (keeping its name), following the open Concept. */

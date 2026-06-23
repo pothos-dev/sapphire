@@ -162,7 +162,7 @@ test('absent (no Concept → Properties/Editor) and empty (no tags → Tags) Reg
 
   // Now make the Tags Section EMPTY (strip every Concept's tags) — it unmounts.
   await page.evaluate(() => {
-    (window as unknown as { __emeraldFake: { clearAllTags: () => void } }).__emeraldFake.clearAllTags();
+    (window as unknown as { __sapphireFake: { clearAllTags: () => void } }).__sapphireFake.clearAllTags();
   });
   await expect(page.getByTestId('tags-section')).toHaveCount(0);
 

@@ -2,7 +2,7 @@
 // Run with `bun test src/lib`. Pins current scanHeadings behavior incl. the
 // frontmatter line offset and fenced-code skipping.
 import { describe, expect, test } from 'bun:test';
-import { scanHeadings } from './outline';
+import { findHeadingLine, scanHeadings } from './outline';
 
 describe('scanHeadings', () => {
   test('no frontmatter: 1-based body line numbers', () => {
@@ -40,5 +40,17 @@ describe('scanHeadings', () => {
     expect(scanHeadings('###   spaced   ')).toEqual([
       { level: 3, text: 'spaced', line: 1 },
     ]);
+  });
+});
+
+describe('findHeadingLine', () => {
+  test('matches heading text case-insensitively, returns its full-doc line', () => {
+    const content = '---\ntype: x\n---\n# Intro\n## Details\n';
+    expect(findHeadingLine(content, 'details')).toBe(5);
+    expect(findHeadingLine(content, 'Intro')).toBe(4);
+  });
+
+  test('returns null when no heading matches', () => {
+    expect(findHeadingLine('# A\n## B', 'missing')).toBeNull();
   });
 });

@@ -63,8 +63,8 @@ test('new concept: scaffolds type/title, focuses type, autocompletes types', asy
     .poll(() =>
       page.evaluate(
         () =>
-          (window as unknown as { __emeraldFake: { files: Record<string, string> } })
-            .__emeraldFake.files['concepts/my-note.md'],
+          (window as unknown as { __sapphireFake: { files: Record<string, string> } })
+            .__sapphireFake.files['concepts/my-note.md'],
       ),
     )
     .toContain('type: reference');
@@ -72,8 +72,8 @@ test('new concept: scaffolds type/title, focuses type, autocompletes types', asy
   // The created file is immediately valid OKF: has type + title.
   const content = await page.evaluate(
     () =>
-      (window as unknown as { __emeraldFake: { files: Record<string, string> } })
-        .__emeraldFake.files['concepts/my-note.md'],
+      (window as unknown as { __sapphireFake: { files: Record<string, string> } })
+        .__sapphireFake.files['concepts/my-note.md'],
   );
   expect(content).toContain('type: reference');
   expect(content).toContain('title: My note');

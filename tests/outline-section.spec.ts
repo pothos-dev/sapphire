@@ -105,7 +105,7 @@ test('outline lists headings, skips frontmatter/code, scrolls on click, and pers
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('emerald:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as { outlineOpen?: boolean };
       }),
@@ -117,7 +117,7 @@ test('outline lists headings, skips frontmatter/code, scrolls on click, and pers
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('emerald:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as { outlineOpen?: boolean };
       }),

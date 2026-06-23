@@ -17,8 +17,8 @@ function persisted(page: Page, path: string): Promise<string> {
   return page.evaluate(
     (p) =>
       (
-        window as unknown as { __emeraldFake: { files: Record<string, string> } }
-      ).__emeraldFake.files[p],
+        window as unknown as { __sapphireFake: { files: Record<string, string> } }
+      ).__sapphireFake.files[p],
     path,
   );
 }
@@ -36,7 +36,7 @@ test('properties: rename key commits on blur and persists', async ({ page }) => 
 
   await expect
     .poll(() => persisted(page, 'concepts/codemirror.md'))
-    .toContain('summary: The editor core used by Emerald.');
+    .toContain('summary: The editor core used by Sapphire.');
   const after = await persisted(page, 'concepts/codemirror.md');
   expect(after).not.toContain('description:');
   // The value moved intact; other keys untouched.

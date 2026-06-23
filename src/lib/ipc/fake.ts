@@ -52,9 +52,9 @@ const fileChangeSubscribers = new Set<(change: FileChange) => void>();
  * the bundle), updating the in-memory fixture and notifying subscribers. This
  * is the fake's stand-in for the Rust `notify` watcher — it lets Playwright
  * exercise the tree-refresh / reload-open-Concept path. Unlike `writeConcept`
- * (Emerald's own autosave), these changes ARE delivered to subscribers.
+ * (Sapphire's own autosave), these changes ARE delivered to subscribers.
  *
- * Exposed on `window.__emeraldFake` so tests can drive it from the browser.
+ * Exposed on `window.__sapphireFake` so tests can drive it from the browser.
  */
 function simulateExternalChange(
   kind: FileChange['kind'],
@@ -145,7 +145,7 @@ function clearAllTags(): void {
 }
 
 if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).__emeraldFake = {
+  (window as unknown as Record<string, unknown>).__sapphireFake = {
     simulateExternalChange,
     clearAllTags,
     files: FILES,
@@ -178,7 +178,7 @@ export const fakeBackend: Backend = {
     if (!isSafePath(path)) {
       throw new Error(`path escapes the bundle: ${path}`);
     }
-    // Emerald's own write: update the in-memory bundle but do NOT notify
+    // Sapphire's own write: update the in-memory bundle but do NOT notify
     // subscribers — the real backend suppresses the watcher echo for self
     // writes, and the fake must be behaviourally faithful (no reload loop).
     FILES[path] = content;
@@ -193,7 +193,7 @@ export const fakeBackend: Backend = {
 
   // --- Tree CRUD (slice: tree-crud) ---
   // Mutate the in-memory fixture, then notify subscribers — structural changes
-  // SHOULD refresh the tree + index (unlike `writeConcept`, which is Emerald's
+  // SHOULD refresh the tree + index (unlike `writeConcept`, which is Sapphire's
   // own autosave and is suppressed). This mirrors the real backend, where these
   // ops are NOT recorded as self-writes so the watcher's `file-changed` fires.
 
@@ -342,7 +342,7 @@ export const fakeBackend: Backend = {
 const MAX_SEARCH_RESULTS = 500;
 
 /** localStorage key for the fake Bundle's session state. */
-const BUNDLE_STATE_KEY = `emerald:bundleState:${FAKE_BUNDLE_ROOT}`;
+const BUNDLE_STATE_KEY = `sapphire:bundleState:${FAKE_BUNDLE_ROOT}`;
 
 /** Default per-Bundle state (mirrors the Rust `BundleState::default`). */
 function defaultBundleState(): BundleState {

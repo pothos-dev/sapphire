@@ -21,12 +21,12 @@ async function queryBackend<T>(
 ): Promise<T> {
   return page.evaluate(
     async ({ method, arg }) => {
-      // The active backend is exposed on `window.__emeraldBackend` by
+      // The active backend is exposed on `window.__sapphireBackend` by
       // src/lib/ipc/index.ts as a stable test hook. Reading it from the window
       // (rather than dynamically importing `/src/...`) works against both the
       // dev server and a precompiled production build.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const backend = (window as any).__emeraldBackend;
+      const backend = (window as any).__sapphireBackend;
       return arg !== undefined ? backend[method](arg) : backend[method]();
     },
     { method, arg },

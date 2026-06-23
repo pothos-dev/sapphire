@@ -19,8 +19,14 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::paths::{bundle_walker, find_byte, resolve_internal, to_rel_string};
+use crate::paths::md_files;
 use crate::wikilink;
+
+mod frontmatter;
+mod links;
+
+use frontmatter::{parse_frontmatter, strip_frontmatter, ParsedFrontmatter};
+use links::extract_links;
 
 /// One Concept's indexed data: parsed frontmatter fields we care about plus its
 /// outbound internal links (bundle-relative target paths).
@@ -68,31 +74,10 @@ impl Index {
     /// walker settings (hidden + gitignore aware) and only indexes `.md` files.
     pub fn build(root: &Path) -> Self {
         let mut index = Index::default();
-        let walker = bundle_walker(root).build();
-
-        for result in walker {
-            let entry = match result {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                continue;
-            }
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                continue;
-            }
-            let rel = match path.strip_prefix(root) {
-                Ok(r) => to_rel_string(r),
-                Err(_) => continue,
-            };
-            if rel.is_empty() {
-                continue;
-            }
-            let content = std::fs::read_to_string(path).unwrap_or_default();
+        for (path, rel) in md_files(root) {
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
             index.insert_concept(&rel, &content);
         }
-
         index.rebuild_reverse();
         index
     }
@@ -101,7 +86,11 @@ impl Index {
     /// NOT touch the reverse map — call `rebuild_reverse` after a batch, or use
     /// `reindex_concept` for the incremental single-file path.
     fn insert_concept(&mut self, rel: &str, content: &str) {
-        let (concept_type, tags, keys) = parse_frontmatter(content);
+        let ParsedFrontmatter {
+            concept_type,
+            tags,
+            keys,
+        } = parse_frontmatter(content);
         let links = extract_links(rel, content);
         // Wikilink inner texts are captured raw here and resolved later in
         // `rebuild_reverse` (name-based resolution needs the full path set).
@@ -245,211 +234,9 @@ impl Index {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Frontmatter parsing
-// ---------------------------------------------------------------------------
-
-/// Parse the leading YAML frontmatter block (delimited by `---`) and extract
-/// `type` (scalar), `tags` (flat list), and the distinct top-level keys.
-/// Tolerates missing/invalid frontmatter: returns `(None, [], [])` rather than
-/// erroring (CONTEXT.md — broken Concepts are never blocked). The Properties
-/// panel owns verbatim round-tripping; the index only needs these aggregates.
-fn parse_frontmatter(content: &str) -> (Option<String>, Vec<String>, Vec<String>) {
-    let Some(block) = frontmatter_block(content) else {
-        return (None, Vec::new(), Vec::new());
-    };
-    let value: serde_yaml::Value = match serde_yaml::from_str(block) {
-        Ok(v) => v,
-        Err(_) => return (None, Vec::new(), Vec::new()),
-    };
-    let Some(map) = value.as_mapping() else {
-        return (None, Vec::new(), Vec::new());
-    };
-
-    let concept_type = map
-        .get(serde_yaml::Value::from("type"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty());
-
-    let tags = map
-        .get(serde_yaml::Value::from("tags"))
-        .and_then(|v| v.as_sequence())
-        .map(|seq| {
-            seq.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let keys = map
-        .keys()
-        .filter_map(|k| k.as_str().map(|s| s.to_string()))
-        .collect();
-
-    (concept_type, tags, keys)
-}
-
-/// Return the YAML text between the leading `---` fences, or `None` if the
-/// content does not open with a frontmatter block. The block must start on the
-/// very first line (`---\n`) per the OKF/Obsidian convention.
-fn frontmatter_block(content: &str) -> Option<&str> {
-    let rest = content.strip_prefix("---\n").or_else(|| {
-        // Tolerate a leading BOM / CRLF opener.
-        content.strip_prefix("---\r\n")
-    })?;
-    // Find the closing fence: a line that is exactly `---`.
-    let mut offset = 0usize;
-    for line in rest.split_inclusive('\n') {
-        let trimmed = line.trim_end_matches(['\r', '\n']);
-        if trimmed == "---" {
-            return Some(&rest[..offset]);
-        }
-        offset += line.len();
-    }
-    None
-}
-
-// ---------------------------------------------------------------------------
-// Outbound link extraction + resolution (mirrors src/lib/links.ts)
-// ---------------------------------------------------------------------------
-
-/// Extract all internal markdown link targets from a Concept body, resolved to
-/// bundle-relative paths. External (`scheme:`), pure-anchor, and empty links are
-/// skipped. De-duplicated, insertion order preserved-ish (sorted for stability).
-fn extract_links(current_path: &str, content: &str) -> Vec<String> {
-    let body = strip_frontmatter(content);
-    let mut out: BTreeSet<String> = BTreeSet::new();
-    for href in markdown_link_hrefs(body) {
-        if let Some(target) = resolve_internal(current_path, &href) {
-            out.insert(target);
-        }
-    }
-    out.into_iter().collect()
-}
-
-/// Strip the leading frontmatter block so a `---` or link-like text inside it is
-/// not mistaken for body content.
-fn strip_frontmatter(content: &str) -> &str {
-    if let Some(block) = frontmatter_block(content) {
-        // body starts after `---\n` + block + closing `---` line.
-        // Recompute the offset robustly by locating the block within content.
-        if let Some(start) = content.find(block) {
-            let after_block = start + block.len();
-            // Skip the closing fence line.
-            if let Some(rel) = content[after_block..].find('\n') {
-                return &content[after_block + rel + 1..];
-            }
-        }
-    }
-    content
-}
-
-/// Find every markdown inline-link `href`: the `target` in `[text](target)`.
-/// Image links `![alt](src)` are skipped (images are not Concept links).
-/// Handles a trailing `"title"` inside the parens. Reference-style links are
-/// out of scope (the fixtures and OKF Concepts use inline links).
-fn markdown_link_hrefs(body: &str) -> Vec<String> {
-    let bytes = body.as_bytes();
-    let mut hrefs = Vec::new();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'[' {
-            // Skip image links: a `!` immediately before `[`.
-            let is_image = i > 0 && bytes[i - 1] == b'!';
-            // Find the matching `]` (no nested brackets in OKF link text).
-            if let Some(close) = find_byte(bytes, i + 1, b']') {
-                // Must be immediately followed by `(`.
-                if close + 1 < bytes.len() && bytes[close + 1] == b'(' {
-                    if let Some(paren) = find_byte(bytes, close + 2, b')') {
-                        if !is_image {
-                            let raw = &body[close + 2..paren];
-                            hrefs.push(extract_href(raw));
-                        }
-                        i = paren + 1;
-                        continue;
-                    }
-                }
-                i = close + 1;
-                continue;
-            }
-        }
-        i += 1;
-    }
-    hrefs
-}
-
-/// From the inside of a link's parens (`target "title"`), return just the
-/// target (drop a trailing title and surrounding whitespace / angle brackets).
-fn extract_href(raw: &str) -> String {
-    let trimmed = raw.trim();
-    // A title is ` "..."` or ` '...'` after the URL.
-    let url = trimmed
-        .split_once(char::is_whitespace)
-        .map(|(u, _)| u)
-        .unwrap_or(trimmed);
-    url.trim_matches(['<', '>']).to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parses_type_and_tags() {
-        let md = "---\ntype: concept\ntags: [a, b]\n---\n\n# Body\n";
-        let (t, tags, keys) = parse_frontmatter(md);
-        assert_eq!(t.as_deref(), Some("concept"));
-        assert_eq!(tags, vec!["a", "b"]);
-        assert_eq!(keys, vec!["type", "tags"]);
-    }
-
-    #[test]
-    fn tolerates_missing_frontmatter() {
-        let (t, tags, keys) = parse_frontmatter("# Just a body, no frontmatter\n");
-        assert!(t.is_none());
-        assert!(tags.is_empty());
-        assert!(keys.is_empty());
-    }
-
-    #[test]
-    fn tolerates_empty_type() {
-        let (t, _, keys) = parse_frontmatter("---\ntype:\ntitle: x\n---\n");
-        assert!(t.is_none());
-        // Even when `type` is empty, its KEY is still present (autocomplete).
-        assert_eq!(keys, vec!["type", "title"]);
-    }
-
-    #[test]
-    fn resolves_relative_and_absolute_links() {
-        assert_eq!(
-            resolve_internal("concepts/bundle.md", "./codemirror.md").as_deref(),
-            Some("concepts/codemirror.md")
-        );
-        assert_eq!(
-            resolve_internal("concepts/bundle.md", "/index.md").as_deref(),
-            Some("index.md")
-        );
-        assert_eq!(
-            resolve_internal("a/b/c.md", "../x.md").as_deref(),
-            Some("a/x.md")
-        );
-    }
-
-    #[test]
-    fn ignores_external_and_anchor_links() {
-        assert!(resolve_internal("a.md", "https://example.com").is_none());
-        assert!(resolve_internal("a.md", "mailto:x@y.z").is_none());
-        assert!(resolve_internal("a.md", "#section").is_none());
-        assert!(resolve_internal("a.md", "").is_none());
-    }
-
-    #[test]
-    fn extracts_links_skipping_images() {
-        let body = "See [A](./a.md) and ![img](./pic.png) and [ext](https://x).";
-        let links = extract_links("dir/cur.md", body);
-        assert_eq!(links, vec!["dir/a.md"]);
-    }
 
     #[test]
     fn builds_reverse_map_and_backlinks() {

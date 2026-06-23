@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { basename, dirname, joinPath, splitPath, stripMd } from './path';
+import {
+  basename,
+  dirname,
+  joinPath,
+  moveDestination,
+  remapPath,
+  splitPath,
+  stripMd,
+} from './path';
 
 describe('basename / dirname', () => {
   test('split a nested path', () => {
@@ -31,5 +39,30 @@ describe('splitPath', () => {
   test('dir includes the trailing slash', () => {
     expect(splitPath('a/b.md')).toEqual({ dir: 'a/', base: 'b.md' });
     expect(splitPath('x.md')).toEqual({ dir: '', base: 'x.md' });
+  });
+});
+
+describe('remapPath', () => {
+  test('exact match remaps to the new path', () => {
+    expect(remapPath('a/b.md', 'a/b.md', 'a/c.md')).toBe('a/c.md');
+  });
+  test('descendant of a renamed folder is rewritten', () => {
+    expect(remapPath('foo/x.md', 'foo', 'bar')).toBe('bar/x.md');
+    expect(remapPath('foo/sub/x.md', 'foo', 'bar')).toBe('bar/sub/x.md');
+  });
+  test('sibling sharing a prefix is NOT matched', () => {
+    expect(remapPath('foobar/x.md', 'foo', 'bar')).toBeNull();
+    expect(remapPath('other.md', 'foo', 'bar')).toBeNull();
+  });
+});
+
+describe('moveDestination', () => {
+  test('keeps the basename, joining under the target folder', () => {
+    expect(moveDestination('a/b.md', 'c')).toBe('c/b.md');
+    expect(moveDestination('a/b.md', '')).toBe('b.md');
+  });
+  test('tolerates trailing slashes on the source and target', () => {
+    expect(moveDestination('a/b/', 'c/')).toBe('c/b');
+    expect(moveDestination('x.md', 'c//')).toBe('c/x.md');
   });
 });

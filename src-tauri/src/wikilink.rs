@@ -76,7 +76,7 @@ pub fn parse_target(raw: &str) -> WikiTarget {
 }
 
 /// Strip the trailing `.md` (case-insensitive) from a bundle path / basename.
-fn drop_md(s: &str) -> &str {
+pub(crate) fn drop_md(s: &str) -> &str {
     if s.len() >= 3 && s[s.len() - 3..].eq_ignore_ascii_case(".md") {
         &s[..s.len() - 3]
     } else {
@@ -85,7 +85,7 @@ fn drop_md(s: &str) -> &str {
 }
 
 /// The basename of a '/'-separated bundle path (the part after the last `/`).
-fn basename(path: &str) -> &str {
+pub(crate) fn basename(path: &str) -> &str {
     match path.rfind('/') {
         Some(slash) => &path[slash + 1..],
         None => path,

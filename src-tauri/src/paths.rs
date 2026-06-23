@@ -24,6 +24,30 @@ pub fn bundle_walker(root: &Path) -> WalkBuilder {
     builder
 }
 
+/// Walk the Bundle and yield every `.md` file as `(absolute path,
+/// bundle-relative '/'-joined string)`. Built on [`bundle_walker`], so the
+/// hidden/gitignore rules match the tree walk. Non-files, non-`.md` files, walk
+/// errors, and the root itself (empty relative string) are skipped silently —
+/// the single source of truth for "which `.md` files are part of the Bundle",
+/// shared by the index build and full-text search.
+pub(crate) fn md_files(root: &Path) -> impl Iterator<Item = (std::path::PathBuf, String)> + '_ {
+    bundle_walker(root).build().filter_map(move |result| {
+        let entry = result.ok()?;
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            return None;
+        }
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            return None;
+        }
+        let rel = to_rel_string(path.strip_prefix(root).ok()?);
+        if rel.is_empty() {
+            return None;
+        }
+        Some((path.to_path_buf(), rel))
+    })
+}
+
 /// Convert a path already relative to the Bundle root into a '/'-separated
 /// bundle-relative string, dropping any non-`Normal` components.
 pub fn to_rel_string(rel: &Path) -> String {

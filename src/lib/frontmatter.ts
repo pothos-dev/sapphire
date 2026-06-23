@@ -16,6 +16,7 @@
 // `serializeFrontmatter` / `joinConcept` recombine them.
 
 import { parseDocument, isScalar, isSeq, isMap, isNode, Scalar, type Document } from 'yaml';
+import { basename, stripMd } from './path';
 
 /** Classification of a top-level frontmatter value (ADR 0003). */
 export type PropertyKind = 'scalar' | 'list' | 'complex';
@@ -28,6 +29,12 @@ export interface Property {
   scalar?: string;
   /** Whether the scalar parsed as a boolean (affects re-serialization). */
   boolean?: boolean;
+  /**
+   * Whether the scalar parsed as a number (int/float). Re-serialized unquoted
+   * so an integer/float keeps its YAML type across a round-trip instead of
+   * being force-quoted into a string (ADR 0003).
+   */
+  number?: boolean;
   /** Flat list items as strings. Only for `list`. */
   list?: string[];
   /** Verbatim source text of the VALUE (shown read-only for `complex`). */
@@ -78,10 +85,8 @@ export function splitFrontmatter(content: string): SplitConcept {
   const open = openMatch[0];
   const afterOpen = open.length;
 
-  // Find the closing fence: a line that is exactly `---` or `...`.
-  const closeRe = /\r?\n(---|\.\.\.)[ \t]*(\r?\n|$)/g;
-  closeRe.lastIndex = afterOpen - 1; // start search from the newline of `open`
-  // We need the closing fence to begin on its own line. Scan line by line.
+  // Find the closing fence: a line that is exactly `---` or `...`. Scan line by
+  // line so the fence is only recognised at the start of its own line.
   const lines = content.slice(afterOpen).split(/(?<=\n)/);
   let consumed = afterOpen;
   let yaml = '';
@@ -124,7 +129,7 @@ export function frontmatterLineCount(content: string): number {
 
 /**
  * Parse the top-level frontmatter entries of a Concept into an ordered list of
- * Properties, classifying each per ADR 0002. Returns an empty list when there
+ * Properties, classifying each per ADR 0003. Returns an empty list when there
  * is no frontmatter (the Properties panel then opens collapsed by default).
  */
 export function parseProperties(content: string): Property[] {
@@ -202,7 +207,7 @@ function classify(key: string, value: unknown, yamlSrc: string): Property {
   }
   if (isScalar(value)) {
     // Multi-line block scalars (literal `|` / folded `>`) are NOT simple
-    // single-line scalars — per ADR 0002 they are preserved verbatim as a
+    // single-line scalars — per ADR 0003 they are preserved verbatim as a
     // read-only raw field rather than edited as a text input.
     const type = (value as Scalar).type;
     if (type === Scalar.BLOCK_LITERAL || type === Scalar.BLOCK_FOLDED) {
@@ -211,6 +216,9 @@ function classify(key: string, value: unknown, yamlSrc: string): Property {
     const v = (value as Scalar).value;
     if (typeof v === 'boolean') {
       return { key, kind: 'scalar', scalar: String(v), boolean: true };
+    }
+    if (typeof v === 'number' || typeof v === 'bigint') {
+      return { key, kind: 'scalar', scalar: String(v), number: true };
     }
     if (v === null) return { key, kind: 'scalar', scalar: '' };
     // A string scalar that itself spans multiple lines is also not a simple
@@ -288,7 +296,10 @@ export function serializeFrontmatter(props: Property[]): string {
       const v = p.scalar ?? '';
       // Empty scalar -> bare `key:` (matches the new-Concept scaffold and reads
       // cleaner than `key: ''`); both parse back to an empty/flagged value.
-      yaml += v === '' ? `${key}:\n` : `${key}: ${serializeScalar(v, p.boolean ?? false)}\n`;
+      yaml +=
+        v === ''
+          ? `${key}:\n`
+          : `${key}: ${serializeScalar(v, p.boolean ?? false, p.number ?? false)}\n`;
     }
   }
   // All properties were unnamed (e.g. a single just-added, not-yet-committed
@@ -350,11 +361,18 @@ function serializeKey(key: string): string {
  * Serialize a scalar value the way YAML would, but minimally — we want clean
  * output without disturbing surrounding text. Quote only when necessary.
  */
-function serializeScalar(value: string, asBoolean: boolean): string {
+function serializeScalar(value: string, asBoolean: boolean, asNumber = false): string {
   if (asBoolean) {
     const v = value.trim().toLowerCase();
     if (v === 'true' || v === 'false') return v;
     // No longer a boolean -> fall through to string handling.
+  }
+  if (asNumber) {
+    // Preserve the original numeric type: emit unquoted while the value still
+    // parses as a number. If the user edited it to something non-numeric, fall
+    // through to string handling (which will quote as needed).
+    const v = value.trim();
+    if (/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(v)) return v;
   }
   if (value === '') return "''";
   if (needsQuoting(value)) {
@@ -395,9 +413,7 @@ function serializeList(items: string[]): string {
  * whitespace, and sentence-cases the result (e.g. `my-note.md` → "My note").
  */
 export function titleFromFilename(filename: string): string {
-  const slash = filename.lastIndexOf('/');
-  const base = slash === -1 ? filename : filename.slice(slash + 1);
-  const stem = base.replace(/\.md$/i, '');
+  const stem = stripMd(basename(filename));
   const words = stem.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (words === '') return '';
   return words.charAt(0).toUpperCase() + words.slice(1);

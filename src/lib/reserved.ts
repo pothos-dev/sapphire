@@ -11,7 +11,7 @@
 //
 // Operates purely on bundle-relative, forward-slash paths — no IPC dependency.
 
-import { basename } from './path';
+import { basename, joinPath } from './path';
 
 /** The OKF-defined reserved file kinds. */
 export type ReservedKind = 'index' | 'log';
@@ -50,8 +50,7 @@ export function reservedKind(path: string): ReservedKind | null {
  * or creating it.
  */
 export function reservedPath(dir: string, kind: ReservedKind): string {
-  const name = RESERVED_FILES[kind];
-  return dir === '' ? name : `${dir}/${name}`;
+  return joinPath(dir, RESERVED_FILES[kind]);
 }
 
 /**

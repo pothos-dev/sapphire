@@ -18,7 +18,7 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 type FakeWindow = Window & {
-  __emeraldFake: {
+  __sapphireFake: {
     simulateExternalChange: (kind: string, path: string, content?: string) => void;
     files: Record<string, string>;
   };
@@ -27,7 +27,7 @@ type FakeWindow = Window & {
 /** Seed the scenario Concepts via the fake watcher hook. */
 async function seed(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const fake = (window as unknown as FakeWindow).__emeraldFake;
+    const fake = (window as unknown as FakeWindow).__sapphireFake;
     const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
     // A: inbound ABSOLUTE link to B (in sub2/) + an external link to leave alone.
     fake.simulateExternalChange(
@@ -100,7 +100,7 @@ test('link auto-rewrite: inbound + own-outbound links follow a moved Concept', a
 
   // Inspect the rewritten on-disk content via the fake's file map.
   const files = await page.evaluate(
-    () => (window as unknown as FakeWindow).__emeraldFake.files,
+    () => (window as unknown as FakeWindow).__sapphireFake.files,
   );
 
   // A's INBOUND ABSOLUTE link now points at the new absolute path.
