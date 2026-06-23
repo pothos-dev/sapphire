@@ -96,7 +96,8 @@ export interface BuildEditorOptions {
    * state with a fresh history (unified-undo: history never crosses Concepts).
    */
   path?: string | null;
-  readOnly?: boolean;
+  /** The view mode to build the editor in (default `hybrid`). */
+  initialMode?: EditorMode;
   /**
    * Called with the new FULL Concept markdown (`serialize(frontmatter) + body`)
    * after a user edit to either the body or the frontmatter, for autosave.
@@ -175,17 +176,57 @@ function defaultLinkClick(url: string): void {
   // else: relative/OKF link — TODO(slice 5): resolve + navigate in-app.
 }
 
-/** The atomic-editor live-preview extension set, shared by build paths. */
-function livePreviewExtensions(onLinkClick: (url: string) => void): Extension[] {
+/**
+ * The editor's three view modes (Obsidian parity):
+ *   - `edit`   — source mode: raw markdown, no live-preview decorations.
+ *   - `hybrid` — live preview (ADR-0001, the default): inactive lines render
+ *                styled and the cursor line shows raw markup.
+ *   - `view`   — reading mode: every line renders, no raw markup, read-only.
+ */
+export type EditorMode = 'edit' | 'hybrid' | 'view';
+
+/** The default mode for a freshly-built view when none is specified. */
+export const DEFAULT_EDITOR_MODE: EditorMode = 'hybrid';
+
+/**
+ * The STATIC live-preview foundation present in EVERY mode: the GFM parser
+ * (read by both the decoration extensions and source-mode syntax colouring),
+ * syntax highlighting and the atomic theme. MUST come before the mode-dependent
+ * decoration extensions so they can read Task / Table / FencedCode nodes.
+ */
+function livePreviewBase(): Extension[] {
   return [
-    // GFM markdown parser with lazy code-block grammars. MUST come before the
-    // decoration extensions so they can read Task / Table / FencedCode nodes.
     markdown({ base: markdownLanguage, codeLanguages: ATOMIC_CODE_LANGUAGES }),
     atomicMarkdownSyntax,
     atomicEditorTheme,
+  ];
+}
+
+/**
+ * The MODE-DEPENDENT extension slice, held in a Compartment so the host can
+ * switch modes at runtime (`setEditorMode`) without rebuilding the view:
+ *   - which decoration/widget extensions apply (none in `edit`);
+ *   - whether inline preview renders every line (`view`, via atomic-editor's
+ *     patched `alwaysRender`) or reveals the cursor line (`hybrid`);
+ *   - the read-only / editable gating (`view` is read-only).
+ * The active-line highlight is included for the editable modes only — reading
+ * view has no editing caret to anchor it.
+ */
+function modeExtensions(mode: EditorMode, onLinkClick: (url: string) => void): Extension[] {
+  // EDIT (source): no live-preview decorations — raw markup stays visible.
+  if (mode === 'edit') {
+    return [highlightActiveLine(), EditorState.readOnly.of(false), EditorView.editable.of(true)];
+  }
+  const reading = mode === 'view';
+  return [
     tables({ onLinkClick }),
     imageBlocks(),
-    inlinePreview({ onLinkClick }),
+    inlinePreview({ onLinkClick, alwaysRender: reading }),
+    ...(reading ? [] : [highlightActiveLine()]),
+    // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits at
+    // the state level. Reading view is locked; hybrid stays editable.
+    EditorState.readOnly.of(reading),
+    EditorView.editable.of(!reading),
   ];
 }
 
@@ -199,8 +240,10 @@ function livePreviewExtensions(onLinkClick: (url: string) => void): Extension[] 
 function editorExtensions(
   opts: Omit<BuildEditorOptions, 'parent' | 'doc' | 'frontmatter'>,
   wikiCompartment: Compartment,
+  livePreviewCompartment: Compartment,
+  mode: EditorMode,
 ): Extension[] {
-  const { readOnly = false, onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext, wikiLinkContext } = opts;
+  const { onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext, wikiLinkContext } = opts;
 
   // Notify on user edits to the body OR the frontmatter. Frontmatter edits are
   // carried by `setFrontmatter` effects (no doc change), so we watch for both.
@@ -232,7 +275,10 @@ function editorExtensions(
   });
 
   return [
-    ...livePreviewExtensions(onLinkClick ?? defaultLinkClick),
+    ...livePreviewBase(),
+    // Mode-dependent slice (decorations + read-only gating) in a Compartment so
+    // `setEditorMode` can switch edit/hybrid/view without rebuilding the view.
+    livePreviewCompartment.of(modeExtensions(mode, onLinkClick ?? defaultLinkClick)),
     // In-Concept Find & Replace: built-in search panel (mounted above the
     // editor) + its keymap, themed as editor chrome. Ctrl/Cmd+F is opened by
     // App.svelte via `openSearch`; the keymap supplies in-panel bindings.
@@ -257,7 +303,6 @@ function editorExtensions(
     drawSelection(),
     indentOnInput(),
     closeBrackets(),
-    highlightActiveLine(),
     keymap.of([
       ...closeBracketsKeymap,
       ...historyKeymap,
@@ -265,10 +310,6 @@ function editorExtensions(
       indentWithTab,
       ...defaultKeymap,
     ]),
-    // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits
-    // at the state level. Editable from this slice on for autosave.
-    EditorState.readOnly.of(readOnly),
-    EditorView.editable.of(!readOnly),
     EditorView.lineWrapping,
     changeListener,
     blurListener,
@@ -293,15 +334,27 @@ const viewPath = new WeakMap<EditorView, string | null>();
  */
 const viewWikiCompartment = new WeakMap<EditorView, Compartment>();
 
+/**
+ * The mode Compartment per view. Reconfiguring it swaps the mode-dependent
+ * extension slice (decorations + read-only gating) for `setEditorMode` without
+ * rebuilding the view. One instance per view, reused across Concept switches.
+ */
+const viewLivePreviewCompartment = new WeakMap<EditorView, Compartment>();
+
+/** The current view mode per view, so it survives Concept switches (state rebuild). */
+const viewMode = new WeakMap<EditorView, EditorMode>();
+
 export function buildEditor(options: BuildEditorOptions): EditorView {
   const { parent, doc, frontmatter = [] } = options;
   const wikiCompartment = new Compartment();
+  const livePreviewCompartment = new Compartment();
+  const mode = options.initialMode ?? DEFAULT_EDITOR_MODE;
   const state = EditorState.create({
     doc,
     extensions: [
       // Seed the frontmatter field with the open Concept's properties.
       frontmatterField.init(() => frontmatter),
-      ...editorExtensions(options, wikiCompartment),
+      ...editorExtensions(options, wikiCompartment, livePreviewCompartment, mode),
     ],
   });
 
@@ -309,6 +362,8 @@ export function buildEditor(options: BuildEditorOptions): EditorView {
   viewOptions.set(view, options);
   viewPath.set(view, options.path ?? null);
   viewWikiCompartment.set(view, wikiCompartment);
+  viewLivePreviewCompartment.set(view, livePreviewCompartment);
+  viewMode.set(view, mode);
 
   // Seed the editor root's theme from the app root (the theme store keeps it in
   // sync afterwards). atomic-editor reads `data-theme` on the CodeMirror root.
@@ -354,12 +409,17 @@ export function setEditorConcept(
     // compartment, so the wikilink cache also starts clean for the new Concept.
     const wikiCompartment = viewWikiCompartment.get(view) ?? new Compartment();
     viewWikiCompartment.set(view, wikiCompartment);
+    // Likewise reuse the mode Compartment and carry the current mode across the
+    // switch, so the new Concept opens in the same edit/hybrid/view mode.
+    const livePreviewCompartment = viewLivePreviewCompartment.get(view) ?? new Compartment();
+    viewLivePreviewCompartment.set(view, livePreviewCompartment);
+    const mode = viewMode.get(view) ?? DEFAULT_EDITOR_MODE;
     view.setState(
       EditorState.create({
         doc: body,
         extensions: [
           frontmatterField.init(() => props),
-          ...(options ? editorExtensions(options, wikiCompartment) : []),
+          ...(options ? editorExtensions(options, wikiCompartment, livePreviewCompartment, mode) : []),
         ],
       }),
     );
@@ -403,6 +463,25 @@ export function reconfigureWikiLinks(view: EditorView): void {
   const ctx = viewOptions.get(view)?.wikiLinkContext;
   if (!compartment || !ctx) return;
   view.dispatch({ effects: compartment.reconfigure(wikiLinksExtension(ctx)) });
+}
+
+/** The view's current mode (`hybrid` if the view predates mode tracking). */
+export function getEditorMode(view: EditorView): EditorMode {
+  return viewMode.get(view) ?? DEFAULT_EDITOR_MODE;
+}
+
+/**
+ * Switch the view between `edit` / `hybrid` / `view` by reconfiguring the
+ * mode Compartment — no view rebuild, so the document, history and selection
+ * are preserved. The mode is remembered (WeakMap) so it carries across Concept
+ * switches. No-op if the mode is unchanged or the view has no compartment.
+ */
+export function setEditorMode(view: EditorView, mode: EditorMode): void {
+  const compartment = viewLivePreviewCompartment.get(view);
+  if (!compartment || getEditorMode(view) === mode) return;
+  viewMode.set(view, mode);
+  const onLinkClick = viewOptions.get(view)?.onLinkClick ?? defaultLinkClick;
+  view.dispatch({ effects: compartment.reconfigure(modeExtensions(mode, onLinkClick)) });
 }
 
 export function scrollToLine(view: EditorView, line: number): void {

@@ -25,3 +25,26 @@ OKF-specific link and frontmatter extensions.
   (`/abs.md`, `./rel.md`), so we do not use its link extension for the primary format — we
   write our own. (Wikilinks are later supported as an *optional secondary* format, re-enabling
   this extension; see [ADR-0004](0004-wikilinks-optional-secondary-name-based.md).)
+
+## Update: tri-state view mode (Obsidian parity)
+
+Hybrid live preview is now the **default** of a three-way mode toggle in the editor header
+(Source / Live / Read), matching Obsidian's Source / Live Preview / Reading view:
+
+- **`edit` (Source)** — the live-preview decoration extensions (`inlinePreview`, `imageBlocks`,
+  `tables`) are dropped; raw markdown stays visible on every line. Editable. The GFM parser and
+  syntax colouring stay loaded (they are mode-independent).
+- **`hybrid` (Live)** — the original behaviour: inactive lines render, the cursor line reveals
+  raw markup. Editable.
+- **`view` (Read)** — every line renders with no raw markup, and the document is read-only.
+
+The mode-dependent extensions (decorations + `readOnly`/`editable` facets) live in a CodeMirror
+`Compartment`, so `setEditorMode` switches modes by reconfiguring it in place — no view rebuild,
+so the document, history and selection survive the switch. The mode is remembered per view and
+carries across Concept switches. See `src/lib/editor/cm.ts` (`EditorMode`, `modeExtensions`,
+`setEditorMode`).
+
+Reading view requires telling `inlinePreview` to render *every* line regardless of cursor
+position. Upstream atomic-editor hardcodes the "reveal the active line" rule, so we extend our
+existing vendored patch (`patches/@atomic-editor%2Feditor@0.4.3.patch`) with an `alwaysRender`
+config flag on `inlinePreview` that, when set, treats no line as active.

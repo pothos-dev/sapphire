@@ -1,8 +1,68 @@
+diff --git a/dist/inline-preview.d.ts b/dist/inline-preview.d.ts
+index 4951e264cdf8f9e1c2f52936ed6e4cb6558769e1..fbf13f0ec66ab9d62a205de2447af577f6ab9c66 100644
+--- a/dist/inline-preview.d.ts
++++ b/dist/inline-preview.d.ts
+@@ -8,6 +8,12 @@ export interface InlinePreviewConfig {
+      * mechanism.
+      */
+     onLinkClick?: (url: string) => void;
++    /**
++     * When `true`, every line renders with its markup hidden regardless of the
++     * cursor position — a full reading view (Sapphire VIEW mode). Defaults to
++     * `false`, the Obsidian-style hybrid where the active line shows raw markup.
++     */
++    alwaysRender?: boolean;
+ }
+ /**
+  * Assemble the inline-preview extension set. Call once per editor and
 diff --git a/dist/inline-preview.js b/dist/inline-preview.js
-index 94d48d196e21fac09a774cd97b61ed5274ab48b9..438f0cd9fba3f5a414dbcab2b7eaaec8c50188a3 100644
+index 94d48d196e21fac09a774cd97b61ed5274ab48b9..b7847c047ee1795053a2e1533f1d2f6286d08557 100644
 --- a/dist/inline-preview.js
 +++ b/dist/inline-preview.js
-@@ -392,6 +392,15 @@ function buildInlineDecorations(view) {
+@@ -1,5 +1,5 @@
+ import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+-import { EditorSelection, Prec, StateEffect, StateField, } from '@codemirror/state';
++import { EditorSelection, Facet, Prec, StateEffect, StateField, } from '@codemirror/state';
+ import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, } from '@codemirror/view';
+ import { treeGrowthEffect, treeProgressPlugin } from './tree-progress';
+ function defaultOnLinkClick(url) {
+@@ -11,6 +11,13 @@ function defaultOnLinkClick(url) {
+         // is fine; the caller can supply an opener that handles this.
+     }
+ }
++// Sapphire VIEW-mode facet: when any input is `true`, the inline-preview
++// decoration builder treats no line as active, so every line's raw markup
++// hides (renders) regardless of cursor position — a full reading view. The
++// host toggles this by reconfiguring the extension via a Compartment.
++const alwaysRenderFacet = Facet.define({
++    combine: (values) => values.some(Boolean),
++});
+ const FREEZE_TAIL_MS = 100;
+ // ---- freeze plumbing -----------------------------------------------------
+ const setFrozen = StateEffect.define();
+@@ -289,7 +296,11 @@ function buildInlineDecorations(view) {
+     const { doc } = state;
+     const ranges = [];
+     const activeLines = new Set();
+-    if (view.hasFocus) {
++    // Sapphire VIEW mode: with alwaysRender set, leave activeLines (and the
++    // link-active set below) empty so the line-based reveal rule hides every
++    // line's markup — full reading view independent of the cursor.
++    const alwaysRender = state.facet(alwaysRenderFacet);
++    if (view.hasFocus && !alwaysRender) {
+         for (const r of state.selection.ranges) {
+             const firstLine = doc.lineAt(r.from).number;
+             const lastLine = doc.lineAt(r.to).number;
+@@ -353,7 +364,7 @@ function buildInlineDecorations(view) {
+                         activeLines.add(n);
+                 }
+             }
+-            if (node.name === 'Link' && view.hasFocus) {
++            if (node.name === 'Link' && view.hasFocus && !alwaysRender) {
+                 for (const range of state.selection.ranges) {
+                     // Inclusive overlap: cursor sitting exactly on either
+                     // boundary counts as inside, matching the UX where the
+@@ -392,6 +403,15 @@ function buildInlineDecorations(view) {
                      if (parent && parent.name === 'Link') {
                          shouldHide = !activeLinkStarts.has(parent.from);
                      }
@@ -18,7 +78,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..438f0cd9fba3f5a414dbcab2b7eaaec8
                      else {
                          shouldHide = !activeLines.has(lineNum);
                      }
-@@ -796,11 +805,13 @@ function makeLinkClickHandler(onLinkClick) {
+@@ -796,11 +816,13 @@ function makeLinkClickHandler(onLinkClick) {
                  return false;
              const tree = syntaxTree(view.state);
              let node = tree.resolveInner(pos, 1);
@@ -34,3 +94,14 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..438f0cd9fba3f5a414dbcab2b7eaaec8
              if (!urlNode)
                  return false;
              const url = view.state.doc.sliceString(urlNode.from, urlNode.to);
+@@ -821,8 +843,9 @@ function makeLinkClickHandler(onLinkClick) {
+  * browser, etc.) instead of the default `window.open`.
+  */
+ export function inlinePreview(config = {}) {
+-    const { onLinkClick = defaultOnLinkClick } = config;
++    const { onLinkClick = defaultOnLinkClick, alwaysRender = false } = config;
+     return [
++        alwaysRenderFacet.of(alwaysRender),
+         previewFrozenField,
+         inlinePreviewPlugin,
+         freezeMousePlugin,

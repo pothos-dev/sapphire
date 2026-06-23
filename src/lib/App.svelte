@@ -12,11 +12,13 @@
   import {
     buildEditor,
     setEditorConcept,
+    setEditorMode,
     dispatchFrontmatter,
     refreshBrokenLinkDecorations,
     reconfigureWikiLinks,
     scrollToLine,
     openSearch,
+    type EditorMode,
   } from '$lib/editor/cm';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
   import {
@@ -85,6 +87,24 @@
   // field (the single source of truth — ADR 0003) so the Properties panel can
   // render it. Updated by the editor's `onFrontmatterChange` callback.
   let frontmatterProps = $state<Property[]>([]);
+
+  // The editor's tri-state view mode (Obsidian parity: Source / Live / Reading).
+  // Seeds `buildEditor`'s `initialMode`; thereafter the toggle calls
+  // `setEditorMode`, which reconfigures the view in place (no rebuild). The mode
+  // persists across Concept switches (the editor remembers it per view).
+  const EDITOR_MODES: { mode: EditorMode; label: string; title: string }[] = [
+    { mode: 'edit', label: 'Source', title: 'Source — raw markdown' },
+    { mode: 'hybrid', label: 'Live', title: 'Live preview — render with the cursor line shown raw' },
+    { mode: 'view', label: 'Read', title: 'Reading view — fully rendered, read-only' },
+  ];
+  let editorMode = $state<EditorMode>('hybrid');
+  function changeEditorMode(mode: EditorMode): void {
+    editorMode = mode;
+    if (view) {
+      setEditorMode(view, mode);
+      view.focus();
+    }
+  }
 
   // The Properties panel's raw collapse state, bound out of the component so the
   // Region registration below can treat a collapsed panel as not-visible and
@@ -414,7 +434,7 @@
         doc: body,
         frontmatter: props,
         path: editor.path,
-        readOnly: false,
+        initialMode: editorMode,
         onChange: (full) => editor.edit(full),
         onFrontmatterChange: (p) => (frontmatterProps = p),
         onBlur: () => void editor.flush(),
@@ -1076,6 +1096,26 @@
         >
       </div>
       <div class="nav-right">
+        <div
+          class="mode-toggle"
+          role="group"
+          aria-label="Editor mode"
+          data-testid="editor-mode-toggle"
+        >
+          {#each EDITOR_MODES as m (m.mode)}
+            <button
+              type="button"
+              class="mode-btn"
+              class:active={editorMode === m.mode}
+              data-testid={`editor-mode-${m.mode}`}
+              title={m.title}
+              aria-label={m.title}
+              aria-pressed={editorMode === m.mode}
+              disabled={editor.path === null}
+              onclick={() => changeEditorMode(m.mode)}>{m.label}</button
+            >
+          {/each}
+        </div>
         <button
           type="button"
           class="nav-btn"
@@ -1420,7 +1460,50 @@
   }
 
   .nav-right {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
     justify-self: end;
+  }
+
+  /* Tri-state mode toggle: a connected segmented control (Source / Live / Read). */
+  .mode-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .mode-btn {
+    padding: 0 0.55rem;
+    height: 1.9rem;
+    border: none;
+    border-left: 1px solid var(--border);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: background 0.12s ease;
+  }
+
+  .mode-btn:first-child {
+    border-left: none;
+  }
+
+  .mode-btn:hover:not(:disabled):not(.active) {
+    background: var(--hover);
+  }
+
+  .mode-btn.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .mode-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   .nav-btn {
