@@ -13,6 +13,7 @@
     buildEditor,
     setEditorConcept,
     setEditorMode,
+    setEditorMermaidTheme,
     dispatchFrontmatter,
     refreshBrokenLinkDecorations,
     reconfigureWikiLinks,
@@ -396,6 +397,17 @@
     // The atomic-editor reads `data-theme` on the CodeMirror root; keep it in
     // sync with the app theme so the editor is themed identically.
     if (view) view.dom.setAttribute('data-theme', resolved);
+  });
+
+  // Mermaid theme-sync (ADR-0005): a rendered Diagram is a baked SVG inside a
+  // CodeMirror StateField, outside Svelte reactivity, so the `data-theme` flip
+  // above cannot recolour it. Dispatch a theme-changed StateEffect into the
+  // editor when `theme.resolved` changes; the mermaid field rebuilds on it and
+  // re-renders existing diagrams in the new mermaid theme. Sibling to the
+  // `data-theme` effect above so both react to the same `theme.resolved` flip.
+  $effect(() => {
+    const resolved = theme.resolved;
+    if (view) setEditorMermaidTheme(view, resolved);
   });
 
   // Persist the last-open Concept whenever navigation changes it (tree click,

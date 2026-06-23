@@ -39,6 +39,12 @@ be preserved.
 Obsidian-style hybrid editing — markdown source is the source of truth, but inactive lines
 render styled while the cursor line shows raw markup. Implemented via CodeMirror 6 decorations.
 
+**Diagram**:
+The rendered output of a ` ```mermaid ` fenced code block. In source it is an ordinary fenced
+code block (so it is excluded from the **Outline**, like all fenced code); under **Live preview**
+it renders as a diagram on inactive lines and reveals its raw source when the cursor enters it.
+_Avoid_: "chart", "graph" (use **Diagram**; reserve "graph" for the link/backlink sense).
+
 ### UI chrome
 
 These name the layout, not the domain. Register is conventional editor chrome (VSCode-style),

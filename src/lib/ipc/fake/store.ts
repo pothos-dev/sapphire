@@ -297,6 +297,15 @@ src 404s under the fake backend — there is no static file server here):
 
 ![diagram](./assets/diagram.png)
 
+A mermaid fenced block renders as a Diagram (ADR-0005) under live preview /
+reading; the cursor entering it reveals the raw fence:
+
+\`\`\`mermaid
+graph TD
+  A[Source] --> B[Live preview]
+  B --> C[Diagram]
+\`\`\`
+
 Built on [CodeMirror](../codemirror.md).
 
 # Citations
