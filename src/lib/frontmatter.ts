@@ -16,6 +16,7 @@
 // `serializeFrontmatter` / `joinConcept` recombine them.
 
 import { parseDocument, isScalar, isSeq, isMap, isNode, Scalar, type Document } from 'yaml';
+import { basename, stripMd } from './path';
 
 /** Classification of a top-level frontmatter value (ADR 0003). */
 export type PropertyKind = 'scalar' | 'list' | 'complex';
@@ -84,10 +85,8 @@ export function splitFrontmatter(content: string): SplitConcept {
   const open = openMatch[0];
   const afterOpen = open.length;
 
-  // Find the closing fence: a line that is exactly `---` or `...`.
-  const closeRe = /\r?\n(---|\.\.\.)[ \t]*(\r?\n|$)/g;
-  closeRe.lastIndex = afterOpen - 1; // start search from the newline of `open`
-  // We need the closing fence to begin on its own line. Scan line by line.
+  // Find the closing fence: a line that is exactly `---` or `...`. Scan line by
+  // line so the fence is only recognised at the start of its own line.
   const lines = content.slice(afterOpen).split(/(?<=\n)/);
   let consumed = afterOpen;
   let yaml = '';
@@ -130,7 +129,7 @@ export function frontmatterLineCount(content: string): number {
 
 /**
  * Parse the top-level frontmatter entries of a Concept into an ordered list of
- * Properties, classifying each per ADR 0002. Returns an empty list when there
+ * Properties, classifying each per ADR 0003. Returns an empty list when there
  * is no frontmatter (the Properties panel then opens collapsed by default).
  */
 export function parseProperties(content: string): Property[] {
@@ -208,7 +207,7 @@ function classify(key: string, value: unknown, yamlSrc: string): Property {
   }
   if (isScalar(value)) {
     // Multi-line block scalars (literal `|` / folded `>`) are NOT simple
-    // single-line scalars — per ADR 0002 they are preserved verbatim as a
+    // single-line scalars — per ADR 0003 they are preserved verbatim as a
     // read-only raw field rather than edited as a text input.
     const type = (value as Scalar).type;
     if (type === Scalar.BLOCK_LITERAL || type === Scalar.BLOCK_FOLDED) {
@@ -414,9 +413,7 @@ function serializeList(items: string[]): string {
  * whitespace, and sentence-cases the result (e.g. `my-note.md` → "My note").
  */
 export function titleFromFilename(filename: string): string {
-  const slash = filename.lastIndexOf('/');
-  const base = slash === -1 ? filename : filename.slice(slash + 1);
-  const stem = base.replace(/\.md$/i, '');
+  const stem = stripMd(basename(filename));
   const words = stem.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (words === '') return '';
   return words.charAt(0).toUpperCase() + words.slice(1);
