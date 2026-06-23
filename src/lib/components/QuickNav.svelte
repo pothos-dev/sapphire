@@ -89,8 +89,6 @@
     }
   });
 
-  /** Split a path into [prefix, basename] for display. */
-
   function choose(path: string) {
     onopen(path);
     onclose();
