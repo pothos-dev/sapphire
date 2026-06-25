@@ -1,4 +1,11 @@
-import { EditorView, keymap, highlightActiveLine, drawSelection } from '@codemirror/view';
+import {
+  EditorView,
+  keymap,
+  highlightActiveLine,
+  drawSelection,
+  type Command,
+  type KeyBinding,
+} from '@codemirror/view';
 import { EditorState, Annotation, Compartment, type Extension } from '@codemirror/state';
 import {
   history,
@@ -33,6 +40,7 @@ import { mermaidBlocks } from './mermaid';
 import type { ResolvedTheme } from './mermaidBlocks';
 import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
 import { findExtensions, findPanelTheme } from './find';
+import { headingFormatEdit, toggleInlineWrap } from './textFormat';
 
 // The editor's public surface is re-exported here so consumers keep importing
 // from `$lib/editor/cm`. The frontmatter/broken-link/find concerns now live in
@@ -242,6 +250,59 @@ function modeExtensions(
 }
 
 /**
+ * A CM command that toggles an inline wrap (`**`, `*`, `` ` ``, `~~`) around the
+ * current selection via the pure `toggleInlineWrap` transform. No-op in
+ * read-only (reading-view) mode, where it declines the key so it can fall
+ * through. Selecting the inner text afterwards keeps the formatted run highlighted.
+ */
+function inlineWrapCommand(marker: string): Command {
+  return (view) => {
+    if (view.state.readOnly) return false;
+    const { from, to } = view.state.selection.main;
+    const edit = toggleInlineWrap(view.state.doc.toString(), from, to, marker);
+    view.dispatch({ changes: edit.changes, selection: edit.selection, scrollIntoView: true });
+    return true;
+  };
+}
+
+/**
+ * A CM command that toggles ATX heading `level` (1–6, or 0 for "plain
+ * paragraph") across the lines the selection touches, via `headingFormatEdit`.
+ * The selection is remapped through the changes by CodeMirror. No-op in
+ * read-only mode.
+ */
+function headingCommand(level: number): Command {
+  return (view) => {
+    if (view.state.readOnly) return false;
+    const { from, to } = view.state.selection.main;
+    const edit = headingFormatEdit(view.state.doc.toString(), from, to, level);
+    if (edit.changes.length > 0) view.dispatch({ changes: edit.changes, scrollIntoView: true });
+    return true;
+  };
+}
+
+/**
+ * Markdown formatting shortcuts (Obsidian-style; `Mod` = Cmd on macOS, Ctrl
+ * elsewhere). Everything toggles. Headings follow the de-facto Word/LibreOffice
+ * convention (`Mod-1`…`Mod-6`, `Mod-0` for paragraph) since Obsidian ships no
+ * heading defaults. These bind keys the app's global handler and the default
+ * keymaps leave free; placed ahead of the general keymap so they win.
+ */
+const formattingKeymap: KeyBinding[] = [
+  { key: 'Mod-b', run: inlineWrapCommand('**'), preventDefault: true },
+  { key: 'Mod-i', run: inlineWrapCommand('*'), preventDefault: true },
+  { key: 'Mod-e', run: inlineWrapCommand('`'), preventDefault: true },
+  { key: 'Mod-Shift-m', run: inlineWrapCommand('~~'), preventDefault: true },
+  { key: 'Mod-1', run: headingCommand(1), preventDefault: true },
+  { key: 'Mod-2', run: headingCommand(2), preventDefault: true },
+  { key: 'Mod-3', run: headingCommand(3), preventDefault: true },
+  { key: 'Mod-4', run: headingCommand(4), preventDefault: true },
+  { key: 'Mod-5', run: headingCommand(5), preventDefault: true },
+  { key: 'Mod-6', run: headingCommand(6), preventDefault: true },
+  { key: 'Mod-0', run: headingCommand(0), preventDefault: true },
+];
+
+/**
  * Everything BELOW the frontmatter field in the extension list: the live-preview
  * set, broken-link styling, history, keymaps and the change/blur listeners.
  * Shared verbatim by the initial build AND by `setEditorConcept`'s state rebuild
@@ -315,6 +376,9 @@ function editorExtensions(
     drawSelection(),
     indentOnInput(),
     closeBrackets(),
+    // Markdown formatting shortcuts (Ctrl/Cmd+B, +I, +E, +Shift+M, headings).
+    // Placed BEFORE the general keymap so its bindings take precedence.
+    keymap.of(formattingKeymap),
     keymap.of([
       ...closeBracketsKeymap,
       ...historyKeymap,
