@@ -501,14 +501,45 @@ pub fn rename_and_rewrite(
             .ok_or_else(|| format!("missing source snapshot: {p}"))
     })?;
 
-    // 4. Write rewritten content to the NEW locations, record self-writes, and
-    //    reindex so queries are immediately consistent.
+    // 4. Write rewritten content to the NEW locations and record self-writes so
+    //    the watcher does not echo them back as external edits.
     for (new_path, content) in &writes {
         let resolved = bundle::write_concept(root, new_path, content)?;
         state.note_self_write(resolved);
-        if let Ok(mut index) = state.index.write() {
-            index.reindex_concept(new_path, content);
-        }
+    }
+
+    // 5. Reflect the move in the index in one shot: drop every moved Concept's
+    //    OLD path and insert its NEW path, and re-parse every inbound source we
+    //    rewrote. Leaving stale old paths behind makes a later folder rename
+    //    plan moves for files that no longer exist on disk (the read then
+    //    fails) — the watcher would eventually converge, but queries must be
+    //    prompt and not race the next command.
+    if let Ok(mut index) = state.index.write() {
+        let written: HashMap<&str, &str> =
+            writes.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+        let new_paths: std::collections::HashSet<&str> =
+            moves.values().map(String::as_str).collect();
+        // Each moved Concept's post-move content: the rewritten body if its
+        // links changed (in `written`), else the unchanged pre-move snapshot.
+        let moved: Vec<(String, String, String)> = moves
+            .iter()
+            .map(|(old, new)| {
+                let content = written
+                    .get(new.as_str())
+                    .map(|c| c.to_string())
+                    .or_else(|| lookup.get(old.as_str()).map(|c| c.to_string()))
+                    .unwrap_or_default();
+                (old.clone(), new.clone(), content)
+            })
+            .collect();
+        // Inbound sources that did not move but whose links we rewrote (keyed by
+        // their own unchanged path, so not among the moved new paths).
+        let rewritten: Vec<(String, String)> = writes
+            .iter()
+            .filter(|(p, _)| !new_paths.contains(p.as_str()))
+            .cloned()
+            .collect();
+        index.apply_move(&moved, &rewritten);
     }
 
     Ok(summary)

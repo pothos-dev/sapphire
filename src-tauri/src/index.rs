@@ -145,6 +145,36 @@ impl Index {
         self.rebuild_reverse();
     }
 
+    /// Reflect a completed filesystem move/rename in the index in one shot:
+    /// every moved Concept's OLD path is dropped and its NEW path inserted, and
+    /// every inbound source we rewrote is re-parsed at its (unchanged) path.
+    /// The reverse map is rebuilt once at the end.
+    ///
+    /// `moved` is `(old_path, new_path, new_content)` per moved Concept;
+    /// `rewritten` is `(path, content)` for inbound linkers that did not move
+    /// but whose links were updated. Removing the old paths is the crucial bit:
+    /// leaving them stale makes a later folder rename plan moves for files that
+    /// no longer exist on disk, which then fails to read them.
+    pub fn apply_move(
+        &mut self,
+        moved: &[(String, String, String)],
+        rewritten: &[(String, String)],
+    ) {
+        // Drop every old path first, then insert the new ones — old and new
+        // path sets are disjoint for any valid move, so order only matters in
+        // that a removed old path must not clobber a freshly inserted new one.
+        for (old, _new, _content) in moved {
+            self.concepts.remove(old);
+        }
+        for (_old, new, content) in moved {
+            self.insert_concept(new, content);
+        }
+        for (path, content) in rewritten {
+            self.insert_concept(path, content);
+        }
+        self.rebuild_reverse();
+    }
+
     /// Remove a Concept that was deleted from disk. Drops its forward entry and
     /// rebuilds the reverse map so its outbound backlinks disappear. Note: other
     /// Concepts may still link TO the removed path (now a broken link) — that is
@@ -282,6 +312,35 @@ mod tests {
         idx.insert_concept("b.md", "# B");
         idx.rebuild_reverse();
         assert!(idx.backlinks("b.md").is_empty());
+    }
+
+    #[test]
+    fn apply_move_drops_old_paths_and_reindexes() {
+        // `home.md` links to a concept living under `outer/inner/`.
+        let mut idx = Index::default();
+        idx.insert_concept("home.md", "see [[doc]]");
+        idx.insert_concept("outer/inner/doc.md", "# Doc");
+        idx.rebuild_reverse();
+        assert_eq!(idx.backlinks("outer/inner/doc.md"), vec!["home.md"]);
+
+        // Move `outer/inner/doc.md` out to the root. The link in home.md is
+        // rewritten (an inbound rewrite); the moved file keeps its content.
+        idx.apply_move(
+            &[(
+                "outer/inner/doc.md".to_string(),
+                "inner/doc.md".to_string(),
+                "# Doc".to_string(),
+            )],
+            &[("home.md".to_string(), "see [[doc]]".to_string())],
+        );
+
+        // The stale old path is gone and the new one is present — so a later
+        // folder rename will not plan a move for a file that no longer exists.
+        assert!(!idx.concept_exists("outer/inner/doc.md"));
+        assert!(idx.concept_exists("inner/doc.md"));
+        assert_eq!(idx.concept_paths(), vec!["home.md", "inner/doc.md"]);
+        assert_eq!(idx.backlinks("inner/doc.md"), vec!["home.md"]);
+        assert!(idx.backlinks("outer/inner/doc.md").is_empty());
     }
 
     #[test]
