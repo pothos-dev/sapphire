@@ -4,6 +4,19 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-06-25
+
+### Added
+
+- Markdown formatting keyboard shortcuts (Obsidian-style, all toggling):
+  Ctrl/Cmd+B (bold), +I (italic), +E (inline code), +Shift+M (strikethrough),
+  +1–6 (headings H1–H6) and +0 (paragraph).
+- Explorer: Space toggles folders and opens concepts, alongside Enter.
+
+### Fixed
+
+- Inline code in table cells now renders in monospace.
+
 ## [0.11.0] - 2026-06-23
 
 ### Added
