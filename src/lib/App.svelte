@@ -1393,6 +1393,7 @@
   /* Padding wrapper for the tree inside the Explorer section body. */
   .tree-pane {
     padding: 0.5rem;
+    font-size: 14px;
   }
 
   /* Active-Region affordance (region-focus-backbone): the Region currently
