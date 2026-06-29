@@ -4,6 +4,20 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-06-29
+
+### Added
+
+- Mouse back/forward (thumb) buttons now navigate concept history, mirroring
+  Ctrl/Cmd+Alt+Left/Right.
+
+### Changed
+
+- The Properties panel's minimized/expanded state is now a single sticky
+  preference that persists across concept switches and restarts (previously it
+  reset per concept and always reopened expanded).
+- Editor prose base font size and the Explorer file-tree font size both set to 14px.
+
 ## [0.12.1] - 2026-06-25
 
 ### Fixed
