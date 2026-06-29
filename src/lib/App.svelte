@@ -375,9 +375,30 @@
     // CodeMirror editor (whose keymap would otherwise swallow the event).
     window.addEventListener('keydown', onKeydown, true);
 
+    // Mouse back/forward (the thumb buttons) drive history navigation, mirroring
+    // Ctrl+Alt+Left/Right. `button === 3` is Back, `button === 4` is Forward.
+    // We handle `mouseup` and preventDefault on `mousedown` so the webview never
+    // also tries its own native navigation.
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) e.preventDefault();
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 3) {
+        e.preventDefault();
+        void editor.back();
+      } else if (e.button === 4) {
+        e.preventDefault();
+        void editor.forward();
+      }
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+
     return () => {
       unsubscribe();
       window.removeEventListener('keydown', onKeydown, true);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
       stopTheme();
       stopFocus();
       focus.onLeaveRegion = null;
