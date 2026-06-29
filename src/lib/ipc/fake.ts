@@ -373,6 +373,9 @@ function loadFakeBundleState(): BundleState {
       // Outline section collapse flag: passed through untouched (undefined when
       // absent, which the session store defaults to `true` on read).
       outlineOpen: parsed.outlineOpen,
+      // Properties panel collapse flag: passed through untouched (undefined when
+      // absent, which the session store defaults to `true` on read).
+      propertiesOpen: parsed.propertiesOpen,
     };
   } catch {
     return defaultBundleState();

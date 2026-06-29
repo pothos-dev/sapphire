@@ -61,6 +61,11 @@ pub struct BundleState {
     /// (outline-section). Defaults to `true` on the frontend — the Outline shows
     /// the moment the right Sidebar is first expanded.
     pub outline_open: Option<bool>,
+    /// Whether the Properties panel (editor-pane chrome) is expanded
+    /// (persist-properties-collapse). Defaults to `true` on the frontend — a
+    /// fresh/older Bundle opens with the panel expanded; the header chevron then
+    /// persists the user's sticky choice across Concept switches and relaunches.
+    pub properties_open: Option<bool>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets
