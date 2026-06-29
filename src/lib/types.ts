@@ -97,6 +97,13 @@ export type BundleState = {
    * moment the right Sidebar is first expanded.
    */
   outlineOpen?: boolean;
+  /**
+   * whether the Properties panel (editor-pane chrome) is expanded
+   * (persist-properties-collapse). A single sticky preference like the Section
+   * flags: defaults to `true` on read, and once the user toggles the header
+   * chevron the choice persists across Concept switches and restarts.
+   */
+  propertiesOpen?: boolean;
 };
 
 /**

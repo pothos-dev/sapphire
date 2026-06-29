@@ -123,8 +123,8 @@ test('properties: an uncommitted added row writes no empty-key block to disk', a
   const before = await persisted(page, 'concepts/no-frontmatter.md');
   expect(before.startsWith('---')).toBe(false); // genuinely frontmatter-less
 
-  // A frontmatter-less file opens collapsed: expand it to reveal +Text/+List.
-  await page.getByTestId('properties-toggle').click();
+  // The Properties panel opens EXPANDED by default (persist-properties-collapse,
+  // a sticky preference), so +Text/+List are available immediately.
 
   // Add a row but DON'T commit a key. The add dispatches + autosaves, but the
   // not-yet-named row must serialize to nothing — no `"":` line, no empty fences.
@@ -142,13 +142,12 @@ test('properties: adding the first property to a frontmatter-less doc writes a v
   page,
 }) => {
   await open(page, 'concepts/no-frontmatter.md');
-  // No frontmatter -> the panel opens collapsed, so the +Text/+List controls are
-  // hidden until the header is expanded.
-  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByTestId('add-text')).toHaveCount(0);
+  // The panel opens EXPANDED by default (persist-properties-collapse), so the
+  // +Text/+List controls are visible immediately.
+  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('add-text')).toBeVisible();
 
-  // Expand the panel, then add the first property.
-  await page.getByTestId('properties-toggle').click();
+  // Add the first property.
   await page.getByTestId('add-text').click();
   const newKey = page.getByTestId('key-');
   await newKey.fill('type');
@@ -162,27 +161,24 @@ test('properties: adding the first property to a frontmatter-less doc writes a v
   expect(after).toContain('# No Frontmatter');
 });
 
-test('properties: a frontmatter-less file opens collapsed and shows no type warning', async ({
+test('properties: a frontmatter-less file opens expanded and shows no type warning', async ({
   page,
 }) => {
   await open(page, 'concepts/no-frontmatter.md');
 
-  // Collapsed by default: the body (incl. +Text/+List) is hidden, the toggle
-  // reports collapsed, and there is NO required-`type` nag (non-OKF files are
-  // not pushed toward conformance).
+  // Expanded by default (sticky preference, persist-properties-collapse): the
+  // +Text/+List controls show, but a frontmatter-less file gets NO required-`type`
+  // nag (non-OKF files are not pushed toward conformance) and no block is written
+  // to disk — the markers are materialized only when a property is committed.
   const toggle = page.getByTestId('properties-toggle');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByTestId('add-text')).toHaveCount(0);
-  await expect(page.getByTestId('add-list')).toHaveCount(0);
-  await expect(page.getByTestId('type-missing')).toHaveCount(0);
-  await expect(page.getByText('No frontmatter.')).toHaveCount(0);
-
-  // Expanding the panel reveals +Text/+List WITHOUT writing a block to disk —
-  // the markers are materialized only when a property is committed.
-  const before = await persisted(page, 'concepts/no-frontmatter.md');
-  await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('add-text')).toBeVisible();
   await expect(page.getByTestId('add-list')).toBeVisible();
-  expect(await persisted(page, 'concepts/no-frontmatter.md')).toBe(before);
+  await expect(page.getByTestId('type-missing')).toHaveCount(0);
+  await expect(page.getByText('No frontmatter.')).toHaveCount(0);
+
+  // Merely opening the expanded panel writes nothing to disk.
+  const before = await persisted(page, 'concepts/no-frontmatter.md');
+  expect(before.startsWith('---')).toBe(false);
+  await expect.poll(() => persisted(page, 'concepts/no-frontmatter.md')).toBe(before);
 });

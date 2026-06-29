@@ -79,28 +79,18 @@
     collapsed = $bindable(false),
   }: Props = $props();
 
-  // The whole panel is collapsible (header chevron). By DEFAULT it follows
-  // whether the Concept has frontmatter: a frontmatter-less Concept opens
-  // COLLAPSED (nothing to show, and non-OKF files shouldn't be nagged toward a
-  // frontmatter block), one with properties opens EXPANDED. Expanding a
-  // frontmatter-less Concept reveals the +Text/+List controls directly; the
-  // `---…---` block is materialized on disk only once the first property is
-  // committed (the serializer drops empty frontmatter).
+  // The whole panel is collapsible (header chevron). Its collapse is a SINGLE
+  // STICKY PREFERENCE persisted in the session store (persist-properties-collapse):
+  // minimizing the panel survives Concept switches AND restarts, just like the
+  // Sidebar Sections. There is no per-Concept content default anymore — the panel
+  // simply re-shows whatever the user last chose. Expanding a frontmatter-less
+  // Concept reveals the +Text/+List controls directly; the `---…---` block is
+  // materialized on disk only once the first property is committed (the serializer
+  // drops empty frontmatter).
   //
-  // `manualCollapse` is the user's explicit override (chevron / keyboard); `null`
-  // means "follow the default". It is reset to `null` on every Concept switch, so
-  // each file re-derives its default — and the default tracks `properties`
-  // reactively, which matters because `properties` arrives a tick AFTER `path`
-  // changes (the editor loads + parses the new file asynchronously).
-  let manualCollapse = $state<boolean | null>(null);
-  $effect(() => {
-    void path;
-    manualCollapse = null;
-  });
-  // The raw collapse state (default + manual override), ignoring any transient
-  // reveal. Synced out to the `collapsed` bindable so the app shell can drive the
-  // auto-reveal seam.
-  const rawCollapsed = $derived(manualCollapse ?? properties.length === 0);
+  // The raw collapse state (ignoring any transient reveal) is synced out to the
+  // `collapsed` bindable so the app shell can drive the auto-reveal seam.
+  const rawCollapsed = $derived(!session.propertiesOpen);
   $effect(() => {
     collapsed = rawCollapsed;
   });
@@ -112,7 +102,7 @@
   // the flag — snapping the panel back to collapsed. The header (chevron + count
   // + undo/redo) tracks this EFFECTIVE shown state, so a peeked panel reads as
   // open while revealed.
-  const bodyShown = $derived(!rawCollapsed || session.propertiesRevealed);
+  const bodyShown = $derived(session.propertiesVisible);
 
   // The `type` input element, focused when a new Concept opens so the user
   // lands in `type` (the field they must fill to make the Concept OKF-valid).
@@ -159,7 +149,7 @@
   function addProperty(prop: Property) {
     // Adding a property always reveals the body, so a keyboard add (`a`) while
     // the panel is collapsed can't drop the new row out of sight.
-    manualCollapse = false;
+    session.setPropertiesOpen(true);
     newRowId = properties.length;
     onchange([...properties, prop]);
   }
@@ -585,10 +575,11 @@
       aria-label="Properties"
       data-testid="properties-toggle"
       onclick={() => {
-        // Flip the EFFECTIVE shown state, and drop any transient reveal so a
-        // click while peeked doesn't leave the panel fighting the auto-reveal
-        // (the explicit toggle takes over as the source of truth).
-        manualCollapse = bodyShown;
+        // Flip the EFFECTIVE shown state (persisting the choice), and drop any
+        // transient reveal so a click while peeked doesn't leave the panel
+        // fighting the auto-reveal (the explicit toggle takes over as the source
+        // of truth).
+        session.setPropertiesOpen(!bodyShown);
         session.propertiesRevealed = false;
       }}
     >

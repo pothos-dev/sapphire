@@ -84,3 +84,45 @@ test('sidebar + section collapse state persists across reload', async ({ page })
 
   await page.screenshot({ path: 'tests/screenshots/sidebar-collapse-persist.png', fullPage: true });
 });
+
+/**
+ * Slice: persist-properties-collapse.
+ *
+ * The Properties panel's collapse is a single sticky preference (like the Sidebar
+ * Sections above) persisted in the session store, so minimizing it survives a
+ * reload — the regression this slice fixes was that it always reopened expanded.
+ */
+test('properties panel collapse state persists across reload', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('tree')).toBeVisible();
+
+  // Clean slate so fresh-Bundle defaults apply deterministically.
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await expect(page.getByTestId('tree')).toBeVisible();
+
+  // Open a Concept so the Properties panel renders. It opens EXPANDED by default.
+  await page.locator('[data-path="concepts/bundle.md"]').click();
+  const toggle = page.getByTestId('properties-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+  // Minimize the panel — a non-default state whose restoration proves persistence.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // The debounced save flushes `propertiesOpen: false` to localStorage.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        if (!raw) return null;
+        return (JSON.parse(raw) as { propertiesOpen?: boolean }).propertiesOpen ?? null;
+      }),
+    )
+    .toBe(false);
+
+  // RELOAD: the last Concept reopens and the Properties panel stays MINIMIZED.
+  await page.reload();
+  await expect(page.getByTestId('tree')).toBeVisible();
+  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'false');
+});

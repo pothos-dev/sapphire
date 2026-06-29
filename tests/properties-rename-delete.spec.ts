@@ -99,11 +99,11 @@ test('properties: deleting the last property drops the frontmatter block', async
     await page.getByTestId(`delete-${key}`).click();
   }
 
-  // With no properties left the panel follows its default and collapses again
-  // (a frontmatter-less Concept shows just the header); the body, incl. the
-  // +Text/+List controls, is hidden until the header is re-expanded.
-  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByTestId('add-text')).toHaveCount(0);
+  // The panel's collapse is now a sticky preference (persist-properties-collapse),
+  // not content-driven: deleting every property leaves it EXPANDED, so the
+  // +Text/+List controls stay available to add the next one.
+  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('add-text')).toBeVisible();
   await expect
     .poll(() => persisted(page, 'concepts/bundle.md'))
     .not.toContain('---');
