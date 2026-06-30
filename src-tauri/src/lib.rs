@@ -100,45 +100,39 @@ fn delete_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
 /// broken-link existence cache from this (one query instead of per-link calls).
 #[tauri::command]
 fn list_concept_paths(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let index = state.index.read().map_err(|e| e.to_string())?;
-    Ok(index.concept_paths())
+    Ok(state.read_index()?.concept_paths())
 }
 
 /// Whether a Concept exists at `path` (bundle-relative). Convenience companion
 /// to `list_concept_paths`; the broken-link decoration uses the cached set.
 #[tauri::command]
 fn concept_exists(state: State<'_, AppState>, path: String) -> Result<bool, String> {
-    let index = state.index.read().map_err(|e| e.to_string())?;
-    Ok(index.concept_exists(&path))
+    Ok(state.read_index()?.concept_exists(&path))
 }
 
 /// Sources linking TO `path` (backlinks). Used by the backlinks panel (slice 7).
 #[tauri::command]
 fn backlinks(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
-    let index = state.index.read().map_err(|e| e.to_string())?;
-    Ok(index.backlinks(&path))
+    Ok(state.read_index()?.backlinks(&path))
 }
 
 /// All tags across the Bundle with per-tag counts. Used by the tags view (slice 8).
 #[tauri::command]
 fn all_tags(state: State<'_, AppState>) -> Result<Vec<TagCount>, String> {
-    let index = state.index.read().map_err(|e| e.to_string())?;
-    Ok(index.all_tags())
+    Ok(state.read_index()?.all_tags())
 }
 
 /// Concept paths carrying `tag`. Used by the tag browser (slice 8) to reveal
 /// the Concepts under a selected tag.
 #[tauri::command]
 fn concepts_by_tag(state: State<'_, AppState>, tag: String) -> Result<Vec<String>, String> {
-    let index = state.index.read().map_err(|e| e.to_string())?;
-    Ok(index.concepts_by_tag(&tag))
+    Ok(state.read_index()?.concepts_by_tag(&tag))
 }
 
 /// All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12).
 #[tauri::command]
 fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let index = state.index.read().map_err(|e| e.to_string())?;
-    Ok(index.all_types())
+    Ok(state.read_index()?.all_types())
 }
 
 /// All distinct top-level frontmatter keys across the Bundle. Used by the
@@ -146,8 +140,7 @@ fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
 /// the OKF recommended keys are merged in client-side.
 #[tauri::command]
 fn all_keys(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let index = state.index.read().map_err(|e| e.to_string())?;
-    Ok(index.all_keys())
+    Ok(state.read_index()?.all_keys())
 }
 
 /// Full-text (body content) search across the Bundle, on demand. Scans every
