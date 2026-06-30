@@ -47,11 +47,6 @@ class TagsNavStore {
     this.focusedKey = key;
   }
 
-  /** Convenience: focus a row by (tag, path) without the caller building the key. */
-  setFocusedRow(tag: string, path: string | null): void {
-    this.focusedKey = rowKey(tag, path);
-  }
-
   /**
    * Handle a within-Tags keydown. Returns true when the key was handled (the
    * caller should then `preventDefault`). `tags` is the current tag list and
