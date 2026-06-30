@@ -116,13 +116,13 @@ where
             all_paths,
             &new_paths,
         );
+        // When count == 0 we emit no write: an unmoved source is untouched, and
+        // a moved source with no link changes is relocated by the caller's fs
+        // move (its content is already correct at the new path).
         if count > 0 {
             summary.links_changed += count;
             summary.files_changed += 1;
             writes.push((new_source.to_string(), rewritten));
-        } else if new_source != old_source {
-            // Moved but no link changes: the content is still written at the new
-            // path by the caller's fs move; we don't emit a write here.
         }
     }
 
