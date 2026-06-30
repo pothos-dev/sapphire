@@ -20,6 +20,7 @@ import {
   type VisibleRow,
 } from '$lib/treeNav';
 import type { TreeNode } from '$lib/types';
+import { isPlainKey } from '$lib/keynav';
 
 /** Side-effects the handler invokes; supplied by App.svelte. */
 export interface ExplorerNavActions {
@@ -72,7 +73,7 @@ class ExplorerNavStore {
   handleKeydown(e: KeyboardEvent, root: TreeNode | null, actions: ExplorerNavActions): boolean {
     // Never claim modified chords: those belong to the global handler (Alt =
     // Region move, Ctrl/Cmd = palettes/undo). Only plain keys navigate the tree.
-    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+    if (!isPlainKey(e)) return false;
 
     const rows = flattenVisible(root, actions.isExpanded);
     if (rows.length === 0) return false;

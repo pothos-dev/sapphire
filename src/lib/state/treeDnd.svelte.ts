@@ -1,4 +1,4 @@
-import { dirname } from '$lib/path';
+import { canDrop } from '$lib/treeDnd';
 
 /**
  * Shared state for dragging tree rows into folders (slice: tree-dnd).
@@ -28,17 +28,9 @@ class TreeDndStore {
     this.dropTarget = null;
   }
 
-  /**
-   * Whether moving `from` into folder `toDir` is a legal drop. Rejects no-ops
-   * (already in `toDir`) and the impossible cases of dropping a folder into
-   * itself or one of its own descendants. A name collision in the target is left
-   * to the backend, which surfaces it as a `treeActions` error.
-   */
+  /** Whether moving `from` into folder `toDir` is a legal drop (see `$lib/treeDnd`). */
   canDrop(from: string, toDir: string): boolean {
-    if (from === '') return false; // the root itself is never draggable
-    if (dirname(from) === toDir) return false; // already there
-    if (toDir === from || toDir.startsWith(`${from}/`)) return false; // into self/descendant
-    return true;
+    return canDrop(from, toDir);
   }
 }
 

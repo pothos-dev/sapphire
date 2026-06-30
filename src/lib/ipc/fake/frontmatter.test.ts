@@ -5,7 +5,11 @@
 // parser. The original fake used regexes that mishandled quoted YAML — the
 // "quoted" cases below are the regression guard for that bug.
 import { describe, expect, test } from 'bun:test';
-import { parseFrontmatter, parseFrontmatterKeys } from './frontmatter';
+import {
+  parseFrontmatter,
+  parseFrontmatterKeys,
+  stripTagsFromFrontmatter,
+} from './frontmatter';
 
 const fm = (yaml: string) => `---\n${yaml}\n---\n\n# Body\n`;
 
@@ -66,5 +70,28 @@ describe('parseFrontmatterKeys (fake index)', () => {
 
   test('no block yields no keys', () => {
     expect(parseFrontmatterKeys('# Body only\n')).toEqual([]);
+  });
+});
+
+describe('stripTagsFromFrontmatter', () => {
+  test('removes an inline tags: [...] line', () => {
+    const content = '---\ntype: note\ntags: [a, b]\ntitle: T\n---\n\nBody\n';
+    expect(stripTagsFromFrontmatter(content)).toBe('---\ntype: note\ntitle: T\n---\n\nBody\n');
+  });
+
+  test('removes a block-list tags: entry and its items', () => {
+    const content = '---\ntype: note\ntags:\n  - a\n  - b\ntitle: T\n---\n';
+    expect(stripTagsFromFrontmatter(content)).toBe('---\ntype: note\ntitle: T\n---\n');
+  });
+
+  test('returns null when there is no tags entry', () => {
+    expect(stripTagsFromFrontmatter('---\ntype: note\ntitle: T\n---\n')).toBeNull();
+  });
+
+  test('stops dropping block items at the next key', () => {
+    const content = '---\ntags:\n  - a\nother: x\n  - kept\n---\n';
+    // `- a` under tags is dropped; once a non-list line (`other:`) appears,
+    // stripping stops, so the later `- kept` line survives.
+    expect(stripTagsFromFrontmatter(content)).toBe('---\nother: x\n  - kept\n---\n');
   });
 });

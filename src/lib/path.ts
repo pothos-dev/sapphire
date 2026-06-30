@@ -24,6 +24,16 @@ export function stripMd(path: string): string {
   return path.replace(/\.md$/i, '');
 }
 
+/** Whether `name` carries a `.md` extension (case-insensitive). */
+export function isMarkdownName(name: string): boolean {
+  return /\.md$/i.test(name);
+}
+
+/** Append `.md` to `name` unless it already has the extension (case-insensitive). */
+export function ensureMd(name: string): string {
+  return isMarkdownName(name) ? name : `${name}.md`;
+}
+
 /** Join a folder (`''` = Bundle root) and a name into a bundle-relative path. */
 export function joinPath(dir: string, name: string): string {
   return dir === '' ? name : `${dir}/${name}`;

@@ -19,6 +19,7 @@
 // Backlinks Regions navigate independently, each remembering its own position.
 
 import { nextIndexClamped, prevIndexClamped } from '$lib/treeNav';
+import { isPlainKey } from '$lib/keynav';
 
 class ListFocusNavStore {
   /**
@@ -61,7 +62,7 @@ class ListFocusNavStore {
   handleKeydown(e: KeyboardEvent, length: number, activate: (index: number) => void): boolean {
     // Never claim modified chords: those belong to the global handler (Alt =
     // Region move, Ctrl/Cmd = palettes/undo). Only plain keys navigate the list.
-    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+    if (!isPlainKey(e)) return false;
     if (length === 0) return false;
 
     const current = this.focusedIndex ?? -1;

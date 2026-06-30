@@ -54,7 +54,7 @@
   import { outlineNav, backlinksNav } from '$lib/state/listFocusNav.svelte';
   import { propertiesNav } from '$lib/state/propertiesNav.svelte';
   import { region } from '$lib/region';
-  import type { Direction } from '$lib/regionGrid';
+  import { directionForKey } from '$lib/regionGrid';
 
   // Sidebar accordions (VSCode-style): the left Sidebar holds the Bundle tree
   // (Explorer) + Tags; the right Sidebar holds Backlinks (Outline arrives in a
@@ -195,27 +195,6 @@
   const focusTypeNow = $derived(
     focusTypeForPath !== null && focusTypeForPath === editor.path,
   );
-
-  /** Map an Alt-chord key to a Region-movement direction (arrows + hjkl), or
-   *  null when the key isn't a movement key. */
-  function regionDirection(key: string): Direction | null {
-    switch (key) {
-      case 'ArrowLeft':
-      case 'h':
-        return 'left';
-      case 'ArrowDown':
-      case 'j':
-        return 'down';
-      case 'ArrowUp':
-      case 'k':
-        return 'up';
-      case 'ArrowRight':
-      case 'l':
-        return 'right';
-      default:
-        return null;
-    }
-  }
 
   onMount(() => {
     // Apply the OS-driven theme and keep it live.
@@ -365,7 +344,7 @@
       }
 
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      const dir = regionDirection(e.key);
+      const dir = directionForKey(e.key);
       if (dir !== null) {
         e.preventDefault();
         focus.moveFocus(dir);

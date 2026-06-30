@@ -20,7 +20,7 @@
  * path and drops the anchor (anchor scrolling is a later slice).
  */
 
-import { basename, stripMd } from './path';
+import { basename, dirname, stripMd } from './path';
 
 export type ResolvedLink =
   | { kind: 'external'; href: string }
@@ -55,14 +55,6 @@ function normalizeSegments(segments: string[]): string {
   return out.join('/');
 }
 
-/**
- * Resolve a markdown link `href` clicked inside the Concept at `currentPath`
- * (bundle-relative, '/'-separated) to a target.
- *
- * Returns `external` for scheme URLs (caller opens in browser), `internal`
- * with a bundle-relative path for OKF links, or `none` for pure anchors / empty
- * hrefs (nothing to navigate to).
- */
 /**
  * The three components of a raw wikilink target `name|alias#anchor`. `name` is
  * the part that participates in file resolution (the `.md` is NOT stripped here
@@ -155,6 +147,14 @@ export function resolveWikilink(
   return { path: matches[0] };
 }
 
+/**
+ * Resolve a markdown link `href` clicked inside the Concept at `currentPath`
+ * (bundle-relative, '/'-separated) to a target.
+ *
+ * Returns `external` for scheme URLs (caller opens in browser), `internal`
+ * with a bundle-relative path for OKF links, or `none` for pure anchors / empty
+ * hrefs (nothing to navigate to).
+ */
 export function resolveLink(currentPath: string, href: string): ResolvedLink {
   const raw = href.trim();
   if (raw === '') return { kind: 'none' };
@@ -177,8 +177,7 @@ export function resolveLink(currentPath: string, href: string): ResolvedLink {
   }
 
   // Relative: resolve against the current Concept's directory.
-  const slash = currentPath.lastIndexOf('/');
-  const dir = slash === -1 ? '' : currentPath.slice(0, slash);
+  const dir = dirname(currentPath);
   const dirSegments = dir === '' ? [] : dir.split('/');
   const path = normalizeSegments([...dirSegments, ...pathPart.split('/')]);
   return path === '' ? { kind: 'none' } : { kind: 'internal', path };

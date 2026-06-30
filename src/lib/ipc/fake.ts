@@ -17,7 +17,11 @@ import {
 } from './fake/store';
 import { buildTree, renameInternal, deleteInternal } from './fake/tree';
 import { outboundLinks, planRewrites } from './fake/links';
-import { parseFrontmatter, parseFrontmatterKeys } from './fake/frontmatter';
+import {
+  parseFrontmatter,
+  parseFrontmatterKeys,
+  stripTagsFromFrontmatter,
+} from './fake/frontmatter';
 
 /**
  * In-memory Backend implementation over a seeded fixture Bundle.
@@ -111,34 +115,9 @@ function renameAndRewrite(from: string, to: string): RewriteSummary {
  */
 function clearAllTags(): void {
   for (const path of conceptPaths()) {
-    const content = FILES[path];
-    // Remove a `tags:` line (inline `[...]`) and any following block-list items.
-    const lines = content.split('\n');
-    const out: string[] = [];
-    let stripping = false;
-    let changed = false;
-    for (const line of lines) {
-      if (stripping) {
-        // Drop block-list items belonging to the removed `tags:` key.
-        if (/^\s*-\s+/.test(line)) {
-          changed = true;
-          continue;
-        }
-        stripping = false;
-      }
-      if (/^tags:\s*\[.*\]\s*$/.test(line)) {
-        changed = true;
-        continue;
-      }
-      if (/^tags:\s*$/.test(line)) {
-        stripping = true;
-        changed = true;
-        continue;
-      }
-      out.push(line);
-    }
-    if (changed) {
-      FILES[path] = out.join('\n');
+    const stripped = stripTagsFromFrontmatter(FILES[path]);
+    if (stripped !== null) {
+      FILES[path] = stripped;
       notifyFsChange('modified', path);
     }
   }

@@ -37,22 +37,25 @@ pub struct WikiTarget {
 /// and `[[name|alias#anchor]]`; we split on the earliest delimiter so the name
 /// is always the leading filename part). A trailing `.md` (case-insensitive) on
 /// the name is dropped to match the algorithm in the shared spec.
-pub fn parse_target(raw: &str) -> WikiTarget {
-    // Locate the first `|` and the first `#`; the name ends at the earliest.
-    let pipe = raw.find('|');
-    let hash = raw.find('#');
-    let name_end = match (pipe, hash) {
+/// Byte offset where a wikilink's NAME portion ends: the earliest of the first
+/// `|` (alias) or first `#` (anchor), or the whole string when neither is
+/// present. Shared by [`parse_target`] and the rename rewriter so the two agree
+/// on exactly where the name ends.
+pub(crate) fn name_end(raw: &str) -> usize {
+    match (raw.find('|'), raw.find('#')) {
         (Some(p), Some(h)) => p.min(h),
         (Some(p), None) => p,
         (None, Some(h)) => h,
         (None, None) => raw.len(),
-    };
-    let mut name = raw[..name_end].trim().to_string();
-    // Drop a trailing `.md` (case-insensitive) — `[[name.md]]` is accepted.
-    if name.len() >= 3 && name[name.len() - 3..].eq_ignore_ascii_case(".md") {
-        name.truncate(name.len() - 3);
-        name = name.trim().to_string();
     }
+}
+
+pub fn parse_target(raw: &str) -> WikiTarget {
+    // Locate the first `|` and the first `#`; the name ends at the earliest.
+    let pipe = raw.find('|');
+    let hash = raw.find('#');
+    // Drop a trailing `.md` (case-insensitive) — `[[name.md]]` is accepted.
+    let name = drop_md(raw[..name_end(raw)].trim()).trim().to_string();
 
     // Alias = text after the FIRST `|`, up to (but not including) a `#` that
     // follows it. Anchor = text after the FIRST `#`.

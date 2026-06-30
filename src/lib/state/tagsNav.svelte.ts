@@ -22,6 +22,7 @@ import {
   type TagRow,
 } from '$lib/tagsNav';
 import type { TagCount } from '$lib/types';
+import { isPlainKey } from '$lib/keynav';
 
 /** Side-effects the handler invokes; supplied by TagBrowser.svelte. */
 export interface TagsNavActions {
@@ -47,11 +48,6 @@ class TagsNavStore {
     this.focusedKey = key;
   }
 
-  /** Convenience: focus a row by (tag, path) without the caller building the key. */
-  setFocusedRow(tag: string, path: string | null): void {
-    this.focusedKey = rowKey(tag, path);
-  }
-
   /**
    * Handle a within-Tags keydown. Returns true when the key was handled (the
    * caller should then `preventDefault`). `tags` is the current tag list and
@@ -70,7 +66,7 @@ class TagsNavStore {
   ): boolean {
     // Never claim modified chords: those belong to the global handler (Alt =
     // Region move, Ctrl/Cmd = palettes). Only plain keys navigate the tree.
-    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+    if (!isPlainKey(e)) return false;
 
     const rows = flattenTagRows(tags, actions.isExpanded, conceptsOf);
     if (rows.length === 0) return false;

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   basename,
   dirname,
+  ensureMd,
+  isMarkdownName,
   joinPath,
   moveDestination,
   remapPath,
@@ -25,6 +27,20 @@ describe('stripMd', () => {
     expect(stripMd('a/b.md')).toBe('a/b');
     expect(stripMd('A.MD')).toBe('A');
     expect(stripMd('no-ext')).toBe('no-ext');
+  });
+});
+
+describe('isMarkdownName / ensureMd', () => {
+  test('isMarkdownName detects a .md extension case-insensitively', () => {
+    expect(isMarkdownName('note.md')).toBe(true);
+    expect(isMarkdownName('note.MD')).toBe(true);
+    expect(isMarkdownName('note')).toBe(false);
+    expect(isMarkdownName('note.txt')).toBe(false);
+  });
+  test('ensureMd appends .md only when absent', () => {
+    expect(ensureMd('note')).toBe('note.md');
+    expect(ensureMd('note.md')).toBe('note.md');
+    expect(ensureMd('note.MD')).toBe('note.MD'); // already markdown — left as-is
   });
 });
 

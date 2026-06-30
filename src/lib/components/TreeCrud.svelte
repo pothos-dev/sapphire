@@ -15,7 +15,7 @@
    * App's own state directly.
    */
   import type { TreeNode } from '$lib/types';
-  import { dirname, joinPath } from '$lib/path';
+  import { dirname, ensureMd, isMarkdownName, joinPath, stripMd } from '$lib/path';
   import {
     isReservedFile,
     reservedPath,
@@ -142,7 +142,7 @@
    * tree's display name). Folders and non-`.md` files keep their full name.
    */
   function renameSeed(node: TreeNode): string {
-    return node.isDir ? node.name : node.name.replace(/\.md$/i, '');
+    return node.isDir ? node.name : stripMd(node.name);
   }
   export function requestRename(path: string) {
     const node = nodeAt(path);
@@ -265,8 +265,8 @@
       const raw = d.value.trim();
       // `.md` concepts hide their extension in the input, so re-append it unless
       // the user typed it back themselves. Folders/non-`.md` files are untouched.
-      const isMd = !d.node.isDir && /\.md$/i.test(d.node.name);
-      const name = isMd && !/\.md$/i.test(raw) ? `${raw}.md` : raw;
+      const isMd = !d.node.isDir && isMarkdownName(d.node.name);
+      const name = isMd ? ensureMd(raw) : raw;
       if (raw === '' || name === d.node.name) {
         // No-op rename: nothing changed, so close like a cancel.
         closeDialog();

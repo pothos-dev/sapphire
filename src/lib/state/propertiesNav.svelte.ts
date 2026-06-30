@@ -23,6 +23,7 @@
 // `listFocusNav` and keeps App's keydown wiring thin.
 
 import { KEY_COL, VALUE_COL, moveCell, clampCell, type Cell } from '$lib/propertiesGrid';
+import { isPlainKey } from '$lib/keynav';
 
 /** How the focused VALUE cell behaves under Enter (the key cell is always plain). */
 export type CellKind = 'scalar' | 'list' | 'raw';
@@ -143,7 +144,7 @@ class PropertiesNavStore {
 
     // Never claim other modified chords: those belong to the global handler
     // (Alt = Region move). Only plain keys navigate / act on the grid.
-    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+    if (!isPlainKey(e)) return false;
 
     switch (e.key) {
       case 'ArrowUp':

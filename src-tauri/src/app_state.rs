@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Mutex, RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
 use crate::index::Index;
@@ -36,6 +36,13 @@ impl AppState {
             index: RwLock::new(index),
             self_writes: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Acquire a shared read lock on the Bundle index, mapping a poisoned lock to
+    /// the `String` error shape Tauri commands return. The common query path: an
+    /// index-reading command is `Ok(state.read_index()?.some_query(...))`.
+    pub fn read_index(&self) -> Result<RwLockReadGuard<'_, Index>, String> {
+        self.index.read().map_err(|e| e.to_string())
     }
 
     /// Record that Sapphire just wrote `path` (absolute). The watcher will ignore

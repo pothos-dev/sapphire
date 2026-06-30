@@ -362,4 +362,62 @@ mod tests {
         // A normal in-bundle new target still resolves fine.
         assert!(resolve_new(&root, "sub/newfile.md").is_ok());
     }
+
+    #[test]
+    fn resolve_rejects_escapes_and_resolves_in_bundle_paths() {
+        let root = temp_root();
+        create_concept(&root, "a.md").unwrap();
+        // `..` escape and absolute paths are rejected.
+        assert!(resolve(&root, "../a.md").is_err());
+        assert!(resolve(&root, "/abs/a.md").is_err());
+        // A non-existent file fails to canonicalize (resolve is for existing
+        // targets — resolve_new covers create/destination paths).
+        assert!(resolve(&root, "missing.md").is_err());
+        // An existing in-bundle path resolves to a path under the root.
+        let resolved = resolve(&root, "a.md").unwrap();
+        assert!(resolved.starts_with(&root));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_rejects_a_symlinked_escape() {
+        // Reading through an in-bundle symlink that points outside the Bundle
+        // must be rejected: the canonical target falls outside the root.
+        let root = temp_root();
+        let outside = std::env::temp_dir().join(format!(
+            "sapphire-outside-resolve-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.md"), "x").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("escape_link")).unwrap();
+
+        assert!(resolve(&root, "escape_link/secret.md").is_err());
+    }
+
+    #[test]
+    fn list_tree_sorts_dirs_first_then_case_insensitive_alpha() {
+        let root = temp_root();
+        create_concept(&root, "Banana.md").unwrap();
+        create_concept(&root, "apple.md").unwrap();
+        create_folder(&root, "zeta").unwrap();
+        create_concept(&root, "zeta/inner.md").unwrap();
+
+        let tree = list_tree(&root).unwrap();
+        assert!(tree.is_dir);
+        assert_eq!(tree.path, "");
+        let children = tree.children.unwrap();
+        let names: Vec<&str> = children.iter().map(|c| c.name.as_str()).collect();
+        // Dirs first ("zeta"), then files case-insensitively ("apple", "Banana").
+        assert_eq!(names, vec!["zeta", "apple.md", "Banana.md"]);
+
+        let zeta = children.iter().find(|c| c.name == "zeta").unwrap();
+        assert!(zeta.is_dir);
+        assert_eq!(zeta.path, "zeta");
+        let inner = zeta.children.as_ref().unwrap();
+        assert_eq!(inner.len(), 1);
+        assert_eq!(inner[0].path, "zeta/inner.md");
+        assert!(!inner[0].is_dir);
+    }
 }

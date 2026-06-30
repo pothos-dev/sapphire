@@ -124,4 +124,55 @@ mod tests {
         assert_eq!(relative_path("a", "a/c.md"), "./c.md");
         assert_eq!(relative_path("a/b/c", "x.md"), "../../../x.md");
     }
+
+    #[test]
+    fn split_suffix_splits_at_first_anchor_or_query() {
+        assert_eq!(split_suffix("a.md"), ("a.md", ""));
+        assert_eq!(split_suffix("a.md#h"), ("a.md", "#h"));
+        assert_eq!(split_suffix("a.md?q=1"), ("a.md", "?q=1"));
+        // Whichever indicator comes first wins; the rest is kept verbatim.
+        assert_eq!(split_suffix("a.md#h?q"), ("a.md", "#h?q"));
+        assert_eq!(split_suffix("a.md?q=1#h"), ("a.md", "?q=1#h"));
+    }
+
+    #[test]
+    fn utf8_len_reads_the_leading_byte() {
+        assert_eq!(utf8_len(b'a'), 1); // ASCII
+        assert_eq!(utf8_len(0xC3), 2); // 2-byte lead (é)
+        assert_eq!(utf8_len(0xE2), 3); // 3-byte lead (€)
+        assert_eq!(utf8_len(0xF0), 4); // 4-byte lead (emoji)
+        assert_eq!(utf8_len(0x80), 1); // continuation byte -> treated as 1
+        assert_eq!(utf8_len(0xFF), 1); // invalid lead -> treated as 1
+    }
+
+    #[test]
+    fn basename_of_drops_dir_and_extension() {
+        assert_eq!(basename_of("a/b/c.md"), "c");
+        assert_eq!(basename_of("c.md"), "c");
+        assert_eq!(basename_of("a/b/c.MD"), "c"); // case-insensitive `.md`
+        assert_eq!(basename_of("a/b/file"), "file"); // no extension
+    }
+
+    #[test]
+    fn shortest_resolving_suffix_grows_only_when_ambiguous() {
+        // Unique basename: the basename alone resolves.
+        let unique = vec!["folder/unique.md".to_string()];
+        assert_eq!(
+            shortest_resolving_suffix(&unique, "src.md", "folder/unique.md"),
+            "unique"
+        );
+
+        // Ambiguous basename across two dirs. The lexicographically-first path
+        // (`a/note.md`) still resolves from the bare basename...
+        let ambiguous = vec!["a/note.md".to_string(), "b/note.md".to_string()];
+        assert_eq!(
+            shortest_resolving_suffix(&ambiguous, "src.md", "a/note.md"),
+            "note"
+        );
+        // ...but the later one needs a leading segment to disambiguate.
+        assert_eq!(
+            shortest_resolving_suffix(&ambiguous, "src.md", "b/note.md"),
+            "b/note"
+        );
+    }
 }

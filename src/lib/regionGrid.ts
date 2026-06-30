@@ -129,3 +129,27 @@ export function pickColumnLanding(
   }
   return null;
 }
+
+/**
+ * Map a movement key to a Region-movement [`Direction`], or `null` when the key
+ * isn't a movement key. Accepts both arrow keys and the Vim-style `hjkl`. Used
+ * by the Alt-chord Region navigation in the app shell.
+ */
+export function directionForKey(key: string): Direction | null {
+  switch (key) {
+    case 'ArrowLeft':
+    case 'h':
+      return 'left';
+    case 'ArrowDown':
+    case 'j':
+      return 'down';
+    case 'ArrowUp':
+    case 'k':
+      return 'up';
+    case 'ArrowRight':
+    case 'l':
+      return 'right';
+    default:
+      return null;
+  }
+}
