@@ -397,15 +397,7 @@ fn rewrite_wikilink(
 /// whichever of the first `|` or first `#` comes first; everything from there on
 /// is appended verbatim.
 fn rebuild_inner(raw: &str, new_name: &str) -> String {
-    let pipe = raw.find('|');
-    let hash = raw.find('#');
-    let name_end = match (pipe, hash) {
-        (Some(p), Some(h)) => p.min(h),
-        (Some(p), None) => p,
-        (None, Some(h)) => h,
-        (None, None) => raw.len(),
-    };
-    format!("{}{}", new_name, &raw[name_end..])
+    format!("{}{}", new_name, &raw[wikilink::name_end(raw)..])
 }
 
 // ---------------------------------------------------------------------------
