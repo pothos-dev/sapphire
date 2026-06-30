@@ -153,3 +153,93 @@ pub fn resolve_internal(current_path: &str, href: &str) -> Option<String> {
         Some(path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_external_detects_scheme_urls() {
+        assert!(is_external("http://example.com"));
+        assert!(is_external("https://example.com"));
+        assert!(is_external("mailto:a@b.c"));
+        assert!(is_external("tel:123"));
+        // Any `scheme:` with a non-empty alpha-led scheme counts.
+        assert!(is_external("a+b-c.d:rest"));
+        assert!(is_external("c:/windows/drive"));
+    }
+
+    #[test]
+    fn is_external_rejects_non_schemes() {
+        assert!(!is_external(""));
+        assert!(!is_external("/absolute.md"));
+        assert!(!is_external("./relative.md"));
+        assert!(!is_external("bare.md"));
+        assert!(!is_external("1leadingdigit:x")); // scheme must start alpha
+        assert!(!is_external(":leadingcolon"));
+        assert!(!is_external("has space:x")); // space is not a scheme char
+    }
+
+    #[test]
+    fn dir_of_returns_parent_or_empty() {
+        assert_eq!(dir_of("a/b/c.md"), "a/b");
+        assert_eq!(dir_of("c.md"), "");
+        assert_eq!(dir_of("a/b"), "a");
+    }
+
+    #[test]
+    fn normalize_segments_collapses_dot_and_dotdot() {
+        assert_eq!(normalize_segments(["a", ".", "b"].into_iter()), "a/b");
+        assert_eq!(normalize_segments(["a", "..", "b"].into_iter()), "b");
+        assert_eq!(normalize_segments(["", "a", "", "b"].into_iter()), "a/b");
+        assert_eq!(normalize_segments(std::iter::empty()), "");
+    }
+
+    #[test]
+    fn normalize_segments_drops_escaping_leading_dotdot() {
+        // A leading `..` with nothing to pop is dropped (no root escape).
+        assert_eq!(normalize_segments(["..", "a"].into_iter()), "a");
+        assert_eq!(normalize_segments(["..", "..", "x.md"].into_iter()), "x.md");
+    }
+
+    #[test]
+    fn resolve_internal_handles_relative_absolute_and_anchors() {
+        // Relative: against the current Concept's directory.
+        assert_eq!(
+            resolve_internal("a/b.md", "c.md").as_deref(),
+            Some("a/c.md")
+        );
+        assert_eq!(
+            resolve_internal("dir/sub/b.md", "./x.md").as_deref(),
+            Some("dir/sub/x.md")
+        );
+        assert_eq!(
+            resolve_internal("a/b.md", "../c.md").as_deref(),
+            Some("c.md")
+        );
+        // Root-level source resolves bare names at the root.
+        assert_eq!(resolve_internal("b.md", "c.md").as_deref(), Some("c.md"));
+        // Bundle-absolute: from the root, leading slash stripped.
+        assert_eq!(
+            resolve_internal("a/b.md", "/x/y.md").as_deref(),
+            Some("x/y.md")
+        );
+        // Suffixes are dropped.
+        assert_eq!(
+            resolve_internal("a/b.md", "c.md#heading").as_deref(),
+            Some("a/c.md")
+        );
+        assert_eq!(
+            resolve_internal("a/b.md", "c.md?q=1").as_deref(),
+            Some("a/c.md")
+        );
+    }
+
+    #[test]
+    fn resolve_internal_returns_none_for_non_targets() {
+        assert_eq!(resolve_internal("a/b.md", ""), None);
+        assert_eq!(resolve_internal("a/b.md", "   "), None);
+        assert_eq!(resolve_internal("a/b.md", "http://x"), None);
+        assert_eq!(resolve_internal("a/b.md", "#anchor-only"), None);
+    }
+}
