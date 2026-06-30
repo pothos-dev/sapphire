@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { TreeNode } from '$lib/types';
-  import { dirname } from '$lib/path';
+  import { dirname, stripMd } from '$lib/path';
   import { session } from '$lib/state/session.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
@@ -139,7 +139,7 @@
 
   // The tree shows only Concepts (`.md` files) and folders; any other file type
   // in the Bundle is ignored. Displayed names omit the `.md` extension.
-  const displayName = $derived(node.isDir ? node.name : node.name.replace(/\.md$/i, ''));
+  const displayName = $derived(node.isDir ? node.name : stripMd(node.name));
 
   // Reserved files (`index.md`/`log.md`) are NOT shown as ordinary tree leaves;
   // they are surfaced as per-folder affordances on the containing folder row
