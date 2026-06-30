@@ -23,6 +23,8 @@ src/
     errors.ts                # errMessage(e) — message from an Error or any thrown value
     debounce.ts              # createDebouncer (shared autosave/persist timer)
     listNav.ts               # clamp/wrap index math shared by QuickNav + SearchPanel
+    keynav.ts                # isPlainKey — shared no-modifier guard for Region nav
+    treeDnd.ts               # canDrop — pure drop-legality rule for tree drag/drop
     frontmatter.ts links.ts outline.ts fuzzy.ts reserved.ts   # pure, unit-tested utils
     highlight.ts             # search-snippet match splitting (pure, unit-tested)
     ipc/
@@ -53,7 +55,8 @@ src-tauri/src/
   paths.rs                   # shared walker + md_files iterator + bundle-relative + link-resolution
   watcher.rs                 # notify watcher -> emits events to frontend
   search.rs                  # ripgrep-crate full-text search
-  rewrite.rs                 # link auto-rewrite on rename/move (+ rename_and_rewrite)
+  rewrite.rs                 # rename/move orchestration (build_move_map, rename_and_rewrite, move_into)
+    rewrite/engine.rs        #   pure link-rewrite engine (plan_rewrites + helpers), no IO
     rewrite/paths.rs         #   pure path math (relative_path, split_suffix, basename_of, ...)
   config.rs                  # per-Bundle session state (OS config dir)
 ```
@@ -149,10 +152,10 @@ CDP is unavailable (Tauri uses WebKitGTK on Linux, not Chromium). So:
 - **Unit tests (fast, pure logic).** `bun test src/lib` runs the bun built-in test
   runner over `src/lib/**/*.test.ts` (no extra dependency; `bun-types` is dev-only).
   These cover the pure, DOM-free modules — `path`, `errors`, `debounce`, `listNav`,
-  `frontmatter`, `links`, `outline`, `fuzzy`, `reserved`. Keep them scoped to `src/lib` so the runner
+  `keynav`, `treeDnd`, `regionGrid`, `frontmatter`, `links`, `outline`, `fuzzy`, `reserved`. Keep them scoped to `src/lib` so the runner
   never picks up the Playwright specs in `tests/`. The Rust side has `#[cfg(test)]`
-  unit tests run by `cargo test` (logic modules: bundle, index, rewrite, search, config,
-  watcher, app_state).
+  unit tests run by `cargo test` (logic modules: bundle, paths, index, rewrite/engine,
+  rewrite/paths, wikilink, search, config, watcher, app_state).
 - **Playwright over `vite dev` + the fake backend** is the primary interactive/visual test.
   Config: `playwright.config.ts` runs `bun run dev` (port 1420) as `webServer`. Tests live in
   `tests/`. Each slice adds at least one test that drives its UI and saves a screenshot to
