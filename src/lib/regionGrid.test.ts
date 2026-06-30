@@ -6,7 +6,26 @@ import {
   regionAt,
   move,
   pickColumnLanding,
+  directionForKey,
 } from './regionGrid';
+
+describe('directionForKey', () => {
+  test('maps arrows and hjkl to directions', () => {
+    expect(directionForKey('ArrowLeft')).toBe('left');
+    expect(directionForKey('h')).toBe('left');
+    expect(directionForKey('ArrowDown')).toBe('down');
+    expect(directionForKey('j')).toBe('down');
+    expect(directionForKey('ArrowUp')).toBe('up');
+    expect(directionForKey('k')).toBe('up');
+    expect(directionForKey('ArrowRight')).toBe('right');
+    expect(directionForKey('l')).toBe('right');
+  });
+  test('returns null for non-movement keys', () => {
+    expect(directionForKey('x')).toBeNull();
+    expect(directionForKey('Enter')).toBeNull();
+    expect(directionForKey('H')).toBeNull(); // case-sensitive: only lowercase hjkl
+  });
+});
 
 /** All Regions visible. */
 const allVisible = () => true;
