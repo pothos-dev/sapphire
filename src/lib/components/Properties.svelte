@@ -18,6 +18,8 @@
   import { propertiesNav, KEY_COL, VALUE_COL, type CellKind } from '$lib/state/propertiesNav.svelte';
   import { moveCell, nextCellTab, type Cell } from '$lib/propertiesGrid';
   import PropertyRow from './PropertyRow.svelte';
+  import PropertiesHeader from './PropertiesHeader.svelte';
+  import PropertiesAddRow from './PropertiesAddRow.svelte';
 
   interface Props {
     /** The open Concept's frontmatter properties (source of truth). */
@@ -563,55 +565,23 @@
   onfocusin={onPanelFocusIn}
 >
   <!-- Panel header: a collapse toggle (left) + unified undo/redo over the single
-       body+frontmatter history (right). The history buttons mousedown-prevent
-       default so clicking them does not blur (and thus commit) an in-progress
-       scalar/key edit before the command runs. The toggle does NOT — clicking it
-       should blur/commit any active edit before the body is hidden. -->
-  <div class="panel-header" data-testid="properties-header">
-    <button
-      type="button"
-      class="panel-toggle"
-      aria-expanded={bodyShown}
-      aria-label="Properties"
-      data-testid="properties-toggle"
-      onclick={() => {
-        // Flip the EFFECTIVE shown state (persisting the choice), and drop any
-        // transient reveal so a click while peeked doesn't leave the panel
-        // fighting the auto-reveal (the explicit toggle takes over as the source
-        // of truth).
-        session.setPropertiesOpen(!bodyShown);
-        session.propertiesRevealed = false;
-      }}
-    >
-      <span class="chevron" class:open={bodyShown} aria-hidden="true">▸</span>
-      <span class="panel-title">Properties</span>
-      {#if !bodyShown && properties.length > 0}
-        <span class="panel-count" data-testid="properties-count">{properties.length}</span>
-      {/if}
-    </button>
-    <div class="history">
-      <button
-        type="button"
-        class="hist-btn"
-        data-testid="undo"
-        title="Undo (Ctrl+Z)"
-        aria-label="Undo"
-        disabled={!canUndo}
-        onmousedown={(e) => e.preventDefault()}
-        onclick={() => onUndo?.()}>↶</button
-      >
-      <button
-        type="button"
-        class="hist-btn"
-        data-testid="redo"
-        title="Redo (Ctrl+Shift+Z)"
-        aria-label="Redo"
-        disabled={!canRedo}
-        onmousedown={(e) => e.preventDefault()}
-        onclick={() => onRedo?.()}>↷</button
-      >
-    </div>
-  </div>
+       body+frontmatter history (right). The onToggle logic (flip the EFFECTIVE
+       shown state, persisting the choice, and drop any transient reveal so a
+       click while peeked doesn't leave the panel fighting the auto-reveal — the
+       explicit toggle takes over as the source of truth) stays here so the
+       header can remain dumb (no `session` import). -->
+  <PropertiesHeader
+    {bodyShown}
+    count={properties.length}
+    {canUndo}
+    {canRedo}
+    onToggle={() => {
+      session.setPropertiesOpen(!bodyShown);
+      session.propertiesRevealed = false;
+    }}
+    onUndo={() => onUndo?.()}
+    onRedo={() => onRedo?.()}
+  />
 
   <!-- Body: the property grid + add controls. Hidden while the panel is
        collapsed AND not transiently revealed (the header toggle is then the
@@ -701,43 +671,15 @@
     {/each}
   </datalist>
 
-    <!-- Add controls. Create a new scalar (`Text`) or flat-list (`List`)
-         property. The kind is fixed at creation; new rows append after existing
-         ones. The two add buttons ARE the grid's final ("add-controls") row: they
-         carry the `data-cell-row`/`data-cell-col` coordinates (row = `addRowIndex`,
-         one past the last data row) and the roving tabindex, so ↓ from the last
-         row lands here and ←/→ move between them. `.cell-active` mirrors the cells'
-         nav-mode spotlight (programmatic focus doesn't reliably set
-         `:focus-visible`). Clicking still adds regardless of focus. On a
-         frontmatter-less Concept these are the only body content — expanding the
-         panel surfaces them directly; the `---…---` block is materialized on disk
-         only once the first property is committed. -->
-    <div class="add" data-testid="properties-add">
-      <button
-        type="button"
-        class="add-btn"
-        class:cell-active={addBtnFocused(KEY_COL) && propsActive}
-        data-testid="add-text"
-        data-cell-row={addRowIndex}
-        data-cell-col={KEY_COL}
-        tabindex={addBtnFocused(KEY_COL) ? 0 : -1}
-        onclick={addText}
-      >
-        + Text
-      </button>
-      <button
-        type="button"
-        class="add-btn"
-        class:cell-active={addBtnFocused(VALUE_COL) && propsActive}
-        data-testid="add-list"
-        data-cell-row={addRowIndex}
-        data-cell-col={VALUE_COL}
-        tabindex={addBtnFocused(VALUE_COL) ? 0 : -1}
-        onclick={addList}
-      >
-        + List
-      </button>
-    </div>
+    <PropertiesAddRow
+      {addRowIndex}
+      textFocused={addBtnFocused(KEY_COL)}
+      textActive={addBtnFocused(KEY_COL) && propsActive}
+      listFocused={addBtnFocused(VALUE_COL)}
+      listActive={addBtnFocused(VALUE_COL) && propsActive}
+      onAddText={addText}
+      onAddList={addList}
+    />
   {/if}
 </section>
 
@@ -751,101 +693,6 @@
     font-family: var(--font-ui);
     font-size: 0.85rem;
     background: var(--bg-sunken);
-  }
-
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  /* Collapse toggle: chevron + "Properties" label, styled like the sidebar
-     section headers for consistency. Rotating chevron mirrors `aria-expanded`. */
-  .panel-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    font-family: var(--font-ui);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    cursor: pointer;
-    padding: 0.15rem 0.25rem;
-    border-radius: var(--radius-sm);
-    transition: color 0.12s ease;
-  }
-
-  .panel-toggle:hover {
-    color: var(--text);
-  }
-
-  .panel-toggle:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-
-  .chevron {
-    display: inline-block;
-    font-size: 0.7rem;
-    transition: transform 0.12s ease;
-  }
-
-  .chevron.open {
-    transform: rotate(90deg);
-  }
-
-  /* Count badge shown beside the title only while collapsed, so the user can see
-     a collapsed panel still holds properties. */
-  .panel-count {
-    font-variant-numeric: tabular-nums;
-    color: var(--text-muted);
-    opacity: 0.8;
-    text-transform: none;
-    letter-spacing: 0;
-  }
-
-  .history {
-    display: flex;
-    gap: 0.2rem;
-  }
-
-  .hist-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.6rem;
-    height: 1.6rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: none;
-    color: var(--text-muted);
-    font: inherit;
-    font-size: 0.95rem;
-    line-height: 1;
-    cursor: pointer;
-    transition:
-      background-color 0.12s ease,
-      color 0.12s ease;
-  }
-
-  .hist-btn:hover:not(:disabled) {
-    background: var(--hover);
-    color: var(--text);
-  }
-
-  .hist-btn:focus-visible {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-
-  .hist-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 
   .row {
@@ -940,39 +787,5 @@
   .row-remove:hover {
     background: var(--hover);
     color: var(--danger);
-  }
-
-  .add {
-    display: flex;
-    gap: 0.4rem;
-    margin-top: 0.15rem;
-  }
-
-  .add-btn {
-    font-family: var(--font-ui);
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 0.2rem 0.55rem;
-    cursor: pointer;
-    transition:
-      border-color 0.15s ease,
-      color 0.15s ease,
-      background-color 0.15s ease;
-  }
-
-  .add-btn:hover {
-    color: var(--text);
-    border-color: var(--accent);
-    background: var(--hover);
-  }
-
-  .add-btn:focus-visible,
-  .add-btn.cell-active {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 </style>
