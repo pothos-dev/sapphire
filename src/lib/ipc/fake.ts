@@ -6,6 +6,7 @@ import type {
   BundleState,
   SearchHit,
   RewriteSummary,
+  AnchorRename,
 } from '$lib/types';
 import {
   FAKE_BUNDLE_ROOT,
@@ -17,6 +18,7 @@ import {
 } from './fake/store';
 import { buildTree, renameInternal, deleteInternal } from './fake/tree';
 import { outboundLinks, planRewrites } from './fake/links';
+import { rewriteAnchorsIn } from '$lib/anchorRewrite';
 import {
   parseFrontmatter,
   parseFrontmatterKeys,
@@ -224,6 +226,36 @@ export const fakeBackend: Backend = {
     const removed = deleteInternal(path);
     if (removed.length === 0) throw new Error(`no such path: ${path}`);
     for (const p of removed) notifyFsChange('removed', p);
+  },
+
+  async rewriteAnchors(target: string, renames: AnchorRename[]): Promise<RewriteSummary> {
+    if (!isSafePath(target)) throw new Error(`path escapes the bundle: ${target}`);
+    if (renames.length === 0) return { linksChanged: 0, filesChanged: 0 };
+    const allPaths = conceptPaths();
+    let linksChanged = 0;
+    let filesChanged = 0;
+    // Rewrite every inbound source except the target itself (its own same-file
+    // anchors are handled in the open buffer). Silent, like `writeConcept`: the
+    // real backend records these as self-writes; anchors don't affect the index
+    // (resolution ignores them), so no refresh is needed.
+    for (const source of allPaths) {
+      if (source === target) continue;
+      const content = FILES[source];
+      if (content === undefined) continue;
+      const { content: rewritten, count } = rewriteAnchorsIn(
+        source,
+        content,
+        target,
+        renames,
+        allPaths,
+      );
+      if (count > 0) {
+        FILES[source] = rewritten;
+        linksChanged += count;
+        filesChanged++;
+      }
+    }
+    return { linksChanged, filesChanged };
   },
 
   async listConceptPaths(): Promise<string[]> {

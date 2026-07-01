@@ -39,6 +39,7 @@ describe('resolveLink', () => {
     expect(resolveLink('dir/cur.md', '/foo/bar.md')).toEqual({
       kind: 'internal',
       path: 'foo/bar.md',
+      anchor: null,
     });
   });
 
@@ -46,14 +47,17 @@ describe('resolveLink', () => {
     expect(resolveLink('dir/cur.md', './sib.md')).toEqual({
       kind: 'internal',
       path: 'dir/sib.md',
+      anchor: null,
     });
     expect(resolveLink('dir/cur.md', 'bare.md')).toEqual({
       kind: 'internal',
       path: 'dir/bare.md',
+      anchor: null,
     });
     expect(resolveLink('cur.md', 'bare.md')).toEqual({
       kind: 'internal',
       path: 'bare.md',
+      anchor: null,
     });
   });
 
@@ -61,10 +65,12 @@ describe('resolveLink', () => {
     expect(resolveLink('dir/sub/cur.md', '../up.md')).toEqual({
       kind: 'internal',
       path: 'dir/up.md',
+      anchor: null,
     });
     expect(resolveLink('cur.md', '/a/../b.md')).toEqual({
       kind: 'internal',
       path: 'b.md',
+      anchor: null,
     });
   });
 
@@ -72,17 +78,20 @@ describe('resolveLink', () => {
     expect(resolveLink('cur.md', '/../x.md')).toEqual({
       kind: 'internal',
       path: 'x.md',
+      anchor: null,
     });
   });
 
-  test('trailing #anchor and ?query are stripped from the path', () => {
+  test('trailing #anchor is carried; ?query is dropped from both', () => {
     expect(resolveLink('cur.md', 'path.md#sec')).toEqual({
       kind: 'internal',
       path: 'path.md',
+      anchor: 'sec',
     });
     expect(resolveLink('cur.md', '/path.md?x=1#sec')).toEqual({
       kind: 'internal',
       path: 'path.md',
+      anchor: 'sec',
     });
   });
 

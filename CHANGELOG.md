@@ -4,6 +4,18 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Heading anchors now resolve GitHub-style by slug: `[[Page#deep-section]]` (and
+  `[text](/page.md#deep-section)`) jumps to a `## Deep Section` heading. Older
+  literal anchors (`#Deep Section`) keep working — both sides are slugged.
+- Renaming a heading in the editor automatically rewrites the anchors that point
+  at it — inbound links in other documents and same-file `[[#…]]` links — to the
+  heading's new slug, with a brief summary toast. Deleting a heading leaves its
+  inbound anchors alone (they break rather than silently repoint).
+
 ## [0.12.3] - 2026-07-01
 
 ### Changed

@@ -15,6 +15,7 @@
 // a markdown string.
 
 import { frontmatterLineCount, splitFrontmatter } from './frontmatter';
+import { slugify, slugifyHeadings } from './slug';
 
 /** One outline entry: a markdown heading in document order. */
 export interface OutlineHeading {
@@ -24,6 +25,12 @@ export interface OutlineHeading {
   text: string;
   /** 1-based line number in the FULL document (frontmatter included). */
   line: number;
+  /**
+   * GitHub-style anchor slug, de-duplicated in document order (`notes`,
+   * `notes-1`, …). This is the anchor other documents link to
+   * (`[[Page#deep-section]]`).
+   */
+  slug: string;
 }
 
 /** An ATX heading line: 1–6 `#`, at least one space, then the text. */
@@ -71,19 +78,25 @@ export function scanHeadings(content: string): OutlineHeading[] {
       level: m[1].length,
       text: m[2].trim(),
       line: offset + i + 1,
+      slug: '', // filled in below, once the full ordered list is known
     });
   }
+  // Slug de-duplication depends on document order, so assign slugs in one pass
+  // over the completed list (see `slugifyHeadings`).
+  const slugs = slugifyHeadings(headings.map((h) => h.text));
+  for (let k = 0; k < headings.length; k++) headings[k].slug = slugs[k];
   return headings;
 }
 
 /**
- * The full-document line of the first heading whose text matches `anchor`
- * (case-insensitive), or `null` when none matches. Used to scroll to a
- * `[[target#heading]]` wikilink anchor. Anchor matching mirrors the Outline's
- * own text (the `#` markers and surrounding space already stripped).
+ * The full-document line of the first heading whose GitHub-style slug matches
+ * `anchor`, or `null` when none matches. Used to scroll to a `[[target#anchor]]`
+ * wikilink (or `[text](/target.md#anchor)`) anchor. Both sides are slugged, so a
+ * modern `#deep-section` anchor and an older literal `#Deep Section` anchor both
+ * resolve to `## Deep Section`.
  */
 export function findHeadingLine(content: string, anchor: string): number | null {
-  const target = anchor.toLowerCase();
-  const heading = scanHeadings(content).find((h) => h.text.toLowerCase() === target);
+  const target = slugify(anchor);
+  const heading = scanHeadings(content).find((h) => h.slug === target);
   return heading ? heading.line : null;
 }

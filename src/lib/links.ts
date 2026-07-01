@@ -24,7 +24,7 @@ import { basename, dirname, stripMd } from './path';
 
 export type ResolvedLink =
   | { kind: 'external'; href: string }
-  | { kind: 'internal'; path: string }
+  | { kind: 'internal'; path: string; anchor: string | null }
   | { kind: 'none' };
 
 /** Matches a URL scheme like `http:`, `https:`, `mailto:`, `tel:`. */
@@ -162,23 +162,36 @@ export function resolveLink(currentPath: string, href: string): ResolvedLink {
   // External (scheme) links are not navigated in-app.
   if (isExternalLink(raw)) return { kind: 'external', href: raw };
 
-  // Pure anchor: nothing to open (stay on the current Concept).
+  // Pure anchor: nothing to open (stay on the current Concept). The caller
+  // handles same-page scrolling directly from the `#anchor` href.
   if (raw.startsWith('#')) return { kind: 'none' };
 
-  // Drop a trailing `#anchor` (and any `?query`) — anchor scrolling is a later
-  // slice; for now we navigate to the path component.
+  // Separate the path component from a trailing `#anchor` (and any `?query`). The
+  // anchor is carried on the result so the caller can scroll to that heading
+  // (GitHub-style slug) after navigating.
   const pathPart = raw.split('#')[0].split('?')[0];
   if (pathPart === '') return { kind: 'none' };
+  const anchor = extractAnchor(raw);
 
   if (pathPart.startsWith('/')) {
     // Bundle-absolute: resolve from the bundle root.
     const path = normalizeSegments(pathPart.slice(1).split('/'));
-    return path === '' ? { kind: 'none' } : { kind: 'internal', path };
+    return path === '' ? { kind: 'none' } : { kind: 'internal', path, anchor };
   }
 
   // Relative: resolve against the current Concept's directory.
   const dir = dirname(currentPath);
   const dirSegments = dir === '' ? [] : dir.split('/');
   const path = normalizeSegments([...dirSegments, ...pathPart.split('/')]);
-  return path === '' ? { kind: 'none' } : { kind: 'internal', path };
+  return path === '' ? { kind: 'none' } : { kind: 'internal', path, anchor };
+}
+
+/** The `#anchor` fragment of a link href (before any `?query`), or null. */
+function extractAnchor(href: string): string | null {
+  const hash = href.indexOf('#');
+  if (hash === -1) return null;
+  const frag = href.slice(hash + 1);
+  const q = frag.indexOf('?');
+  const anchor = q === -1 ? frag : frag.slice(0, q);
+  return anchor === '' ? null : anchor;
 }

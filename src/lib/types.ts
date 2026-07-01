@@ -135,6 +135,19 @@ export type RewriteSummary = {
 };
 
 /**
+ * One heading-slug rename, sent to `Backend.rewriteAnchors()` when a heading's
+ * GitHub-style slug changes in the editor. Inbound `[[target#from]]` /
+ * `[text](/target.md#from)` anchors are rewritten to `#to`. Matches the Rust
+ * `AnchorRename` (`serde rename_all = "camelCase"`).
+ */
+export type AnchorRename = {
+  /** the heading's previous slug (what existing links still point at) */
+  from: string;
+  /** the heading's new slug */
+  to: string;
+};
+
+/**
  * Parsed YAML frontmatter on a Concept. Only `type` is required; other keys
  * are recommended and unknown keys must be preserved. Filled in by later
  * index slices; defined here so the vocabulary is stable.

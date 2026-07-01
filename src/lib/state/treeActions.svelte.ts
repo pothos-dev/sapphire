@@ -145,6 +145,15 @@ class TreeActionsStore {
   }
 
   /**
+   * Surface the rewrite notice from OUTSIDE a tree action — used by the editor's
+   * slug-anchor rewrite (App.svelte), which auto-rewrites inbound anchors when a
+   * heading is renamed and wants the same unobtrusive toast.
+   */
+  noteRewrite(summary: RewriteSummary): void {
+    this.#showRewriteNotice(summary);
+  }
+
+  /**
    * Surface a brief notice when a move auto-rewrote links. Nothing is shown when
    * no links changed (the common case), keeping it unobtrusive.
    */

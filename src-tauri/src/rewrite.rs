@@ -37,9 +37,11 @@ use crate::app_state::AppState;
 use crate::bundle;
 use crate::index::Index;
 
+mod anchors;
 mod engine;
 mod paths;
 
+pub use anchors::AnchorRename;
 pub use engine::{plan_rewrites, RewriteSummary};
 
 // ---------------------------------------------------------------------------
@@ -200,4 +202,60 @@ pub fn move_into(
         return Err(format!("already in that folder: {from}"));
     }
     rename_and_rewrite(state, from, &to)
+}
+
+/// Rewrite inbound link anchors after a heading in `target` was renamed in the
+/// editor. `renames` maps each changed heading's OLD slug to its NEW slug. Every
+/// concept that links to `target` (via the index reverse map) has its matching
+/// `#anchor`s rewritten so `[[target#old]]` / `[text](/target.md#old)` follow the
+/// heading. `target` ITSELF is excluded — its own same-file anchors are rewritten
+/// in the open editor buffer, which is authoritative over the on-disk copy.
+///
+/// Rewrite writes are recorded as self-writes so the watcher does not echo them,
+/// and the affected concepts are reindexed immediately (anchors do not change
+/// resolution, so the reverse map is unaffected, but the raw content is refreshed).
+pub fn rewrite_anchors(
+    state: &AppState,
+    target: &str,
+    renames: &[AnchorRename],
+) -> Result<RewriteSummary, String> {
+    if renames.is_empty() {
+        return Ok(RewriteSummary::default());
+    }
+    let root = &state.bundle_root;
+
+    // Snapshot the concept path set (for name-based wikilink resolution) and the
+    // set of inbound linkers, excluding the target's own file.
+    let (all_paths, sources) = {
+        let index = state.index.read().map_err(|e| e.to_string())?;
+        let all_paths = index.concept_paths();
+        let mut sources = index.backlinks(target);
+        sources.retain(|s| s.as_str() != target);
+        (all_paths, sources)
+    };
+
+    let mut summary = RewriteSummary::default();
+    let mut writes: Vec<(String, String)> = Vec::new();
+    for source in &sources {
+        let content = bundle::read_concept(root, source)?;
+        let (rewritten, count) =
+            anchors::rewrite_anchors_in(source, &content, target, renames, &all_paths);
+        if count > 0 {
+            summary.links_changed += count;
+            summary.files_changed += 1;
+            writes.push((source.clone(), rewritten));
+        }
+    }
+
+    for (path, content) in &writes {
+        let resolved = bundle::write_concept(root, path, content)?;
+        state.note_self_write(resolved);
+    }
+    if let Ok(mut index) = state.index.write() {
+        for (path, content) in &writes {
+            index.reindex_concept(path, content);
+        }
+    }
+
+    Ok(summary)
 }

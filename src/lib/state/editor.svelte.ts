@@ -29,6 +29,15 @@ class EditorStore {
   dirty = $state<boolean>(false);
 
   /**
+   * Optional hook invoked after a successful autosave of `path`, once the write
+   * has landed. App wires this to slug-anchor rewriting: a save is the moment we
+   * check whether any heading's slug changed and, if so, rewrite the inbound
+   * anchors. Kept as a plain callback (not a rune) — it drives an imperative
+   * side effect over the CodeMirror view, which the store does not hold.
+   */
+  onSaved: ((path: string) => void) | null = null;
+
+  /**
    * Browser-style navigation history of visited Concept paths. `history[index]`
    * is the current Concept. Opening a Concept (tree click or link) pushes onto
    * the stack, truncating any forward entries (standard browser semantics).
@@ -132,6 +141,9 @@ class EditorStore {
       await backend.writeConcept(path, content);
       // Only clear dirty if no newer edit arrived while the write was in flight.
       if (this.content === content) this.dirty = false;
+      // The content is now on disk: let App reconcile slug-anchor changes (a
+      // heading rename rewrites inbound anchors). Best-effort — never fail a save.
+      this.onSaved?.(path);
     } catch (e) {
       this.error = errMessage(e);
     }

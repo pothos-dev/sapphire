@@ -19,8 +19,11 @@
     reconfigureWikiLinks,
     scrollToLine,
     openSearch,
+    pendingAnchorRenames,
+    commitAnchorBaseline,
     type EditorMode,
   } from '$lib/editor/cm';
+  import { rewriteAnchorsIn } from '$lib/anchorRewrite';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
   import {
     splitFrontmatter,
@@ -194,6 +197,10 @@
   );
 
   onMount(() => {
+    // Slug-anchor rewriting: after each autosave, reconcile any heading-slug
+    // change by rewriting inbound anchors (see `onEditorSaved`).
+    editor.onSaved = onEditorSaved;
+
     // Apply the OS-driven theme and keep it live.
     const stopTheme = theme.start();
 
@@ -786,9 +793,14 @@
     if (target.kind === 'external') {
       window.open(target.href, '_blank', 'noopener,noreferrer');
     } else if (target.kind === 'internal') {
-      void editor.open(target.path);
+      // Same-Concept link with an anchor → scroll immediately; otherwise open the
+      // target and (if anchored) scroll once it loads (same path as wikilinks).
+      handleWikiLinkOpen(target.path, target.anchor);
+    } else if (href.trim().startsWith('#')) {
+      // Pure same-page anchor (`[toc](#section)`): scroll to the heading (slug).
+      const line = findHeadingLine(editor.content, href.trim().slice(1));
+      if (line !== null) scrollToOutlineLine(line);
     }
-    // 'none' (pure anchor / empty): no navigation.
   }
 
   // Wikilink navigation (ADR-0004). The editor's wikilink adapter resolves a
@@ -808,6 +820,59 @@
     }
     pendingScrollAnchor = anchor;
     void editor.open(path);
+  }
+
+  // Slug-anchor rewriting (slice: slug-anchor-rewrite). Fired after each autosave
+  // of the open Concept. The editor's `anchorTracking` field remembers each
+  // heading's identity across edits; `pendingAnchorRenames` tells us which
+  // headings' GitHub slugs changed since the last baseline. For each such rename
+  // we:
+  //   1. rewrite SAME-FILE anchors (`[[#old]]`, `[[self#old]]`) IN THE BUFFER via
+  //      a minimal change, so the open Concept stays consistent without a disk
+  //      round-trip / reload (which would jump the cursor);
+  //   2. rewrite CROSS-FILE inbound anchors through the backend, surfacing the
+  //      same unobtrusive toast as rename/move;
+  //   3. re-baseline the tracker to the new heading slugs.
+  function onEditorSaved(path: string) {
+    if (!view) return;
+    const renames = pendingAnchorRenames(view);
+    if (renames.length === 0) return;
+    const allPaths = indexStore.pathList();
+
+    // 1. Same-file anchors, in-buffer. Apply as a minimal (prefix/suffix-trimmed)
+    //    change so the selection maps through it and the cursor does not jump.
+    const body = view.state.doc.toString();
+    const { content: newBody } = rewriteAnchorsIn(path, body, path, renames, allPaths);
+    const change = minimalChange(body, newBody);
+    if (change) view.dispatch({ changes: change });
+
+    // 2. Cross-file inbound anchors, via the backend (target excluded there).
+    void backend.rewriteAnchors(path, renames).then((summary) => {
+      treeActions.noteRewrite(summary);
+    });
+
+    // 3. Re-baseline so the next save diffs against the current heading slugs.
+    commitAnchorBaseline(view);
+  }
+
+  // The single {from,to,insert} edit covering the difference between two strings
+  // (common prefix + suffix trimmed). Returns null when they are equal. Keeps an
+  // in-buffer rewrite localized so CodeMirror maps the cursor through it.
+  function minimalChange(
+    oldStr: string,
+    newStr: string,
+  ): { from: number; to: number; insert: string } | null {
+    if (oldStr === newStr) return null;
+    let start = 0;
+    const max = Math.min(oldStr.length, newStr.length);
+    while (start < max && oldStr[start] === newStr[start]) start++;
+    let endOld = oldStr.length;
+    let endNew = newStr.length;
+    while (endOld > start && endNew > start && oldStr[endOld - 1] === newStr[endNew - 1]) {
+      endOld--;
+      endNew--;
+    }
+    return { from: start, to: endOld, insert: newStr.slice(start, endNew) };
   }
 
   // A frontmatter property edit: dispatch the new properties into the editor's

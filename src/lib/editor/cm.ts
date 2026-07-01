@@ -39,6 +39,7 @@ import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-l
 import { mermaidBlocks } from './mermaid';
 import type { ResolvedTheme } from './mermaidBlocks';
 import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
+import { anchorTracking } from './anchor-tracking';
 import { findExtensions, findPanelTheme } from './find';
 import { headingFormatEdit, toggleInlineWrap } from './textFormat';
 
@@ -56,6 +57,11 @@ export {
   type BrokenLinkContext,
 } from './broken-links';
 export { type WikiLinkContext } from './wiki-links';
+export {
+  anchorTracking,
+  pendingAnchorRenames,
+  commitAnchorBaseline,
+} from './anchor-tracking';
 export { openSearch } from './find';
 
 /**
@@ -367,6 +373,12 @@ function editorExtensions(
     // compartment (static). Empty config when no context is supplied.
     wikiCompartment.of(wikiLinkContext ? wikiLinksExtension(wikiLinkContext) : []),
     ...(wikiLinkContext ? [wikiLinkTheme] : []),
+    // Heading-identity tracking for slug-anchor rewriting (slug-anchor-rewrite):
+    // baselines the open Concept's heading slugs and follows each heading across
+    // edits so the host can rewrite inbound anchors when a heading is renamed.
+    // A fresh state (Concept switch) re-seeds the baseline via the field's
+    // `create`.
+    anchorTracking,
     // Editing affordances that make the hybrid preview feel like Obsidian.
     history(),
     // Unified undo: record the inverse of each frontmatter mutation so the

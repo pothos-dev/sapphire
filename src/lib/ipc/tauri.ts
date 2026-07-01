@@ -8,6 +8,7 @@ import type {
   BundleState,
   SearchHit,
   RewriteSummary,
+  AnchorRename,
 } from '$lib/types';
 
 /** Tauri event name emitted by the Rust watcher (matches watcher.rs). */
@@ -77,6 +78,10 @@ export const tauriBackend: Backend = {
 
   deletePath(path: string): Promise<void> {
     return invoke<void>('delete_path', { path });
+  },
+
+  rewriteAnchors(target: string, renames: AnchorRename[]): Promise<RewriteSummary> {
+    return invoke<RewriteSummary>('rewrite_anchors', { target, renames });
   },
 
   listConceptPaths(): Promise<string[]> {

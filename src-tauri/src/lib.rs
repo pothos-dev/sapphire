@@ -6,6 +6,7 @@ mod index;
 mod paths;
 mod rewrite;
 mod search;
+mod slug;
 mod watcher;
 mod wikilink;
 
@@ -15,7 +16,7 @@ use app_state::AppState;
 use bundle::TreeNode;
 use config::{BundleState, WindowState};
 use index::TagCount;
-use rewrite::RewriteSummary;
+use rewrite::{AnchorRename, RewriteSummary};
 use search::SearchHit;
 use tauri::{LogicalPosition, LogicalSize, Manager, State, WindowEvent};
 
@@ -94,6 +95,20 @@ fn move_path(
 #[tauri::command]
 fn delete_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
     bundle::delete_path(&state.bundle_root, &path)
+}
+
+/// Rewrite inbound link anchors after a heading in `target` was renamed in the
+/// editor (slice: slug-anchor-rewrite). `renames` maps each changed heading's old
+/// slug to its new slug; every concept linking to `target` has its matching
+/// `#anchor`s rewritten. Returns a summary of how many anchors across how many
+/// files changed. The target's own same-file anchors are handled in the buffer.
+#[tauri::command]
+fn rewrite_anchors(
+    state: State<'_, AppState>,
+    target: String,
+    renames: Vec<AnchorRename>,
+) -> Result<RewriteSummary, String> {
+    rewrite::rewrite_anchors(&state, &target, &renames)
 }
 
 /// Every Concept path in the Bundle index. The frontend seeds its synchronous
@@ -354,6 +369,7 @@ pub fn run() {
             rename_path,
             move_path,
             delete_path,
+            rewrite_anchors,
             list_concept_paths,
             concept_exists,
             backlinks,

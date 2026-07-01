@@ -5,6 +5,7 @@ import type {
   BundleState,
   SearchHit,
   RewriteSummary,
+  AnchorRename,
 } from '$lib/types';
 
 /**
@@ -88,6 +89,17 @@ export interface Backend {
    * before calling this to avoid accidental data loss.
    */
   deletePath(path: string): Promise<void>;
+
+  /**
+   * Rewrite inbound link anchors after a heading in `target` was renamed in the
+   * editor (slice: slug-anchor-rewrite). `renames` maps each changed heading's
+   * old GitHub slug to its new slug; every Concept linking to `target` has its
+   * matching `[[target#old]]` / `[text](/target.md#old)` anchors rewritten.
+   * `target`'s OWN same-file anchors are handled in the open buffer, so they are
+   * excluded here. Resolves to a summary of how many anchors across how many
+   * files changed (drives the same rewrite toast as rename/move).
+   */
+  rewriteAnchors(target: string, renames: AnchorRename[]): Promise<RewriteSummary>;
 
   // --- Bundle index queries (slice: bundle-index-broken-links) ---
   // The Rust index is built on startup and kept current by the watcher. These
