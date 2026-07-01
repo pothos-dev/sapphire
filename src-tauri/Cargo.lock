@@ -3045,7 +3045,7 @@ dependencies = [
 
 [[package]]
 name = "sapphire"
-version = "0.12.2"
+version = "0.12.3"
 dependencies = [
  "dirs 5.0.1",
  "grep-matcher",
