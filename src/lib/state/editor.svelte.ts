@@ -183,6 +183,9 @@ class EditorStore {
     try {
       const content = await backend.readConcept(open);
       this.content = content;
+      // Clear any stale open/read error: the reload succeeded, so whatever was
+      // wrong before (e.g. the file was missing when navigated to) is resolved.
+      this.error = null;
     } catch (e) {
       this.error = errMessage(e);
     }
