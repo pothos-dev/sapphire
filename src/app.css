@@ -225,3 +225,16 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Table cell width cap. The atomic-editor table sizes columns to content
+   (`width: max-content`), so a single long-prose cell makes the whole table
+   run wide and horizontal-scroll. Capping cell width lets long content wrap
+   instead, while short columns stay content-sized. Scoped under `.cm-editor`
+   to outrank the package's `.cm-atomic-table td` rule regardless of bundle
+   order. */
+.cm-editor .cm-atomic-table th,
+.cm-editor .cm-atomic-table td {
+  max-width: 24em;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
