@@ -67,6 +67,14 @@ export function buildTree(): TreeNode {
 export function renameInternal(from: string, to: string): void {
   if (!pathExists(from)) throw new Error(`no such path: ${from}`);
   if (pathExists(to)) throw new Error(`already exists: ${to}`);
+  // Mirror the Rust `rename_path` guard: the target's parent folder must exist
+  // (a real `fs::rename` would otherwise fail). `''` is the Bundle root, always
+  // present. Checked before any mutation so a rejected rename is a no-op.
+  const slash = to.lastIndexOf('/');
+  const parent = slash === -1 ? '' : to.slice(0, slash);
+  if (parent !== '' && !folderExists(parent)) {
+    throw new Error(`target folder does not exist: ${to}`);
+  }
 
   if (Object.prototype.hasOwnProperty.call(FILES, from)) {
     // Single file.

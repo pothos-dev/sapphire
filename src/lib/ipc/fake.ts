@@ -182,6 +182,13 @@ export const fakeBackend: Backend = {
     if (Object.prototype.hasOwnProperty.call(FILES, path)) {
       throw new Error(`already exists: ${path}`);
     }
+    // Mirror the Rust `create_concept`: the parent folder must already exist
+    // (there, the `fs::write` fails otherwise). `''` = Bundle root, always OK.
+    const slash = path.lastIndexOf('/');
+    const parent = slash === -1 ? '' : path.slice(0, slash);
+    if (parent !== '' && !folderExists(parent)) {
+      throw new Error(`parent folder does not exist: ${path}`);
+    }
     FILES[path] = '';
     notifyFsChange('created', path);
   },
