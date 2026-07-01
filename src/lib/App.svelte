@@ -40,6 +40,7 @@
   import Outline from '$lib/components/Outline.svelte';
   import TagBrowser from '$lib/components/TagBrowser.svelte';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
+  import NavBar from '$lib/components/NavBar.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
@@ -98,12 +99,8 @@
   // The editor's tri-state view mode (Obsidian parity: Source / Live / Reading).
   // Seeds `buildEditor`'s `initialMode`; thereafter the toggle calls
   // `setEditorMode`, which reconfigures the view in place (no rebuild). The mode
-  // persists across Concept switches (the editor remembers it per view).
-  const EDITOR_MODES: { mode: EditorMode; label: string; title: string }[] = [
-    { mode: 'edit', label: 'Source', title: 'Source — raw markdown' },
-    { mode: 'hybrid', label: 'Live', title: 'Live preview — render with the cursor line shown raw' },
-    { mode: 'view', label: 'Read', title: 'Reading view — fully rendered, read-only' },
-  ];
+  // persists across Concept switches (the editor remembers it per view). The
+  // display list of modes lives in NavBar.svelte (its only consumer).
   let editorMode = $state<EditorMode>('hybrid');
   function changeEditorMode(mode: EditorMode): void {
     editorMode = mode;
@@ -1019,136 +1016,19 @@
   </aside>
 
   <main class="editor-pane" aria-label="Concept">
-    <nav class="nav-bar" aria-label="Navigation history">
-      <div class="nav-left">
-        <button
-          type="button"
-          class="nav-btn"
-          data-testid="sidebar-toggle"
-          title={session.leftSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          aria-label={session.leftSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          aria-pressed={session.leftSidebarOpen}
-          onclick={() => session.setLeftSidebarOpen(!session.leftSidebarOpen)}
-        >
-          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-            <rect
-              x="1.5"
-              y="2.5"
-              width="13"
-              height="11"
-              rx="1.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
-            />
-            <line
-              x1="6"
-              y1="2.5"
-              x2="6"
-              y2="13.5"
-              stroke="currentColor"
-              stroke-width="1.2"
-            />
-            <rect
-              x="1.5"
-              y="2.5"
-              width="4.5"
-              height="11"
-              rx="1.5"
-              fill="currentColor"
-              opacity={session.leftSidebarOpen ? 0.5 : 0}
-              stroke="none"
-            />
-          </svg>
-        </button>
-      </div>
-      <div class="nav-center">
-        <button
-          type="button"
-          class="nav-btn"
-          data-testid="nav-back"
-          title="Back (Ctrl+Alt+Left)"
-          aria-label="Back"
-          disabled={!editor.canGoBack}
-          onclick={() => void editor.back()}>←</button
-        >
-        <button
-          type="button"
-          class="nav-btn"
-          data-testid="nav-forward"
-          title="Forward (Ctrl+Alt+Right)"
-          aria-label="Forward"
-          disabled={!editor.canGoForward}
-          onclick={() => void editor.forward()}>→</button
-        >
-      </div>
-      <div class="nav-right">
-        <div
-          class="mode-toggle"
-          role="group"
-          aria-label="Editor mode"
-          data-testid="editor-mode-toggle"
-        >
-          {#each EDITOR_MODES as m (m.mode)}
-            <button
-              type="button"
-              class="mode-btn"
-              class:active={editorMode === m.mode}
-              data-testid={`editor-mode-${m.mode}`}
-              title={m.title}
-              aria-label={m.title}
-              aria-pressed={editorMode === m.mode}
-              disabled={editor.path === null}
-              onclick={() => changeEditorMode(m.mode)}>{m.label}</button
-            >
-          {/each}
-        </div>
-        <button
-          type="button"
-          class="nav-btn"
-          data-testid="right-sidebar-toggle"
-          title={session.rightSidebarOpen
-            ? 'Collapse Outline & Backlinks'
-            : 'Expand Outline & Backlinks'}
-          aria-label={session.rightSidebarOpen
-            ? 'Collapse Outline & Backlinks'
-            : 'Expand Outline & Backlinks'}
-          aria-pressed={session.rightSidebarOpen}
-          onclick={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
-        >
-          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-            <rect
-              x="1.5"
-              y="2.5"
-              width="13"
-              height="11"
-              rx="1.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
-            />
-            <line
-              x1="10"
-              y1="2.5"
-              x2="10"
-              y2="13.5"
-              stroke="currentColor"
-              stroke-width="1.2"
-            />
-            <rect
-              x="10"
-              y="2.5"
-              width="4.5"
-              height="11"
-              rx="1.5"
-              fill="currentColor"
-              opacity={session.rightSidebarOpen ? 0.5 : 0}
-              stroke="none"
-            />
-          </svg>
-        </button>
-      </div>
-    </nav>
+    <NavBar
+      leftSidebarOpen={session.leftSidebarOpen}
+      rightSidebarOpen={session.rightSidebarOpen}
+      canGoBack={editor.canGoBack}
+      canGoForward={editor.canGoForward}
+      {editorMode}
+      hasOpenConcept={editor.path !== null}
+      onToggleLeft={() => session.setLeftSidebarOpen(!session.leftSidebarOpen)}
+      onToggleRight={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
+      onBack={() => void editor.back()}
+      onForward={() => void editor.forward()}
+      onSetMode={changeEditorMode}
+    />
     {#if editor.error}
       <p class="status error">{editor.error}</p>
     {/if}
@@ -1424,99 +1304,6 @@
     flex-direction: column;
     overflow: hidden;
     min-width: 0;
-  }
-
-  /* Three-track header: the toggle sits at the left, the back/forward group is
-     centred in the pane regardless of the toggle's width (empty right track
-     balances the left). */
-  .nav-bar {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    padding: 0.4rem 0.6rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .nav-left {
-    justify-self: start;
-  }
-
-  .nav-center {
-    display: flex;
-    gap: 0.35rem;
-    justify-self: center;
-  }
-
-  .nav-right {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    justify-self: end;
-  }
-
-  /* Tri-state mode toggle: a connected segmented control (Source / Live / Read). */
-  .mode-toggle {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-
-  .mode-btn {
-    padding: 0 0.55rem;
-    height: 1.9rem;
-    border: none;
-    border-left: 1px solid var(--border);
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.12s ease;
-  }
-
-  .mode-btn:first-child {
-    border-left: none;
-  }
-
-  .mode-btn:hover:not(:disabled):not(.active) {
-    background: var(--hover);
-  }
-
-  .mode-btn.active {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  .mode-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-
-  .nav-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.9rem;
-    height: 1.9rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: none;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.12s ease;
-  }
-
-  .nav-btn:hover:not(:disabled) {
-    background: var(--hover);
-  }
-
-  .nav-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 
   .editor-host {
