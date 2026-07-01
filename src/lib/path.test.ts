@@ -7,6 +7,7 @@ import {
   joinPath,
   moveDestination,
   remapPath,
+  remapPaths,
   splitPath,
   stripMd,
 } from './path';
@@ -69,6 +70,26 @@ describe('remapPath', () => {
   test('sibling sharing a prefix is NOT matched', () => {
     expect(remapPath('foobar/x.md', 'foo', 'bar')).toBeNull();
     expect(remapPath('other.md', 'foo', 'bar')).toBeNull();
+  });
+});
+
+describe('remapPaths', () => {
+  test('remaps affected paths and passes unaffected ones through', () => {
+    const paths = ['foo', 'foo/sub', 'foobar', 'other/x.md'];
+    expect(remapPaths(paths, 'foo', 'bar')).toEqual(['bar', 'bar/sub', 'foobar', 'other/x.md']);
+  });
+  test('remaps an exact file match (recent-files case)', () => {
+    expect(remapPaths(['a/b.md', 'c.md'], 'a/b.md', 'a/renamed.md')).toEqual([
+      'a/renamed.md',
+      'c.md',
+    ]);
+  });
+  test('leaves the list untouched when nothing matches', () => {
+    const paths = ['x', 'y/z.md'];
+    expect(remapPaths(paths, 'foo', 'bar')).toEqual(paths);
+  });
+  test('preserves order and length', () => {
+    expect(remapPaths([], 'foo', 'bar')).toEqual([]);
   });
 });
 

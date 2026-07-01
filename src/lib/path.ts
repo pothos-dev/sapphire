@@ -64,6 +64,17 @@ export function remapPath(p: string, from: string, to: string): string | null {
 }
 
 /**
+ * Remap every path in `paths` across a rename/move of `from` → `to`, returning
+ * a new array. Paths that ARE `from` or sit beneath it follow to the new
+ * location (see `remapPath`); unaffected paths pass through unchanged. Used to
+ * keep the persisted session's path lists (expanded folders, recent files)
+ * valid across a tree rename.
+ */
+export function remapPaths(paths: string[], from: string, to: string): string[] {
+  return paths.map((p) => remapPath(p, from, to) ?? p);
+}
+
+/**
  * The destination path `from` would land at when moved into folder `toDir`,
  * keeping its basename (`''` = Bundle root). Tolerates a trailing slash on
  * `toDir` and a trailing slash on `from` (folder paths).

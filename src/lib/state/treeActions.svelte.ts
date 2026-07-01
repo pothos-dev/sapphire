@@ -116,7 +116,8 @@ class TreeActionsStore {
       const summary = await backend.renamePath(from, to);
       this.#showRewriteNotice(summary);
     });
-    if (!ok && before !== null) this.#followRename(to, before);
+    if (ok) session.followRename(from, to);
+    else if (before !== null) this.#followRename(to, before);
     return ok;
   }
 
@@ -138,7 +139,8 @@ class TreeActionsStore {
       const summary = await backend.movePath(from, toDir);
       this.#showRewriteNotice(summary);
     });
-    if (!ok && before !== null) this.#followRename(to, before);
+    if (ok) session.followRename(from, to);
+    else if (before !== null) this.#followRename(to, before);
     return ok;
   }
 

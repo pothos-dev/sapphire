@@ -1,5 +1,6 @@
 import { backend } from '$lib/ipc';
 import { createDebouncer } from '$lib/debounce';
+import { remapPaths } from '$lib/path';
 import type { BundleState } from '$lib/types';
 import type { RegionId } from '$lib/regionGrid';
 import { flagsToClearOnEnter } from '$lib/transientReveal';
@@ -187,6 +188,30 @@ class SessionStore {
     const next = [path, ...this.recentFiles.filter((p) => p !== path)];
     if (next.length > RECENT_FILES_CAP) next.length = RECENT_FILES_CAP;
     this.recentFiles = next;
+    this.#scheduleSave();
+  }
+
+  /**
+   * Follow a rename/move of `from` → `to` through the persisted path state:
+   * rewrite any expanded-folder and recent-file entries that ARE `from` or sit
+   * beneath it (see `remapPaths`), so a renamed folder stays expanded and recent
+   * files keep pointing at the moved Concept. `lastOpenConcept` is remapped by
+   * the tree-CRUD flow separately (it follows the open editor). Called AFTER a
+   * successful backend rename — unlike the editor's optimistic follow, this state
+   * has no watcher-event race to beat, so no rollback is needed. No-op (and no
+   * persist) when nothing was affected.
+   */
+  followRename(from: string, to: string): void {
+    const folders = [...this.expandedFolders];
+    const nextFolders = remapPaths(folders, from, to);
+    const nextRecents = remapPaths(this.recentFiles, from, to);
+
+    const foldersChanged = nextFolders.some((p, i) => p !== folders[i]);
+    const recentsChanged = nextRecents.some((p, i) => p !== this.recentFiles[i]);
+    if (!foldersChanged && !recentsChanged) return;
+
+    if (foldersChanged) this.expandedFolders = new Set(nextFolders);
+    if (recentsChanged) this.recentFiles = nextRecents;
     this.#scheduleSave();
   }
 

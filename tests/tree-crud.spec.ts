@@ -75,6 +75,20 @@ test('tree CRUD: create, rename, move, delete Concepts and folders', async ({ pa
 
   await page.screenshot({ path: 'tests/screenshots/tree-crud.png', fullPage: true });
 
+  // --- Renaming an EXPANDED folder keeps it expanded (session follows the rename) ---
+  // `concepts/editor` is expanded by default (depth < 2), so its child is
+  // visible. Its expanded state lives in the session's `expandedFolders`, keyed
+  // by path — a rename must remap that key or the renamed folder would collapse.
+  const deepChild = tree.locator('[data-path="concepts/editor/live-preview.md"]');
+  await expect(deepChild).toBeVisible();
+  await openRowMenu(page, 'concepts/editor');
+  await page.getByTestId('context-menu').locator('[data-action="rename"]').click();
+  await page.getByTestId('dialog-input').fill('writing');
+  await page.getByTestId('dialog-confirm').click();
+  // The renamed folder stays EXPANDED: its child is visible at the new path.
+  await expect(tree.locator('[data-path="concepts/editor/live-preview.md"]')).toHaveCount(0);
+  await expect(tree.locator('[data-path="concepts/writing/live-preview.md"]')).toBeVisible();
+
   // --- Delete a Concept (with confirm) and assert it's gone ---
   await openRowMenu(page, 'concepts/codemirror.md');
   await page.getByTestId('context-menu').locator('[data-action="delete"]').click();
