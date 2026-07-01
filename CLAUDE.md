@@ -21,11 +21,35 @@ Every change must keep these green:
 | `cd src-tauri && cargo test` | Rust unit tests (`#[cfg(test)]` in each module) |
 | `cd src-tauri && cargo check` | Rust typecheck |
 
-Playwright specs in `tests/` drive the UI over `vite dev` + the fake backend and
-are the primary behavioural test for components, but they need a browser and are
-**not runnable in every sandbox**. When you can't run them, restrict component
-edits to mechanical pure-logic extraction (verified by `bun run check`) and lean
-on the unit + Rust suites.
+Playwright specs in `tests/` drive the UI over a `vite build` + `vite preview`
+static SPA on port 1420 with the fake backend, and are the primary behavioural
+test for components.
+
+### Running Playwright
+
+```bash
+bunx playwright test                              # normal machine (browsers installed)
+bunx playwright test tree-crud region-focus       # a subset (match by spec name)
+```
+
+The runner needs a Chromium. On a normal machine, install it once with
+`bunx playwright install chromium`. **In a sandbox that lacks the ms-playwright
+browser cache** (and where `playwright install` can't download), point the
+runner at an already-present system Chromium via the committed override config:
+
+```bash
+bunx playwright test -c playwright.local.config.ts                 # uses /tmp/chromium
+CHROMIUM_BIN=/path/to/chromium bunx playwright test -c playwright.local.config.ts
+```
+
+`playwright.local.config.ts` inherits everything from `playwright.config.ts` and
+only swaps in `launchOptions.executablePath` (+ `--no-sandbox`). Check for a
+system Chromium with `ps aux | grep -i chromium` or a running CDP endpoint
+(`curl -s localhost:9222/json/version`); its binary is the `CHROMIUM_BIN`.
+
+If NO browser is available at all, restrict component edits to mechanical
+pure-logic extraction (verified by `bun run check`) and lean on the unit + Rust
+suites.
 
 ## Conventions that bite
 
