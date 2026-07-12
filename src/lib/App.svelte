@@ -1396,8 +1396,14 @@
      package injects `.cm-content { padding: 0 }` via a CodeMirror theme
      (specificity `(0,2,0)` — a generated wrapper class scoping `.cm-content`).
      We match `.cm-editor .cm-content` (specificity `(0,3,0)`) so this
-     `padding-inline` longhand wins over the theme's `padding` shorthand. */
+     `padding-inline` longhand wins over the theme's `padding` shorthand.
+
+     A `max-width` caps the reading measure so `EditorView.lineWrapping`
+     breaks lines at a comfortable width; `margin-inline: auto` centres the
+     column in wider panes for visual flow. */
   .editor-host :global(.cm-editor .cm-content) {
+    max-width: var(--reader-max-width, 48rem);
+    margin-inline: auto;
     padding-inline: 1.5rem;
   }
 
