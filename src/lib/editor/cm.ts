@@ -39,6 +39,14 @@ import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-l
 import { mermaidBlocks } from './mermaid';
 import type { ResolvedTheme } from './mermaidBlocks';
 import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
+import { criticMarkupAnnotations, criticMarkupTheme } from './criticMarkupView';
+import {
+  parseCriticMarks,
+  pairAnnotations,
+  annotationAt,
+  insertHighlightComment,
+  removeAnnotation,
+} from './criticMarkup';
 import { anchorTracking } from './anchor-tracking';
 import { findExtensions, findPanelTheme } from './find';
 import { headingFormatEdit, toggleInlineWrap } from './textFormat';
@@ -247,6 +255,11 @@ function modeExtensions(
     // `theme` bakes the diagram colours; a flip reconfigures this Compartment.
     mermaidBlocks(reading, theme),
     inlinePreview({ onLinkClick, alwaysRender: reading }),
+    // CriticMarkup annotations (highlight background, hidden delimiters/comment,
+    // gutter icon + hover note). Non-`edit` modes only — `edit` returned early
+    // above so source mode keeps raw `{==...==}` visible, consistent with how
+    // edit mode shows raw markup. Cursor-inside reveals raw markup for editing.
+    criticMarkupAnnotations(),
     ...(reading ? [] : [highlightActiveLine()]),
     // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits at
     // the state level. Reading view is locked; hybrid stays editable.
@@ -288,6 +301,41 @@ function headingCommand(level: number): Command {
 }
 
 /**
+ * A CM command that TOGGLES a CriticMarkup highlight+comment annotation over the
+ * selection, via the pure `criticMarkup` transforms. No-op in read-only mode.
+ *   - Empty selection inside an existing annotation → remove it, keeping the
+ *     highlighted text (`removeAnnotation`).
+ *   - Non-empty selection that overlaps an existing annotation → no-op (no
+ *     nesting).
+ *   - Otherwise wrap the selection as `{==sel==}{>><<}`, parking the caret
+ *     inside the empty comment so the user types the note (`insertHighlightComment`).
+ */
+const annotateCommand: Command = (view) => {
+  if (view.state.readOnly) return false;
+  const doc = view.state.doc.toString();
+  const { from, to } = view.state.selection.main;
+  const anns = pairAnnotations(parseCriticMarks(doc));
+  // Empty selection inside an annotation → remove it (keep highlighted text).
+  if (from === to) {
+    const at = annotationAt(anns, from);
+    if (!at) return false;
+    const edit = removeAnnotation(doc, at);
+    view.dispatch({ changes: edit.changes, scrollIntoView: true });
+    return true;
+  }
+  // Non-empty selection overlapping an existing annotation → no-op (no nesting).
+  if (anns.some((a) => from <= a.to && to >= a.from)) return false;
+  const edit = insertHighlightComment(doc, from, to);
+  if (!edit) return false;
+  view.dispatch({
+    changes: edit.changes,
+    selection: edit.cursor != null ? { anchor: edit.cursor } : undefined,
+    scrollIntoView: true,
+  });
+  return true;
+};
+
+/**
  * Markdown formatting shortcuts (Obsidian-style; `Mod` = Cmd on macOS, Ctrl
  * elsewhere). Everything toggles. Headings follow the de-facto Word/LibreOffice
  * convention (`Mod-1`…`Mod-6`, `Mod-0` for paragraph) since Obsidian ships no
@@ -306,6 +354,8 @@ const formattingKeymap: KeyBinding[] = [
   { key: 'Mod-5', run: headingCommand(5), preventDefault: true },
   { key: 'Mod-6', run: headingCommand(6), preventDefault: true },
   { key: 'Mod-0', run: headingCommand(0), preventDefault: true },
+  // Toggle a CriticMarkup highlight+comment annotation ('m' for comment/margin).
+  { key: 'Mod-Alt-m', run: annotateCommand, preventDefault: true },
 ];
 
 /**
@@ -373,6 +423,9 @@ function editorExtensions(
     // compartment (static). Empty config when no context is supplied.
     wikiCompartment.of(wikiLinkContext ? wikiLinksExtension(wikiLinkContext) : []),
     ...(wikiLinkContext ? [wikiLinkTheme] : []),
+    // CriticMarkup annotation styling. A static theme, harmless in all modes
+    // (the decorations themselves are only active outside `edit`).
+    criticMarkupTheme,
     // Heading-identity tracking for slug-anchor rewriting (slug-anchor-rewrite):
     // baselines the open Concept's heading slugs and follows each heading across
     // edits so the host can rewrite inbound anchors when a heading is renamed.
