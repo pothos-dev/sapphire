@@ -228,6 +228,16 @@ export function criticMarkupAnnotations(): Extension {
  * surface/border/text tokens. A static theme, harmless in every mode.
  */
 export const criticMarkupTheme: Extension = EditorView.theme({
+  // atomic-editor's theme hides gutters wholesale (`.cm-gutters{display:none}`)
+  // since the live-preview editor is otherwise gutterless. Re-show the container
+  // ONLY when a comment icon is actually rendered (`:has(...-icon)`), so a doc
+  // with no annotations keeps the gutter fully hidden — the feature has zero
+  // layout footprint when inactive. Kept chrome-free (no background/border).
+  '.cm-gutters:has(.cm-critic-gutter-icon)': {
+    display: 'flex',
+    backgroundColor: 'transparent',
+    border: 'none',
+  },
   '.cm-critic-highlight': {
     backgroundColor: 'rgba(255, 208, 0, 0.35)',
     borderRadius: '2px',

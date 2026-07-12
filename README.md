@@ -58,6 +58,12 @@ fields, reserved files, and bundle structure) conforms to the OKF spec:
   palette.
 - **Outline panel** — a live heading outline of the open concept for fast
   scrolling.
+- **Annotations** — select any text and press `Ctrl/Cmd+Alt+M` to attach a
+  margin comment. Notes render out of the text flow: the highlighted span is
+  marked, a comment icon sits in the gutter, and hovering reveals the note. They
+  are plain [CriticMarkup](http://criticmarkup.com/) (`{==text==}{>>note<<}`) in
+  the file, so they travel in git and any other tool can read them — ideal for
+  leaving feedback on generated docs for an agent's next pass.
 - **Right sidebar** — a second, collapsible sidebar housing Backlinks.
 - **Light + dark theming** — a sapphire-blue palette that follows your OS color
   scheme.
@@ -74,6 +80,16 @@ preview, Outline, Backlinks, and the Tag browser, all on screen.
 ### Dark
 
 ![Sapphire in dark mode](docs/assets/screenshot-dark.png)
+
+### Annotations
+
+Margin comments on an implementation plan — highlighted spans, gutter comment
+icons, and a hovered note. The annotations are CriticMarkup in the underlying
+`.md`; the editor renders them out of the text flow.
+
+![Annotations in light mode](docs/assets/annotations-light.png)
+
+![Annotations in dark mode](docs/assets/annotations-dark.png)
 
 ## Development
 
