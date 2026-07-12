@@ -49,7 +49,7 @@ import {
 } from './criticMarkup';
 import { anchorTracking } from './anchor-tracking';
 import { findExtensions, findPanelTheme } from './find';
-import { headingFormatEdit, toggleInlineWrap } from './textFormat';
+import { headingFormatEdit, toggleInlineWrap, insertLink, linkAt } from './textFormat';
 
 // The editor's public surface is re-exported here so consumers keep importing
 // from `$lib/editor/cm`. The frontmatter/broken-link/find concerns now live in
@@ -352,6 +352,66 @@ const annotateCommand: Command = (view) => {
  */
 export function annotate(view: EditorView): void {
   annotateCommand(view);
+  view.focus();
+}
+
+/**
+ * Imperative inline-format toggles for the editor's right-click menu, mirroring
+ * `annotate`: run the shared `inlineWrapCommand` transform (which is read-only
+ * guarded and dispatches) then refocus the editor. One per intent so the menu
+ * can call by name.
+ */
+export function toggleBold(view: EditorView): void {
+  inlineWrapCommand('**')(view);
+  view.focus();
+}
+export function toggleItalic(view: EditorView): void {
+  inlineWrapCommand('*')(view);
+  view.focus();
+}
+export function toggleStrikethrough(view: EditorView): void {
+  inlineWrapCommand('~~')(view);
+  view.focus();
+}
+export function toggleInlineCode(view: EditorView): void {
+  inlineWrapCommand('`')(view);
+  view.focus();
+}
+
+/**
+ * What the link action would do for the current selection head:
+ *   - `'edit'`   — the caret sits inside an existing `[text](url)` link.
+ *   - `'insert'` — no link under the caret; a new link scaffold would be added.
+ *   - `null`     — read-only (reading view): the menu leaves the native menu.
+ * Drives the menu label ("Edit link" / "Insert link").
+ */
+export function linkActionFor(view: EditorView): 'insert' | 'edit' | null {
+  if (view.state.readOnly) return null;
+  const head = view.state.selection.main.head;
+  return linkAt(view.state.doc.toString(), head) ? 'edit' : 'insert';
+}
+
+/**
+ * Insert a markdown link over the selection, OR edit the one under the caret.
+ * When `linkAt` matches at the selection head we SELECT that link's url range so
+ * the user can retype it (EDIT); otherwise we apply `insertLink` and place its
+ * caret (INSERT — see `insertLink` for the two caret-park cases). Refocuses the
+ * editor afterwards. No-op in read-only (reading-view) mode.
+ */
+export function insertOrEditLink(view: EditorView): void {
+  if (view.state.readOnly) return;
+  const doc = view.state.doc.toString();
+  const { from, to, head } = view.state.selection.main;
+  const existing = linkAt(doc, head);
+  if (existing) {
+    view.dispatch({
+      selection: { anchor: existing.urlFrom, head: existing.urlTo },
+      scrollIntoView: true,
+    });
+  } else {
+    const edit = insertLink(doc, from, to);
+    view.dispatch({ changes: edit.changes, selection: edit.selection, scrollIntoView: true });
+  }
   view.focus();
 }
 

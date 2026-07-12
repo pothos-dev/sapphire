@@ -3,7 +3,22 @@
 // (markers outside vs inside the selection), the empty-selection cursor park,
 // and heading set / toggle-off across single and multi-line selections.
 import { describe, expect, test } from 'bun:test';
-import { headingFormatEdit, setHeadingLevel, toggleInlineWrap } from './textFormat';
+import {
+  headingFormatEdit,
+  insertLink,
+  linkAt,
+  setHeadingLevel,
+  toggleInlineWrap,
+} from './textFormat';
+import type { FormatChange } from './textFormat';
+
+/** Apply a set of (non-overlapping) changes to a string, right-to-left. */
+function applyChanges(doc: string, changes: FormatChange[]): string {
+  const sorted = [...changes].sort((a, b) => b.from - a.from);
+  let out = doc;
+  for (const c of sorted) out = out.slice(0, c.from) + c.insert + out.slice(c.to);
+  return out;
+}
 
 describe('toggleInlineWrap', () => {
   test('wraps a non-empty selection and selects the inner text', () => {
@@ -64,6 +79,77 @@ describe('toggleInlineWrap', () => {
       ],
       selection: { anchor: 2, head: 6 },
     });
+  });
+});
+
+describe('insertLink', () => {
+  test('wraps a non-empty selection and parks the caret inside the empty parens', () => {
+    // "foo bar" — select "bar" (4..7).
+    const edit = insertLink('foo bar', 4, 7);
+    expect(edit).toEqual({
+      changes: [
+        { from: 4, to: 4, insert: '[' },
+        { from: 7, to: 7, insert: ']()' },
+      ],
+      selection: { anchor: 10, head: 10 },
+    });
+    // Applying the changes yields `foo [bar]()` and the caret sits between ( and ).
+    const result = applyChanges('foo bar', edit.changes);
+    expect(result).toBe('foo [bar]()');
+    expect(result[edit.selection!.anchor - 1]).toBe('(');
+    expect(result[edit.selection!.anchor]).toBe(')');
+  });
+
+  test('empty selection inserts a scaffold and parks the caret inside the brackets', () => {
+    // "foo" — caret at 1.
+    const edit = insertLink('foo', 1, 1);
+    expect(edit).toEqual({
+      changes: [{ from: 1, to: 1, insert: '[]()' }],
+      selection: { anchor: 2, head: 2 },
+    });
+    const result = applyChanges('foo', edit.changes);
+    expect(result).toBe('f[]()oo');
+    // Caret is between [ and ]: [|]
+    expect(result[edit.selection!.anchor - 1]).toBe('[');
+    expect(result[edit.selection!.anchor]).toBe(']');
+  });
+});
+
+describe('linkAt', () => {
+  const doc = 'see [text](http://x) here';
+
+  test('finds the link when pos is inside the url', () => {
+    expect(linkAt(doc, 12)).toEqual({
+      from: 4,
+      to: 20,
+      textFrom: 5,
+      textTo: 9,
+      urlFrom: 11,
+      urlTo: 19,
+    });
+  });
+
+  test('matches at both edges of the span (inclusive)', () => {
+    expect(linkAt(doc, 4)?.from).toBe(4); // at the opening `[`
+    expect(linkAt(doc, 20)?.from).toBe(4); // at the closing `)`
+  });
+
+  test('returns null just outside the span and when there is no link', () => {
+    expect(linkAt(doc, 3)).toBeNull();
+    expect(linkAt(doc, 25)).toBeNull();
+    expect(linkAt('plain text, no links', 5)).toBeNull();
+  });
+
+  test('picks the link whose span contains pos among several on the line', () => {
+    const multi = '[a](x) [b](y)';
+    expect(linkAt(multi, 9)?.from).toBe(7); // inside the second link
+    expect(linkAt(multi, 3)?.from).toBe(0); // inside the first link
+  });
+
+  test('handles an empty url with a zero-width url range', () => {
+    // "[x]()" — url between ( and ) is empty.
+    const at = linkAt('[x]()', 3);
+    expect(at).toEqual({ from: 0, to: 5, textFrom: 1, textTo: 2, urlFrom: 4, urlTo: 4 });
   });
 });
 

@@ -80,6 +80,68 @@ export function toggleInlineWrap(
   };
 }
 
+/**
+ * Wrap the selection as a markdown inline link `[text](url)`, parking the caret
+ * where the user's next keystroke belongs.
+ *
+ *  - Non-empty selection → `[<sel>]()` with the caret between the empty parens,
+ *    so the user types the URL for the text they highlighted.
+ *  - Empty selection → `[]()` scaffolding with the caret between the brackets
+ *    (`[|]()`), so the user types the link text first.
+ *
+ * `doc` is unused (the transform never inspects surrounding text) but kept for
+ * signature parity with the other transforms. Follows the two-insert style of
+ * `toggleInlineWrap` for the non-empty case so CodeMirror maps cleanly.
+ */
+export function insertLink(_doc: string, from: number, to: number): FormatEdit {
+  if (from === to) {
+    // `[]()` — caret between the brackets: [|]()
+    return {
+      changes: [{ from, to, insert: '[]()' }],
+      selection: { anchor: from + 1, head: from + 1 },
+    };
+  }
+  // `[` + <sel> + `]()`. After both inserts the layout is:
+  //   [   sel   ]   (   )
+  //   ^from      ^to+1    caret between ( and ) = to + 3
+  return {
+    changes: [
+      { from, to: from, insert: '[' },
+      { from: to, to, insert: ']()' },
+    ],
+    selection: { anchor: to + 3, head: to + 3 },
+  };
+}
+
+/**
+ * Detect a markdown inline link `[text](url)` whose full span contains `pos`
+ * (inclusive of both edges). Returns the delimiter-EXCLUSIVE ranges — the text
+ * between `[` and `]`, and the url between `(` and `)` — plus the full `[from,
+ * to)` span. Returns `null` when `pos` sits in no link. When several links share
+ * the line, the first whose span contains `pos` wins. An empty url (`[x]()`)
+ * yields a zero-width url range (`urlFrom === urlTo`).
+ *
+ * Pure regex scan (no Lezer) so it is unit-testable over plain strings.
+ */
+export function linkAt(
+  doc: string,
+  pos: number,
+): { from: number; to: number; textFrom: number; textTo: number; urlFrom: number; urlTo: number } | null {
+  const re = /\[([^\]]*)\]\(([^)]*)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(doc)) !== null) {
+    const from = m.index;
+    const to = from + m[0].length;
+    if (pos < from || pos > to) continue;
+    const textFrom = from + 1;
+    const textTo = textFrom + m[1].length;
+    const urlFrom = textTo + 2; // skip the `](`
+    const urlTo = urlFrom + m[2].length;
+    return { from, to, textFrom, textTo, urlFrom, urlTo };
+  }
+  return null;
+}
+
 /** The ATX heading level of a line (1–6), or 0 when it is not a heading. */
 function headingLevel(line: string): number {
   const m = /^(#{1,6})[ \t]+/.exec(line);

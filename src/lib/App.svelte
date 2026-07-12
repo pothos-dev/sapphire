@@ -21,6 +21,12 @@
     openSearch,
     annotate,
     annotateActionFor,
+    toggleBold,
+    toggleItalic,
+    toggleStrikethrough,
+    toggleInlineCode,
+    insertOrEditLink,
+    linkActionFor,
     pendingAnchorRenames,
     commitAnchorBaseline,
     type EditorMode,
@@ -96,7 +102,8 @@
   // The editor's right-click annotate menu (position + which action applies), or
   // null when closed. Like the Explorer's context menu it is an OVERLAY, so the
   // global Escape peel closes it via the focus store's overlay stack.
-  let editorMenu = $state<{ x: number; y: number; action: 'add' | 'remove' } | null>(null);
+  type EditorMenuItem = { id: string; label: string; separated?: boolean };
+  let editorMenu = $state<{ x: number; y: number; items: EditorMenuItem[] } | null>(null);
   let editorMenuOverlayId: number | null = null;
   $effect(() => {
     if (editorMenu && editorMenuOverlayId === null) {
@@ -108,16 +115,67 @@
   });
 
   /**
-   * Open the annotate context menu at the cursor. Only shows when there is an
-   * annotate action available (a non-empty selection to wrap, or a caret inside
-   * an existing annotation to remove) — otherwise the native menu is left alone.
+   * Open the editor formatting context menu at the cursor. In an editable mode
+   * it replaces the native menu with our formatting actions; in reading view
+   * (read-only) it leaves the native menu alone. Items are built dynamically:
+   * inline-format toggles only when there is a non-empty selection to wrap; a
+   * link item always (label from `linkActionFor`); the annotate item only when
+   * an annotate action applies (`annotateActionFor`).
    */
   function openEditorMenu(e: MouseEvent): void {
     if (!view) return;
-    const action = annotateActionFor(view);
-    if (!action) return;
+    if (view.state.readOnly) return; // reading view: keep the native menu.
     e.preventDefault();
-    editorMenu = { x: e.clientX, y: e.clientY, action };
+
+    const items: EditorMenuItem[] = [];
+    const { from, to } = view.state.selection.main;
+    if (from !== to) {
+      items.push({ id: 'bold', label: 'Bold' });
+      items.push({ id: 'italic', label: 'Italic' });
+      items.push({ id: 'strike', label: 'Strikethrough' });
+      items.push({ id: 'code', label: 'Inline code' });
+    }
+    const linkAction = linkActionFor(view);
+    items.push({
+      id: 'link',
+      label: linkAction === 'edit' ? 'Edit link' : 'Insert link',
+      separated: true,
+    });
+    const annAction = annotateActionFor(view);
+    if (annAction) {
+      items.push({
+        id: 'annotate',
+        label: annAction === 'add' ? 'Add comment' : 'Remove comment',
+        separated: true,
+      });
+    }
+
+    editorMenu = { x: e.clientX, y: e.clientY, items };
+  }
+
+  // Dispatch a chosen editor-menu action to its CodeMirror helper.
+  function onEditorMenuSelect(id: string): void {
+    if (!view) return;
+    switch (id) {
+      case 'bold':
+        toggleBold(view);
+        break;
+      case 'italic':
+        toggleItalic(view);
+        break;
+      case 'strike':
+        toggleStrikethrough(view);
+        break;
+      case 'code':
+        toggleInlineCode(view);
+        break;
+      case 'link':
+        insertOrEditLink(view);
+        break;
+      case 'annotate':
+        annotate(view);
+        break;
+    }
   }
   // Disposer for the Editor Region's focus-backbone registration. The Editor's
   // entry point is the CodeMirror view itself (registered once it is built),
@@ -1288,12 +1346,8 @@
     <ContextMenu
       x={editorMenu.x}
       y={editorMenu.y}
-      items={[
-        editorMenu.action === 'add'
-          ? { id: 'annotate', label: 'Add comment' }
-          : { id: 'annotate', label: 'Remove comment' },
-      ]}
-      onselect={() => view && annotate(view)}
+      items={editorMenu.items}
+      onselect={onEditorMenuSelect}
       onclose={() => (editorMenu = null)}
     />
   {/if}
