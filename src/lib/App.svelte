@@ -1310,6 +1310,13 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
+    /* Anchor the first Section to the top and the last to the bottom; the free
+       space collects between them. When the Sections' combined height fills the
+       viewport the gap closes to zero and they meet in the middle (the capped,
+       shrinkable bodies guarantee they always fit, so nothing overflows the top).
+       With a single Section present it stays flush to the top (space-between
+       leaves a lone item at flex-start). */
+    justify-content: space-between;
     overflow: hidden;
     font-size: 0.9rem;
   }
