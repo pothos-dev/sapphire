@@ -129,3 +129,60 @@ test('formatting menu: label reads "Edit link" when the caret is inside a link',
   await expect(menu).toBeVisible();
   await expect(menu.locator('[data-action="link"]')).toHaveText('Edit link');
 });
+
+// Clipboard actions run over the web Clipboard API, which needs granted
+// permissions in Chromium.
+test.describe('clipboard', () => {
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+
+  test('formatting menu: "Copy" writes the selection to the clipboard', async ({ page }) => {
+    await page.goto('/');
+    await createConcept(
+      page,
+      'clip-copy.md',
+      `${fm('Copy')}# Copy\n\nHighlightme is the word to copy.\n`,
+    );
+    await openAndSelectWord(page, 'clip-copy.md');
+
+    const editor = page.getByTestId('editor');
+    await editor.dispatchEvent('contextmenu', { clientX: 200, clientY: 200 });
+
+    const menu = page.getByTestId('context-menu');
+    await expect(menu).toBeVisible();
+    await menu.locator('[data-action="copy"]').click();
+    await expect(menu).toHaveCount(0);
+
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe('Highlightme');
+  });
+
+  test('formatting menu: "Paste" inserts the clipboard text at the caret', async ({ page }) => {
+    await page.goto('/');
+    await createConcept(page, 'clip-paste.md', `${fm('Paste')}# Paste\n\nBefore after.\n`);
+
+    const tree = page.getByTestId('tree');
+    await expect(tree.locator('[data-path="clip-paste.md"]')).toBeVisible();
+    await tree.locator('[data-path="clip-paste.md"]').click();
+
+    const editor = page.getByTestId('editor');
+    await expect(editor).toBeVisible();
+    await expect(editor).toContainText('Before after.');
+
+    // Seed the clipboard, then park the caret at the start of the text line.
+    await page.evaluate(() => navigator.clipboard.writeText('PASTED '));
+    const para = editor.locator('.cm-line', { hasText: 'Before after.' }).first();
+    await para.click();
+    await page.keyboard.press('Home');
+
+    await editor.dispatchEvent('contextmenu', { clientX: 200, clientY: 200 });
+    const menu = page.getByTestId('context-menu');
+    await expect(menu).toBeVisible();
+    await menu.locator('[data-action="paste"]').click();
+    await expect(menu).toHaveCount(0);
+
+    const source = await page.evaluate(
+      () => (window as unknown as FakeWindow).__sapphireFake.files['clip-paste.md'],
+    );
+    expect(source).toContain('PASTED Before after.');
+  });
+});

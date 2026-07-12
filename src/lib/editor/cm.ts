@@ -416,6 +416,57 @@ export function insertOrEditLink(view: EditorView): void {
 }
 
 /**
+ * Clipboard actions for the right-click menu, over the web Clipboard API
+ * (`navigator.clipboard` — available in the webview and on localhost; NOT a
+ * Tauri API, so it does not cross the IPC seam). CodeMirror already handles the
+ * Ctrl/Cmd+C/X/V keys natively; these expose the same operations to the menu.
+ * All are async (the Clipboard API is promise-based) and best-effort: if the API
+ * is unavailable or denied, they no-op rather than throw. A menu click is a user
+ * gesture, which satisfies the clipboard permission requirement.
+ */
+export async function copySelection(view: EditorView): Promise<void> {
+  const { from, to } = view.state.selection.main;
+  if (from === to) return; // nothing selected
+  try {
+    await navigator.clipboard?.writeText(view.state.sliceDoc(from, to));
+  } catch {
+    /* clipboard unavailable/denied — no-op */
+  }
+  view.focus();
+}
+
+export async function cutSelection(view: EditorView): Promise<void> {
+  if (view.state.readOnly) return;
+  const { from, to } = view.state.selection.main;
+  if (from === to) return;
+  try {
+    await navigator.clipboard?.writeText(view.state.sliceDoc(from, to));
+  } catch {
+    return; // don't delete the text if the copy half failed
+  }
+  view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } });
+  view.focus();
+}
+
+export async function pasteFromClipboard(view: EditorView): Promise<void> {
+  if (view.state.readOnly) return;
+  let text = '';
+  try {
+    text = (await navigator.clipboard?.readText()) ?? '';
+  } catch {
+    return; // clipboard read unavailable/denied
+  }
+  if (!text) return;
+  const { from, to } = view.state.selection.main;
+  view.dispatch({
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
+/**
  * Markdown formatting shortcuts (Obsidian-style; `Mod` = Cmd on macOS, Ctrl
  * elsewhere). Everything toggles. Headings follow the de-facto Word/LibreOffice
  * convention (`Mod-1`…`Mod-6`, `Mod-0` for paragraph) since Obsidian ships no

@@ -27,6 +27,9 @@
     toggleInlineCode,
     insertOrEditLink,
     linkActionFor,
+    copySelection,
+    cutSelection,
+    pasteFromClipboard,
     pendingAnchorRenames,
     commitAnchorBaseline,
     type EditorMode,
@@ -129,8 +132,17 @@
 
     const items: EditorMenuItem[] = [];
     const { from, to } = view.state.selection.main;
-    if (from !== to) {
-      items.push({ id: 'bold', label: 'Bold' });
+    const hasSelection = from !== to;
+    // Clipboard group (always leads). Cut/Copy need a selection; Paste is always
+    // offered. CodeMirror still handles the Ctrl/Cmd+C/X/V keys too.
+    if (hasSelection) {
+      items.push({ id: 'cut', label: 'Cut' });
+      items.push({ id: 'copy', label: 'Copy' });
+    }
+    items.push({ id: 'paste', label: 'Paste' });
+    // Inline-format group (only with a selection to wrap).
+    if (hasSelection) {
+      items.push({ id: 'bold', label: 'Bold', separated: true });
       items.push({ id: 'italic', label: 'Italic' });
       items.push({ id: 'strike', label: 'Strikethrough' });
       items.push({ id: 'code', label: 'Inline code' });
@@ -139,8 +151,8 @@
     items.push({
       id: 'link',
       label: linkAction === 'edit' ? 'Edit link' : 'Insert link',
-      // Divider only when inline-format items precede it (not when link is first).
-      separated: items.length > 0,
+      // Its own group — the clipboard group (and formatting, if any) precede it.
+      separated: true,
     });
     const annAction = annotateActionFor(view);
     if (annAction) {
@@ -158,6 +170,15 @@
   function onEditorMenuSelect(id: string): void {
     if (!view) return;
     switch (id) {
+      case 'cut':
+        void cutSelection(view);
+        break;
+      case 'copy':
+        void copySelection(view);
+        break;
+      case 'paste':
+        void pasteFromClipboard(view);
+        break;
       case 'bold':
         toggleBold(view);
         break;
