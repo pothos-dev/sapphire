@@ -311,6 +311,8 @@ Built on [CodeMirror](../codemirror.md).
 # Citations
 
 - https://example.com/bare-autolink
+
+[1] [BigQuery table schema](https://example.com/bq-schema)
 `,
 };
 

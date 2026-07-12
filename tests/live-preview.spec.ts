@@ -124,3 +124,50 @@ test('live preview: bare/autolinked URLs render styled on inactive lines', async
   const onActiveLine = url.locator('xpath=ancestor::*[contains(@class, "cm-activeLine")]');
   await expect(onActiveLine).toHaveCount(0);
 });
+
+/**
+ * Regression (patched @atomic-editor/editor): the OKF `# Citations` format
+ * writes a numeric marker followed by a proper link, e.g.
+ * `[1] [BigQuery table schema](https://…)`. The `[1]` is a bracketed span with
+ * NO destination, but lezer still parses it as a `Link` node. Upstream
+ * atomic-editor styled every `Link` as a link AND hid its brackets, so `[1]`
+ * rendered as a lone styled "1" with the brackets gone. The patch skips both
+ * for url-less Links, so `[1]` renders as literal `[1]` text and is NOT a link.
+ */
+test('live preview: url-less citation marker [1] renders as literal text, not a link', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+  await tree.locator('[data-path="concepts/editor/live-preview.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('Obsidian-style hybrid editing');
+
+  // Bring the Citations section into the DOM without focusing a line (focusing
+  // would mark it active and reveal raw markup, masking the inactive-line path
+  // that had the bug).
+  await editor.locator('.cm-scroller').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+
+  // The brackets are NOT hidden: the literal `[1]` text is present on an
+  // inactive line (the bug rendered it as a bare "1" with brackets stripped).
+  const citationLine = editor.locator('.cm-line', { hasText: 'BigQuery table schema' });
+  await expect(citationLine).toContainText('[1]');
+
+  // The `[1]` marker carries NO link styling — only the real `[label](url)`
+  // link on the same line does. Assert no link element wraps the `[1]` text.
+  const markerAsLink = citationLine.locator('.cm-atomic-link', { hasText: '1' })
+    .filter({ hasNotText: 'BigQuery' });
+  await expect(markerAsLink).toHaveCount(0);
+
+  // The real link on the line IS styled as a link (sanity: the patch didn't
+  // over-suppress genuine links).
+  await expect(
+    citationLine.locator('.cm-atomic-link', { hasText: 'BigQuery table schema' }),
+  ).toBeVisible();
+});

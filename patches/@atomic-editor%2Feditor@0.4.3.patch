@@ -1,3 +1,6 @@
+diff --git a/node_modules/@atomic-editor/editor/.bun-tag-911766f951a9017e b/.bun-tag-911766f951a9017e
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/@atomic-editor/editor/.bun-tag-b078cfe0b0463c9b b/.bun-tag-b078cfe0b0463c9b
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
@@ -41,7 +44,7 @@ index 4951e264cdf8f9e1c2f52936ed6e4cb6558769e1..fbf13f0ec66ab9d62a205de2447af577
  /**
   * Assemble the inline-preview extension set. Call once per editor and
 diff --git a/dist/inline-preview.js b/dist/inline-preview.js
-index 94d48d196e21fac09a774cd97b61ed5274ab48b9..b7847c047ee1795053a2e1533f1d2f6286d08557 100644
+index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7f9685f7d 100644
 --- a/dist/inline-preview.js
 +++ b/dist/inline-preview.js
 @@ -1,5 +1,5 @@
@@ -78,19 +81,69 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..b7847c047ee1795053a2e1533f1d2f62
          for (const r of state.selection.ranges) {
              const firstLine = doc.lineAt(r.from).number;
              const lastLine = doc.lineAt(r.to).number;
-@@ -353,7 +364,7 @@ function buildInlineDecorations(view) {
+@@ -322,6 +333,12 @@ function buildInlineDecorations(view) {
+     // aren't included; they already have their own widget UX and the
+     // line-based reveal is the right fit for `![alt](url)`.
+     const activeLinkStarts = new Set();
++    // `from` positions of Link nodes that have NO destination — a bracketed
++    // span like an OKF citation marker `[1]` (or `[note]`) with no matching
++    // reference definition. lezer still parses these as `Link` nodes, but they
++    // aren't links: there's nothing to open. We neither style them nor hide
++    // their brackets, so they render as the literal `[1]` source text.
++    const urllessLinkStarts = new Set();
+     // Single pre-order walk. A tree walk visits a parent before its
+     // children, which lets us compute two pieces of look-ahead state on
+     // the way in — right before the children that depend on them:
+@@ -353,14 +370,21 @@ function buildInlineDecorations(view) {
                          activeLines.add(n);
                  }
              }
 -            if (node.name === 'Link' && view.hasFocus) {
-+            if (node.name === 'Link' && view.hasFocus && !alwaysRender) {
-                 for (const range of state.selection.ranges) {
-                     // Inclusive overlap: cursor sitting exactly on either
-                     // boundary counts as inside, matching the UX where the
-@@ -392,6 +403,15 @@ function buildInlineDecorations(view) {
-                     if (parent && parent.name === 'Link') {
-                         shouldHide = !activeLinkStarts.has(parent.from);
+-                for (const range of state.selection.ranges) {
+-                    // Inclusive overlap: cursor sitting exactly on either
+-                    // boundary counts as inside, matching the UX where the
+-                    // next keystroke affects the link.
+-                    if (range.from <= node.to && range.to >= node.from) {
+-                        activeLinkStarts.add(node.from);
+-                        break;
++            if (node.name === 'Link') {
++                // A Link with no URL child has no destination — treat it as
++                // plain bracketed text (`[1]`), not a link (see urllessLinkStarts).
++                if (!node.node.getChild('URL')) {
++                    urllessLinkStarts.add(node.from);
++                }
++                else if (view.hasFocus && !alwaysRender) {
++                    for (const range of state.selection.ranges) {
++                        // Inclusive overlap: cursor sitting exactly on either
++                        // boundary counts as inside, matching the UX where the
++                        // next keystroke affects the link.
++                        if (range.from <= node.to && range.to >= node.from) {
++                            activeLinkStarts.add(node.from);
++                            break;
++                        }
                      }
+                 }
+             }
+@@ -374,7 +398,8 @@ function buildInlineDecorations(view) {
+                 }
+             }
+             const markClass = INLINE_MARK_CLASS[node.name];
+-            if (markClass && node.from < node.to) {
++            if (markClass && node.from < node.to &&
++                !(node.name === 'Link' && urllessLinkStarts.has(node.from))) {
+                 ranges.push(Decoration.mark({ class: markClass }).range(node.from, node.to));
+             }
+             if (HIDEABLE_SYNTAX.has(node.name) && node.from < node.to) {
+@@ -390,7 +415,19 @@ function buildInlineDecorations(view) {
+                         parent = parent.parent;
+                     }
+                     if (parent && parent.name === 'Link') {
+-                        shouldHide = !activeLinkStarts.has(parent.from);
++                        // Keep the brackets of a url-less Link (`[1]`) visible —
++                        // it renders as literal text, not a hidden-mark link.
++                        shouldHide = !urllessLinkStarts.has(parent.from) &&
++                            !activeLinkStarts.has(parent.from);
++                    }
 +                    else if (node.name === 'URL') {
 +                        // A bare/GFM-autolinked URL (`https://…` in running
 +                        // text) parses as a standalone URL node with no Link
@@ -99,11 +152,10 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..b7847c047ee1795053a2e1533f1d2f62
 +                        // link (the click handler resolves bare URLs too).
 +                        shouldHide = false;
 +                        ranges.push(Decoration.mark({ class: INLINE_MARK_CLASS.Link }).range(node.from, node.to));
-+                    }
+                     }
                      else {
                          shouldHide = !activeLines.has(lineNum);
-                     }
-@@ -796,11 +816,13 @@ function makeLinkClickHandler(onLinkClick) {
+@@ -796,11 +833,13 @@ function makeLinkClickHandler(onLinkClick) {
                  return false;
              const tree = syntaxTree(view.state);
              let node = tree.resolveInner(pos, 1);
@@ -119,7 +171,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..b7847c047ee1795053a2e1533f1d2f62
              if (!urlNode)
                  return false;
              const url = view.state.doc.sliceString(urlNode.from, urlNode.to);
-@@ -821,8 +843,9 @@ function makeLinkClickHandler(onLinkClick) {
+@@ -821,8 +860,9 @@ function makeLinkClickHandler(onLinkClick) {
   * browser, etc.) instead of the default `window.open`.
   */
  export function inlinePreview(config = {}) {
