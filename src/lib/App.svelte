@@ -139,7 +139,8 @@
     items.push({
       id: 'link',
       label: linkAction === 'edit' ? 'Edit link' : 'Insert link',
-      separated: true,
+      // Divider only when inline-format items precede it (not when link is first).
+      separated: items.length > 0,
     });
     const annAction = annotateActionFor(view);
     if (annAction) {
