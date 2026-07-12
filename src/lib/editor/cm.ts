@@ -301,30 +301,40 @@ function headingCommand(level: number): Command {
 }
 
 /**
+ * What the annotate toggle would do for the current selection:
+ *   - `'add'`    — wrap the selection as an annotation.
+ *   - `'remove'` — strip the annotation under an empty caret.
+ *   - `null`     — no-op: read-only, an empty caret outside any annotation, or a
+ *                  selection overlapping an existing annotation (no nesting).
+ * Shared by `annotateCommand` (which then acts) and the right-click menu (which
+ * uses it to decide whether to offer the item and how to label it).
+ */
+export function annotateActionFor(view: EditorView): 'add' | 'remove' | null {
+  if (view.state.readOnly) return null;
+  const { from, to } = view.state.selection.main;
+  const anns = pairAnnotations(parseCriticMarks(view.state.doc.toString()));
+  if (from === to) return annotationAt(anns, from) ? 'remove' : null;
+  // A selection overlapping an existing annotation can't be wrapped (no nesting).
+  return anns.some((a) => from <= a.to && to >= a.from) ? null : 'add';
+}
+
+/**
  * A CM command that TOGGLES a CriticMarkup highlight+comment annotation over the
- * selection, via the pure `criticMarkup` transforms. No-op in read-only mode.
- *   - Empty selection inside an existing annotation → remove it, keeping the
- *     highlighted text (`removeAnnotation`).
- *   - Non-empty selection that overlaps an existing annotation → no-op (no
- *     nesting).
- *   - Otherwise wrap the selection as `{==sel==}{>><<}`, parking the caret
- *     inside the empty comment so the user types the note (`insertHighlightComment`).
+ * selection, via the pure `criticMarkup` transforms. See `annotateActionFor` for
+ * the branching; on `'add'` it wraps the selection as `{==sel==}{>><<}` and parks
+ * the caret inside the empty comment so the user types the note.
  */
 const annotateCommand: Command = (view) => {
-  if (view.state.readOnly) return false;
+  const action = annotateActionFor(view);
+  if (!action) return false;
   const doc = view.state.doc.toString();
   const { from, to } = view.state.selection.main;
-  const anns = pairAnnotations(parseCriticMarks(doc));
-  // Empty selection inside an annotation → remove it (keep highlighted text).
-  if (from === to) {
-    const at = annotationAt(anns, from);
+  if (action === 'remove') {
+    const at = annotationAt(pairAnnotations(parseCriticMarks(doc)), from);
     if (!at) return false;
-    const edit = removeAnnotation(doc, at);
-    view.dispatch({ changes: edit.changes, scrollIntoView: true });
+    view.dispatch({ changes: removeAnnotation(doc, at).changes, scrollIntoView: true });
     return true;
   }
-  // Non-empty selection overlapping an existing annotation → no-op (no nesting).
-  if (anns.some((a) => from <= a.to && to >= a.from)) return false;
   const edit = insertHighlightComment(doc, from, to);
   if (!edit) return false;
   view.dispatch({
@@ -334,6 +344,16 @@ const annotateCommand: Command = (view) => {
   });
   return true;
 };
+
+/**
+ * Run the annotate toggle imperatively (from the editor's right-click menu),
+ * refocusing the editor afterwards. Mirrors the keybinding path. No-op when
+ * `annotateActionFor` says there is nothing to do.
+ */
+export function annotate(view: EditorView): void {
+  annotateCommand(view);
+  view.focus();
+}
 
 /**
  * Markdown formatting shortcuts (Obsidian-style; `Mod` = Cmd on macOS, Ctrl

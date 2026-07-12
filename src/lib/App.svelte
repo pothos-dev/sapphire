@@ -19,6 +19,8 @@
     reconfigureWikiLinks,
     scrollToLine,
     openSearch,
+    annotate,
+    annotateActionFor,
     pendingAnchorRenames,
     commitAnchorBaseline,
     type EditorMode,
@@ -36,6 +38,7 @@
   import { isReservedFile, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import TreeCrud from '$lib/components/TreeCrud.svelte';
+  import ContextMenu from '$lib/components/ContextMenu.svelte';
   import QuickNav from '$lib/components/QuickNav.svelte';
   import SearchPanel from '$lib/components/SearchPanel.svelte';
   import Properties from '$lib/components/Properties.svelte';
@@ -89,6 +92,33 @@
   let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
+
+  // The editor's right-click annotate menu (position + which action applies), or
+  // null when closed. Like the Explorer's context menu it is an OVERLAY, so the
+  // global Escape peel closes it via the focus store's overlay stack.
+  let editorMenu = $state<{ x: number; y: number; action: 'add' | 'remove' } | null>(null);
+  let editorMenuOverlayId: number | null = null;
+  $effect(() => {
+    if (editorMenu && editorMenuOverlayId === null) {
+      editorMenuOverlayId = focus.pushOverlay(() => (editorMenu = null));
+    } else if (!editorMenu && editorMenuOverlayId !== null) {
+      focus.removeOverlay(editorMenuOverlayId);
+      editorMenuOverlayId = null;
+    }
+  });
+
+  /**
+   * Open the annotate context menu at the cursor. Only shows when there is an
+   * annotate action available (a non-empty selection to wrap, or a caret inside
+   * an existing annotation to remove) — otherwise the native menu is left alone.
+   */
+  function openEditorMenu(e: MouseEvent): void {
+    if (!view) return;
+    const action = annotateActionFor(view);
+    if (!action) return;
+    e.preventDefault();
+    editorMenu = { x: e.clientX, y: e.clientY, action };
+  }
   // Disposer for the Editor Region's focus-backbone registration. The Editor's
   // entry point is the CodeMirror view itself (registered once it is built),
   // unlike the other Regions which use the `use:region` action on a container.
@@ -1137,6 +1167,9 @@
         />
       </div>
     {/if}
+    <!-- The editor-host is CodeMirror's mount point (CM owns the inner ARIA); the
+         contextmenu handler only opens the annotate menu. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="editor-host"
       class:hidden={!editor.path}
@@ -1144,6 +1177,7 @@
       data-region="editor"
       data-testid="editor"
       bind:this={editorParent}
+      oncontextmenu={openEditorMenu}
     ></div>
   </main>
 
@@ -1248,6 +1282,20 @@
     <div class="toast" role="status" aria-live="polite" data-testid="rewrite-toast">
       {treeActions.notice.message}
     </div>
+  {/if}
+
+  {#if editorMenu}
+    <ContextMenu
+      x={editorMenu.x}
+      y={editorMenu.y}
+      items={[
+        editorMenu.action === 'add'
+          ? { id: 'annotate', label: 'Add comment' }
+          : { id: 'annotate', label: 'Remove comment' },
+      ]}
+      onselect={() => view && annotate(view)}
+      onclose={() => (editorMenu = null)}
+    />
   {/if}
 </div>
 

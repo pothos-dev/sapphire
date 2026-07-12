@@ -117,6 +117,55 @@ test('authoring: Ctrl+Alt+m wraps a selection into a collapsed highlight+comment
   expect(source).toContain('{==Highlightme==}{>>Needs a citation to the style guide<<}');
 });
 
+test('right-click menu: "Add comment" wraps the selection into an annotation', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+
+  await createConcept(
+    page,
+    'critic-menu.md',
+    `${fm('Critic Menu')}# Critic Menu\n\nHighlightme is the word to annotate.\n`,
+  );
+  await expect(tree.locator('[data-path="critic-menu.md"]')).toBeVisible();
+  await tree.locator('[data-path="critic-menu.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('Highlightme is the word');
+
+  // Select "Highlightme" with the keyboard (same deterministic approach as the
+  // authoring test), then open the annotate menu WITHOUT disturbing the
+  // selection: a synthetic `contextmenu` event preserves it (a real right-click
+  // could collapse the selection to the click point).
+  const para = editor.locator('.cm-line', { hasText: 'Highlightme' }).first();
+  await para.click();
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 11; i++) await page.keyboard.press('Shift+ArrowRight');
+
+  await editor.dispatchEvent('contextmenu', { clientX: 200, clientY: 200 });
+
+  // The menu offers the contextual "Add comment" item (a selection is present).
+  const menu = page.getByTestId('context-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('[data-action="annotate"]')).toHaveText('Add comment');
+
+  await menu.locator('[data-action="annotate"]').click();
+
+  // The menu closed and the selection was wrapped as an annotation; the caret is
+  // parked inside the (empty) comment. The highlight mark covers the content even
+  // while revealed, so it is present with the selected word.
+  await expect(menu).toHaveCount(0);
+  await expect(editor.locator('.cm-critic-highlight').first()).toHaveText('Highlightme');
+
+  const source = await page.evaluate(
+    () => (window as unknown as FakeWindow).__sapphireFake.files['critic-menu.md'],
+  );
+  expect(source).toContain('{==Highlightme==}{>><<}');
+});
+
 // A realistic "implementation plan" document: three highlighted phrases, each
 // with an adjacent margin comment (rendered as a left-gutter icon + hover note).
 const PLAN_BODY =
