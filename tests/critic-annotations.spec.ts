@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { mkdirSync } from 'node:fs';
 
 /**
@@ -41,6 +42,9 @@ const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 
 /** Create a Concept at a bundle-relative path via the fake watcher hook. */
 async function createConcept(page: Page, path: string, body: string): Promise<void> {
+  // The fake backend installs `__sapphireFake` during app boot; wait for it so a
+  // create issued right after navigation doesn't race initialization.
+  await page.waitForFunction(() => '__sapphireFake' in window);
   await page.evaluate(
     ([p, b]) => {
       (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange('created', p, b);
@@ -111,10 +115,11 @@ test('authoring: Ctrl+Alt+m wraps a selection into a collapsed highlight+comment
 
   // Sanity: the on-disk source DID get the CriticMarkup wrapping (the hidden
   // markup is real, just not rendered) — proves the authoring command wrote it.
-  const source = await page.evaluate(
-    () => (window as unknown as FakeWindow).__sapphireFake.files['critic-author.md'],
-  );
-  expect(source).toContain('{==Highlightme==}{>>Needs a citation to the style guide<<}');
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-author.md']),
+    )
+    .toContain('{==Highlightme==}{>>Needs a citation to the style guide<<}');
 });
 
 test('right-click menu: "Add comment" wraps the selection into an annotation', async ({
@@ -160,10 +165,11 @@ test('right-click menu: "Add comment" wraps the selection into an annotation', a
   await expect(menu).toHaveCount(0);
   await expect(editor.locator('.cm-critic-highlight').first()).toHaveText('Highlightme');
 
-  const source = await page.evaluate(
-    () => (window as unknown as FakeWindow).__sapphireFake.files['critic-menu.md'],
-  );
-  expect(source).toContain('{==Highlightme==}{>><<}');
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-menu.md']),
+    )
+    .toContain('{==Highlightme==}{>><<}');
 });
 
 // A realistic "implementation plan" document: three highlighted phrases, each

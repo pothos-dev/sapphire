@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /**
  * Slice: criticmarkup-annotations (feat/criticmarkup-annotations) — the editor's
@@ -23,6 +24,9 @@ const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 
 /** Create a Concept at a bundle-relative path via the fake watcher hook. */
 async function createConcept(page: Page, path: string, body: string): Promise<void> {
+  // The fake backend installs `__sapphireFake` during app boot; wait for it so a
+  // create issued right after navigation doesn't race initialization.
+  await page.waitForFunction(() => '__sapphireFake' in window);
   await page.evaluate(
     ([p, b]) => {
       (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange('created', p, b);
@@ -68,10 +72,11 @@ test('formatting menu: "Bold" wraps the selection as **word**', async ({ page })
   await menu.locator('[data-action="bold"]').click();
 
   await expect(menu).toHaveCount(0);
-  const source = await page.evaluate(
-    () => (window as unknown as FakeWindow).__sapphireFake.files['fmt-bold.md'],
-  );
-  expect(source).toContain('**Highlightme**');
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['fmt-bold.md']),
+    )
+    .toContain('**Highlightme**');
 });
 
 test('formatting menu: "Insert link" wraps the selection as [word]()', async ({ page }) => {
@@ -93,10 +98,11 @@ test('formatting menu: "Insert link" wraps the selection as [word]()', async ({ 
   await menu.locator('[data-action="link"]').click();
 
   await expect(menu).toHaveCount(0);
-  const source = await page.evaluate(
-    () => (window as unknown as FakeWindow).__sapphireFake.files['fmt-link.md'],
-  );
-  expect(source).toContain('[Highlightme]()');
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['fmt-link.md']),
+    )
+    .toContain('[Highlightme]()');
 });
 
 test('formatting menu: label reads "Edit link" when the caret is inside a link', async ({
@@ -180,9 +186,10 @@ test.describe('clipboard', () => {
     await menu.locator('[data-action="paste"]').click();
     await expect(menu).toHaveCount(0);
 
-    const source = await page.evaluate(
-      () => (window as unknown as FakeWindow).__sapphireFake.files['clip-paste.md'],
-    );
-    expect(source).toContain('PASTED Before after.');
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['clip-paste.md']),
+      )
+      .toContain('PASTED Before after.');
   });
 });
