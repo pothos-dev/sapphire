@@ -270,6 +270,34 @@ test('reading mode: selecting text and annotating writes the note (preferred flo
     .toContain('{==Highlightme==}{>>Reviewed in reading mode<<}');
 });
 
+test('reading mode: clicking a marked span never reveals the raw markup', async ({ page }) => {
+  await page.goto('/');
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+
+  await createConcept(
+    page,
+    'critic-noreveal.md',
+    `${fm('No Reveal')}# No Reveal\n\nThe {==quick==}{>>a note<<} brown fox.\n`,
+  );
+  await expect(tree.locator('[data-path="critic-noreveal.md"]')).toBeVisible();
+  await tree.locator('[data-path="critic-noreveal.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await page.getByTestId('editor-mode-view').click();
+
+  const highlight = editor.locator('.cm-critic-highlight').first();
+  await expect(highlight).toHaveText('quick');
+
+  // Clicking inside the marked span (hybrid would reveal `{==`/`{>>` here) must
+  // keep the annotation collapsed in reading mode.
+  await highlight.click();
+  await expect(editor).not.toContainText('{==');
+  await expect(editor).not.toContainText('{>>');
+  await expect(highlight).toHaveText('quick');
+});
+
 test('multi-line note: markup stays hidden and the save popup closes', async ({ page }) => {
   await page.goto('/');
   const tree = page.getByTestId('tree');

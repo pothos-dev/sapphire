@@ -269,7 +269,7 @@ function modeExtensions(
     // gutter icon + hover note). Non-`edit` modes only — `edit` returned early
     // above so source mode keeps raw `{==...==}` visible, consistent with how
     // edit mode shows raw markup. Cursor-inside reveals raw markup for editing.
-    criticMarkupAnnotations(onCommentEdit),
+    criticMarkupAnnotations(reading, onCommentEdit),
     ...(reading ? [] : [highlightActiveLine()]),
     // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits at
     // the state level. Reading view is locked; hybrid stays editable.

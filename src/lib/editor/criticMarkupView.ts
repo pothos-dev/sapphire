@@ -53,11 +53,13 @@ function isRevealed(state: EditorState, ann: Annotation): boolean {
  * adjacent offsets and a hand-ordered builder would be fragile. Zero-length
  * ranges are skipped — `Decoration.replace` over an empty range is invalid.
  */
-function computeDecorations(state: EditorState): DecorationSet {
+function computeDecorations(state: EditorState, allowReveal: boolean): DecorationSet {
   const anns = pairAnnotations(parseCriticMarks(state.doc.toString()));
   const decos: { from: number; to: number; value: Decoration }[] = [];
   for (const ann of anns) {
-    const revealed = isRevealed(state, ann);
+    // Reading mode never reveals raw markup (allowReveal=false): the cursor-inside
+    // reveal is a hybrid/live-editing affordance, not a reading one.
+    const revealed = allowReveal && isRevealed(state, ann);
     const { highlight, comment } = ann;
     if (highlight) {
       if (highlight.contentFrom < highlight.contentTo) {
@@ -91,16 +93,18 @@ function computeDecorations(state: EditorState): DecorationSet {
  * raw markup and aborting the dispatch). Parsing the whole doc per recompute is
  * fine for v1 (annotations are sparse), so no viewport dependency is needed.
  */
-const criticDecorations = StateField.define<DecorationSet>({
-  create(state) {
-    return computeDecorations(state);
-  },
-  update(deco, tr) {
-    if (tr.docChanged || tr.selection) return computeDecorations(tr.state);
-    return deco;
-  },
-  provide: (f) => EditorView.decorations.from(f),
-});
+function makeCriticDecorations(allowReveal: boolean): Extension {
+  return StateField.define<DecorationSet>({
+    create(state) {
+      return computeDecorations(state, allowReveal);
+    },
+    update(deco, tr) {
+      if (tr.docChanged || tr.selection) return computeDecorations(tr.state, allowReveal);
+      return deco;
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Left gutter: a small speech-bubble icon on lines carrying a commented
@@ -233,12 +237,14 @@ const criticTooltip = hoverTooltip((view, pos): Tooltip | null => {
 });
 
 /**
- * Bundle the CriticMarkup annotation extensions: the decoration ViewPlugin, the
+ * Bundle the CriticMarkup annotation extensions: the decoration StateField, the
  * comment gutter and the hover tooltip. Wire this into the non-`edit` modes so
  * source mode keeps raw `{==...==}` visible (see `modeExtensions` in cm.ts).
+ * `reading` (view mode) disables the cursor-inside reveal so clicking a marked
+ * span never exposes raw markup — that affordance is for hybrid/live editing.
  */
-export function criticMarkupAnnotations(onCommentEdit?: OnCommentEdit): Extension {
-  return [criticDecorations, makeCriticGutter(onCommentEdit), criticTooltip];
+export function criticMarkupAnnotations(reading: boolean, onCommentEdit?: OnCommentEdit): Extension {
+  return [makeCriticDecorations(!reading), makeCriticGutter(onCommentEdit), criticTooltip];
 }
 
 /**
