@@ -41,10 +41,14 @@
     typeof window !== 'undefined' ? Math.min(y, window.innerHeight - H - 8) : y,
   );
 
-  // Autofocus the textarea (and select existing text so an edit can be retyped).
+  // Autofocus the textarea and park the caret at the END of any existing note
+  // (do NOT select it all — the user is appending/editing, not retyping).
   $effect(() => {
-    textarea?.focus();
-    if (mode === 'edit') textarea?.select();
+    const ta = textarea;
+    if (!ta) return;
+    ta.focus();
+    const end = ta.value.length;
+    ta.setSelectionRange(end, end);
   });
 
   function save() {

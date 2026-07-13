@@ -270,6 +270,56 @@ test('reading mode: selecting text and annotating writes the note (preferred flo
     .toContain('{==Highlightme==}{>>Reviewed in reading mode<<}');
 });
 
+test('multi-line note: markup stays hidden and the save popup closes', async ({ page }) => {
+  await page.goto('/');
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+
+  // Seed a Concept whose comment note already spans two lines — a replace
+  // decoration crossing a line boundary must render (hidden) without error.
+  await createConcept(
+    page,
+    'critic-multiline.md',
+    `${fm('Multiline')}# Multiline\n\nThe {==quick==}{>>first line\nsecond line<<} fox.\n`,
+  );
+  await expect(tree.locator('[data-path="critic-multiline.md"]')).toBeVisible();
+  await tree.locator('[data-path="critic-multiline.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  // The highlight renders and NONE of the raw delimiters leak into the DOM.
+  await expect(editor.locator('.cm-critic-highlight').first()).toHaveText('quick');
+  await expect(editor).not.toContainText('{==');
+  await expect(editor).not.toContainText('{>>');
+  await expect(editor.locator('.cm-critic-gutter-icon').first()).toBeVisible();
+
+  // Authoring a fresh multi-line note: the dispatch must not throw, so the popup
+  // closes on Save (the bug was a plugin-provided line-crossing replace aborting
+  // the dispatch, leaving the dialog stuck open).
+  const para = editor.locator('.cm-line', { hasText: 'fox' }).first();
+  await para.click();
+  await page.keyboard.press('End');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+ArrowLeft'); // select "fox"
+
+  await editor.dispatchEvent('contextmenu', { clientX: 200, clientY: 200 });
+  const menu = page.getByTestId('context-menu');
+  await menu.locator('[data-action="annotate"]').click();
+
+  const popup = page.getByTestId('annotation-popup');
+  await expect(popup).toBeVisible();
+  await popup.getByTestId('annotation-input').fill('note across\ntwo lines');
+  await popup.getByTestId('annotation-save').click();
+  await expect(popup).toHaveCount(0);
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as FakeWindow).__sapphireFake.files['critic-multiline.md'],
+      ),
+    )
+    .toContain('{>>note across\ntwo lines<<}');
+});
+
 // A realistic "implementation plan" document: three highlighted phrases, each
 // with an adjacent margin comment (rendered as a left-gutter icon + hover note).
 const PLAN_BODY =

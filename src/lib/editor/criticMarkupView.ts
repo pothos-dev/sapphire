@@ -1,15 +1,13 @@
 import {
   EditorView,
   Decoration,
-  ViewPlugin,
   gutter,
   GutterMarker,
   hoverTooltip,
   type DecorationSet,
-  type ViewUpdate,
   type Tooltip,
 } from '@codemirror/view';
-import { RangeSet, type Extension } from '@codemirror/state';
+import { RangeSet, StateField, type EditorState, type Extension } from '@codemirror/state';
 import {
   parseCriticMarks,
   pairAnnotations,
@@ -44,8 +42,8 @@ const hideMark = Decoration.replace({});
  * true we reveal the raw markup so the user can edit/delete it — the same
  * cursor-inside reveal wiki-links.ts uses for links.
  */
-function isRevealed(view: EditorView, ann: Annotation): boolean {
-  return view.state.selection.ranges.some((r) => r.from <= ann.to && r.to >= ann.from);
+function isRevealed(state: EditorState, ann: Annotation): boolean {
+  return state.selection.ranges.some((r) => r.from <= ann.to && r.to >= ann.from);
 }
 
 /**
@@ -55,11 +53,11 @@ function isRevealed(view: EditorView, ann: Annotation): boolean {
  * adjacent offsets and a hand-ordered builder would be fragile. Zero-length
  * ranges are skipped — `Decoration.replace` over an empty range is invalid.
  */
-function computeDecorations(view: EditorView): DecorationSet {
-  const anns = pairAnnotations(parseCriticMarks(view.state.doc.toString()));
+function computeDecorations(state: EditorState): DecorationSet {
+  const anns = pairAnnotations(parseCriticMarks(state.doc.toString()));
   const decos: { from: number; to: number; value: Decoration }[] = [];
   for (const ann of anns) {
-    const revealed = isRevealed(view, ann);
+    const revealed = isRevealed(state, ann);
     const { highlight, comment } = ann;
     if (highlight) {
       if (highlight.contentFrom < highlight.contentTo) {
@@ -85,23 +83,24 @@ function computeDecorations(view: EditorView): DecorationSet {
 }
 
 /**
- * The decoration ViewPlugin: recomputes on doc / viewport / selection changes
- * (selection matters because the cursor-inside reveal toggles the delimiters).
+ * The decoration StateField: recomputes on doc / selection changes (selection
+ * matters because the cursor-inside reveal toggles the delimiters). A StateField
+ * — NOT a ViewPlugin — because a comment note may contain line breaks, and a
+ * `Decoration.replace` that spans a line boundary is only permitted from a state
+ * field (a plugin providing one throws, dropping all annotation rendering back to
+ * raw markup and aborting the dispatch). Parsing the whole doc per recompute is
+ * fine for v1 (annotations are sparse), so no viewport dependency is needed.
  */
-const criticDecorations = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(view: EditorView) {
-      this.decorations = computeDecorations(view);
-    }
-    update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = computeDecorations(update.view);
-      }
-    }
+const criticDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return computeDecorations(state);
   },
-  { decorations: (v) => v.decorations },
-);
+  update(deco, tr) {
+    if (tr.docChanged || tr.selection) return computeDecorations(tr.state);
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 // ---------------------------------------------------------------------------
 // Left gutter: a small speech-bubble icon on lines carrying a commented
