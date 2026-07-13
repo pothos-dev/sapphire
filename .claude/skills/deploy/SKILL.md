@@ -91,9 +91,9 @@ Print this to the user, verbatim, with the version and repo filled in:
 >
 > Watch the run: https://github.com/pothos-dev/sapphire/actions
 >
-> When it finishes it creates a **draft** release at https://github.com/pothos-dev/sapphire/releases — review the assets, then publish it.
+> The workflow builds all platforms, uploads them to a draft, then **auto-publishes** the release once every build succeeds — with the CHANGELOG section for this version as the release notes. It'll appear at https://github.com/pothos-dev/sapphire/releases when the run finishes. If any platform build fails, it stays a draft.
 
-The release is created as a draft (`releaseDraft: true`) on purpose — the user publishes it manually after checking the artifacts.
+The workflow (`.github/workflows/release.yml`) runs three jobs: `create-release` opens a draft whose body is this version's `CHANGELOG.md` section, `build-tauri` uploads each platform's installers to that draft, and `publish-release` flips it to published once all builds pass. Assets land on the draft first, so a failed platform never leaves a partially-populated public release. No manual publish step is needed — but this is also why the CHANGELOG section (Phase 2) must be correct before tagging: it becomes the public release notes verbatim.
 
 ## Failure handling
 
