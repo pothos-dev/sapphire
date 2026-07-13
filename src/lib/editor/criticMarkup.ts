@@ -143,19 +143,42 @@ export function annotationAt(annotations: Annotation[], pos: number): Annotation
   return null;
 }
 
-/** Wrap [from,to) as a highlight followed by an EMPTY comment, parking the cursor inside the comment
- *  so the user types the note directly in the editor. Produces `{==<selected>==}{>><<}` and returns
- *  cursor = position between `{>>` and `<<}`. Returns null when from === to (nothing selected). */
-export function insertHighlightComment(doc: string, from: number, to: number): CriticEdit | null {
+/** Wrap [from,to) as a highlight followed by a comment carrying `comment` (empty by default),
+ *  producing `{==<selected>==}{>><comment><<}`. With no `comment` the note is empty and the cursor
+ *  is parked between `{>>` and `<<}` so it can be typed in the editor (the raw-authoring keybinding
+ *  path); when the popup supplies the text up front the caller ignores the cursor. Returns null when
+ *  from === to (nothing selected). */
+export function insertHighlightComment(
+  doc: string,
+  from: number,
+  to: number,
+  comment = '',
+): CriticEdit | null {
   if (from === to) return null;
   return {
     changes: [
       { from, to: from, insert: '{==' },
-      { from: to, to, insert: '==}{>><<}' },
+      { from: to, to, insert: `==}{>>${comment}<<}` },
     ],
-    // 3 for `{==` inserted before the selection + 6 for `==}{>>` after it.
+    // 3 for `{==` inserted before the selection + 6 for `==}{>>` after it: the
+    // start of the comment content (before `comment`).
     cursor: to + 9,
   };
+}
+
+/** Set an annotation's comment text (the popup edit path). When the annotation already carries a
+ *  comment, replace its inner content in place; when it is highlight-only, append a fresh
+ *  `{>><text><<}` directly after the highlight (so it binds). No-op (empty change set) for an
+ *  annotation with neither a comment nor a highlight. Cursor null (let the editor remap). */
+export function setCommentText(doc: string, annotation: Annotation, text: string): CriticEdit {
+  const { highlight, comment } = annotation;
+  if (comment) {
+    return { changes: [{ from: comment.contentFrom, to: comment.contentTo, insert: text }], cursor: null };
+  }
+  if (highlight) {
+    return { changes: [{ from: highlight.to, to: highlight.to, insert: `{>>${text}<<}` }], cursor: null };
+  }
+  return { changes: [], cursor: null };
 }
 
 /** Strip an annotation's markup, KEEPING the highlighted text: remove the highlight delimiters

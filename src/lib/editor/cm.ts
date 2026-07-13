@@ -39,13 +39,14 @@ import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-l
 import { mermaidBlocks } from './mermaid';
 import type { ResolvedTheme } from './mermaidBlocks';
 import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
-import { criticMarkupAnnotations, criticMarkupTheme } from './criticMarkupView';
+import { criticMarkupAnnotations, criticMarkupTheme, type OnCommentEdit } from './criticMarkupView';
 import {
   parseCriticMarks,
   pairAnnotations,
   annotationAt,
   insertHighlightComment,
   removeAnnotation,
+  setCommentText,
 } from './criticMarkup';
 import { anchorTracking } from './anchor-tracking';
 import { findExtensions, findPanelTheme } from './find';
@@ -65,6 +66,7 @@ export {
   type BrokenLinkContext,
 } from './broken-links';
 export { type WikiLinkContext } from './wiki-links';
+export { type CommentEditRequest, type OnCommentEdit } from './criticMarkupView';
 export {
   anchorTracking,
   pendingAnchorRenames,
@@ -158,6 +160,13 @@ export interface BuildEditorOptions {
    * in-app open callback. When omitted, wikilinks render as plain `[[ ]]` text.
    */
   wikiLinkContext?: WikiLinkContext;
+  /**
+   * Called when a CriticMarkup comment gutter icon is clicked, so the host can
+   * open the annotation popup to edit that note (works in reading mode too — the
+   * preferred way to annotate). When omitted, an icon click falls back to parking
+   * the caret in the raw note.
+   */
+  onCommentEdit?: OnCommentEdit;
 }
 
 /**
@@ -240,6 +249,7 @@ function modeExtensions(
   mode: EditorMode,
   onLinkClick: (url: string) => void,
   theme: ResolvedTheme,
+  onCommentEdit?: OnCommentEdit,
 ): Extension[] {
   // EDIT (source): no live-preview decorations — raw markup stays visible.
   if (mode === 'edit') {
@@ -259,7 +269,7 @@ function modeExtensions(
     // gutter icon + hover note). Non-`edit` modes only — `edit` returned early
     // above so source mode keeps raw `{==...==}` visible, consistent with how
     // edit mode shows raw markup. Cursor-inside reveals raw markup for editing.
-    criticMarkupAnnotations(),
+    criticMarkupAnnotations(onCommentEdit),
     ...(reading ? [] : [highlightActiveLine()]),
     // `editable` controls the DOM `contenteditable`; `readOnly` blocks edits at
     // the state level. Reading view is locked; hybrid stays editable.
@@ -310,12 +320,37 @@ function headingCommand(level: number): Command {
  * uses it to decide whether to offer the item and how to label it).
  */
 export function annotateActionFor(view: EditorView): 'add' | 'remove' | null {
-  if (view.state.readOnly) return null;
-  const { from, to } = view.state.selection.main;
+  // NOT readOnly-gated: annotating works in reading mode too (the preferred way),
+  // where the popup applies the change programmatically. The RANGE comes from
+  // `selectionForAnnotate`, which falls back to the DOM selection when CodeMirror
+  // does not sync it (non-editable reading mode).
+  const { from, to } = selectionForAnnotate(view);
   const anns = pairAnnotations(parseCriticMarks(view.state.doc.toString()));
   if (from === to) return annotationAt(anns, from) ? 'remove' : null;
   // A selection overlapping an existing annotation can't be wrapped (no nesting).
   return anns.some((a) => from <= a.to && to >= a.from) ? null : 'add';
+}
+
+/**
+ * The range to annotate: the state selection when it is non-empty, else — in
+ * reading mode, where CodeMirror does not sync the non-editable DOM selection —
+ * the browser's text selection mapped back to document offsets via `posAtDOM`.
+ * Returns a collapsed range (from === to) when there is nothing selected.
+ */
+export function selectionForAnnotate(view: EditorView): { from: number; to: number } {
+  const sel = view.state.selection.main;
+  if (sel.from !== sel.to) return { from: sel.from, to: sel.to };
+  const dom = typeof window !== 'undefined' ? window.getSelection() : null;
+  if (dom && dom.rangeCount > 0 && !dom.isCollapsed && dom.anchorNode && dom.focusNode) {
+    try {
+      const a = view.posAtDOM(dom.anchorNode, dom.anchorOffset);
+      const b = view.posAtDOM(dom.focusNode, dom.focusOffset);
+      if (a !== b) return { from: Math.min(a, b), to: Math.max(a, b) };
+    } catch {
+      /* selection outside the editor content — fall through */
+    }
+  }
+  return { from: sel.from, to: sel.to };
 }
 
 /**
@@ -325,6 +360,9 @@ export function annotateActionFor(view: EditorView): 'add' | 'remove' | null {
  * the caret inside the empty comment so the user types the note.
  */
 const annotateCommand: Command = (view) => {
+  // Raw-authoring keybinding: it parks the caret in the note to type, so it needs
+  // an editable buffer. Reading mode annotates via the popup instead (see App).
+  if (view.state.readOnly) return false;
   const action = annotateActionFor(view);
   if (!action) return false;
   const doc = view.state.doc.toString();
@@ -353,6 +391,46 @@ const annotateCommand: Command = (view) => {
 export function annotate(view: EditorView): void {
   annotateCommand(view);
   view.focus();
+}
+
+/**
+ * Imperative annotation authoring for the popup (App.svelte). All three dispatch
+ * changes PROGRAMMATICALLY, so they apply even in reading (read-only) mode — the
+ * preferred way to annotate — and the change listener autosaves the result.
+ */
+
+/** Wrap [from,to) as an annotation carrying `comment`. No-op for an empty range. */
+export function addAnnotationWithComment(
+  view: EditorView,
+  from: number,
+  to: number,
+  comment: string,
+): void {
+  const edit = insertHighlightComment(view.state.doc.toString(), from, to, comment);
+  if (!edit) return;
+  view.dispatch({ changes: edit.changes, scrollIntoView: true });
+}
+
+/**
+ * Set the note of the annotation covering `anchor` to `text`. The doc is
+ * re-parsed so a shifted range is re-found; empty `text` removes the whole
+ * annotation (an emptied note is a deleted annotation).
+ */
+export function updateAnnotationComment(view: EditorView, anchor: number, text: string): void {
+  const doc = view.state.doc.toString();
+  const ann = annotationAt(pairAnnotations(parseCriticMarks(doc)), anchor);
+  if (!ann) return;
+  const edit = text.trim() === '' ? removeAnnotation(doc, ann) : setCommentText(doc, ann, text);
+  if (edit.changes.length === 0) return;
+  view.dispatch({ changes: edit.changes, scrollIntoView: true });
+}
+
+/** Strip the annotation covering `anchor`, keeping the highlighted text (the popup's Remove). */
+export function removeAnnotationAt(view: EditorView, anchor: number): void {
+  const doc = view.state.doc.toString();
+  const ann = annotationAt(pairAnnotations(parseCriticMarks(doc)), anchor);
+  if (!ann) return;
+  view.dispatch({ changes: removeAnnotation(doc, ann).changes, scrollIntoView: true });
 }
 
 /**
@@ -503,7 +581,7 @@ function editorExtensions(
   mode: EditorMode,
   theme: ResolvedTheme,
 ): Extension[] {
-  const { onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext, wikiLinkContext } = opts;
+  const { onChange, onFrontmatterChange, onBlur, onHistory, onLinkClick, brokenLinkContext, wikiLinkContext, onCommentEdit } = opts;
 
   // Notify on user edits to the body OR the frontmatter. Frontmatter edits are
   // carried by `setFrontmatter` effects (no doc change), so we watch for both.
@@ -538,7 +616,7 @@ function editorExtensions(
     ...livePreviewBase(),
     // Mode-dependent slice (decorations + read-only gating) in a Compartment so
     // `setEditorMode` can switch edit/hybrid/view without rebuilding the view.
-    livePreviewCompartment.of(modeExtensions(mode, onLinkClick ?? defaultLinkClick, theme)),
+    livePreviewCompartment.of(modeExtensions(mode, onLinkClick ?? defaultLinkClick, theme, onCommentEdit)),
     // In-Concept Find & Replace: built-in search panel (mounted above the
     // editor) + its keymap, themed as editor chrome. Ctrl/Cmd+F is opened by
     // App.svelte via `openSearch`; the keymap supplies in-panel bindings.
@@ -771,7 +849,10 @@ export function setEditorMermaidTheme(view: EditorView, resolved: ResolvedTheme)
   // is next active (a mode switch rebuilds the slice with this remembered theme).
   if (mode === 'edit') return;
   const onLinkClick = viewOptions.get(view)?.onLinkClick ?? defaultLinkClick;
-  view.dispatch({ effects: compartment.reconfigure(modeExtensions(mode, onLinkClick, resolved)) });
+  const onCommentEdit = viewOptions.get(view)?.onCommentEdit;
+  view.dispatch({
+    effects: compartment.reconfigure(modeExtensions(mode, onLinkClick, resolved, onCommentEdit)),
+  });
 }
 
 /** The view's current mode (`hybrid` if the view predates mode tracking). */
@@ -790,8 +871,11 @@ export function setEditorMode(view: EditorView, mode: EditorMode): void {
   if (!compartment || getEditorMode(view) === mode) return;
   viewMode.set(view, mode);
   const onLinkClick = viewOptions.get(view)?.onLinkClick ?? defaultLinkClick;
+  const onCommentEdit = viewOptions.get(view)?.onCommentEdit;
   const theme = viewMermaidTheme.get(view) ?? 'light';
-  view.dispatch({ effects: compartment.reconfigure(modeExtensions(mode, onLinkClick, theme)) });
+  view.dispatch({
+    effects: compartment.reconfigure(modeExtensions(mode, onLinkClick, theme, onCommentEdit)),
+  });
 }
 
 export function scrollToLine(view: EditorView, line: number): void {

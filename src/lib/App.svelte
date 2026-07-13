@@ -30,9 +30,14 @@
     copySelection,
     cutSelection,
     pasteFromClipboard,
+    selectionForAnnotate,
+    addAnnotationWithComment,
+    updateAnnotationComment,
+    removeAnnotationAt,
     pendingAnchorRenames,
     commitAnchorBaseline,
     type EditorMode,
+    type CommentEditRequest,
   } from '$lib/editor/cm';
   import { rewriteAnchorsIn } from '$lib/anchorRewrite';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -48,6 +53,7 @@
   import Tree from '$lib/components/Tree.svelte';
   import TreeCrud from '$lib/components/TreeCrud.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
+  import AnnotationPopup from '$lib/components/AnnotationPopup.svelte';
   import QuickNav from '$lib/components/QuickNav.svelte';
   import SearchPanel from '$lib/components/SearchPanel.svelte';
   import Properties from '$lib/components/Properties.svelte';
@@ -106,7 +112,14 @@
   // null when closed. Like the Explorer's context menu it is an OVERLAY, so the
   // global Escape peel closes it via the focus store's overlay stack.
   type EditorMenuItem = { id: string; label: string; separated?: boolean };
-  let editorMenu = $state<{ x: number; y: number; items: EditorMenuItem[] } | null>(null);
+  let editorMenu = $state<{
+    x: number;
+    y: number;
+    items: EditorMenuItem[];
+    // The range "Add comment" would wrap, captured at menu-open so it survives
+    // the click (a menu focus change could otherwise clear the DOM selection).
+    annotateRange?: { from: number; to: number };
+  } | null>(null);
   let editorMenuOverlayId: number | null = null;
   $effect(() => {
     if (editorMenu && editorMenuOverlayId === null) {
@@ -116,6 +129,62 @@
       editorMenuOverlayId = null;
     }
   });
+
+  // The annotation authoring popup (feat/criticmarkup-annotations): a floating
+  // text input for a note, opened by the "Add comment" menu item (add mode) and
+  // by clicking a comment gutter icon (edit mode — works in reading mode too, the
+  // preferred way to annotate). Like the context menu it is an OVERLAY, so the
+  // global Escape peel closes it via the focus store's overlay stack.
+  type AnnotationPopupState = {
+    x: number;
+    y: number;
+    mode: 'add' | 'edit';
+    text: string;
+    // add: the selection range to wrap. edit: a stable position inside the
+    // annotation so the note can be re-found after re-parsing.
+    from?: number;
+    to?: number;
+    anchor?: number;
+  };
+  let annotationPopup = $state<AnnotationPopupState | null>(null);
+  let annotationPopupOverlayId: number | null = null;
+  $effect(() => {
+    if (annotationPopup && annotationPopupOverlayId === null) {
+      annotationPopupOverlayId = focus.pushOverlay(() => (annotationPopup = null));
+    } else if (!annotationPopup && annotationPopupOverlayId !== null) {
+      focus.removeOverlay(annotationPopupOverlayId);
+      annotationPopupOverlayId = null;
+    }
+  });
+
+  // A comment gutter icon was clicked (from the CriticMarkup extension): open the
+  // popup in edit mode over that note. Routed through `buildEditor`'s
+  // `onCommentEdit`.
+  function openCommentPopup(req: CommentEditRequest): void {
+    annotationPopup = { x: req.x, y: req.y, mode: 'edit', text: req.text, anchor: req.anchor };
+  }
+
+  // Commit the popup: wrap the captured selection (add) or update the note under
+  // the anchor (edit), then close. All dispatches are programmatic so they apply
+  // in reading mode too and autosave via the editor's change listener.
+  function onAnnotationSave(text: string): void {
+    const p = annotationPopup;
+    if (!view || !p) return;
+    if (p.mode === 'add') {
+      if (p.from != null && p.to != null && text.trim() !== '') {
+        addAnnotationWithComment(view, p.from, p.to, text);
+      }
+    } else if (p.anchor != null) {
+      updateAnnotationComment(view, p.anchor, text);
+    }
+    annotationPopup = null;
+  }
+
+  // Remove the annotation under the popup's anchor (edit mode's Remove button).
+  function onAnnotationRemove(): void {
+    if (view && annotationPopup?.anchor != null) removeAnnotationAt(view, annotationPopup.anchor);
+    annotationPopup = null;
+  }
 
   /**
    * Open the editor formatting context menu at the cursor. In an editable mode
@@ -127,12 +196,29 @@
    */
   function openEditorMenu(e: MouseEvent): void {
     if (!view) return;
-    if (view.state.readOnly) return; // reading view: keep the native menu.
-    e.preventDefault();
+    const readOnly = view.state.readOnly;
+    // The range annotate would wrap: the CM selection, or — in reading mode where
+    // CM doesn't sync the non-editable DOM selection — the browser selection.
+    const range = selectionForAnnotate(view);
+    const annAction = annotateActionFor(view);
 
+    // Reading view: the only editing affordance is annotating (the preferred way
+    // to comment). With nothing to annotate, keep the native menu.
+    if (readOnly) {
+      if (!annAction) return;
+      e.preventDefault();
+      editorMenu = {
+        x: e.clientX,
+        y: e.clientY,
+        items: [{ id: 'annotate', label: annAction === 'add' ? 'Add comment' : 'Remove comment' }],
+        annotateRange: annAction === 'add' ? range : undefined,
+      };
+      return;
+    }
+
+    e.preventDefault();
     const items: EditorMenuItem[] = [];
-    const { from, to } = view.state.selection.main;
-    const hasSelection = from !== to;
+    const hasSelection = range.from !== range.to;
     // Clipboard group (always leads). Cut/Copy need a selection; Paste is always
     // offered. CodeMirror still handles the Ctrl/Cmd+C/X/V keys too.
     if (hasSelection) {
@@ -154,7 +240,6 @@
       // Its own group — the clipboard group (and formatting, if any) precede it.
       separated: true,
     });
-    const annAction = annotateActionFor(view);
     if (annAction) {
       items.push({
         id: 'annotate',
@@ -163,7 +248,12 @@
       });
     }
 
-    editorMenu = { x: e.clientX, y: e.clientY, items };
+    editorMenu = {
+      x: e.clientX,
+      y: e.clientY,
+      items,
+      annotateRange: annAction === 'add' ? range : undefined,
+    };
   }
 
   // Dispatch a chosen editor-menu action to its CodeMirror helper.
@@ -194,9 +284,24 @@
       case 'link':
         insertOrEditLink(view);
         break;
-      case 'annotate':
-        annotate(view);
+      case 'annotate': {
+        // "Add comment": open the note popup over the captured selection (the
+        // preferred, syntax-free path). "Remove comment": strip it directly.
+        const range = editorMenu?.annotateRange;
+        if (range) {
+          annotationPopup = {
+            x: editorMenu?.x ?? 0,
+            y: editorMenu?.y ?? 0,
+            mode: 'add',
+            text: '',
+            from: range.from,
+            to: range.to,
+          };
+        } else {
+          annotate(view);
+        }
         break;
+      }
     }
   }
   // Disposer for the Editor Region's focus-backbone registration. The Editor's
@@ -560,6 +665,7 @@
         onBlur: () => void editor.flush(),
         onHistory: syncHistoryDepths,
         onLinkClick: handleLinkClick,
+        onCommentEdit: openCommentPopup,
         brokenLinkContext: {
           currentPath: () => editor.path ?? '',
           exists: (path) => indexStore.exists(path),
@@ -1371,6 +1477,18 @@
       items={editorMenu.items}
       onselect={onEditorMenuSelect}
       onclose={() => (editorMenu = null)}
+    />
+  {/if}
+
+  {#if annotationPopup}
+    <AnnotationPopup
+      x={annotationPopup.x}
+      y={annotationPopup.y}
+      mode={annotationPopup.mode}
+      initialText={annotationPopup.text}
+      onsave={onAnnotationSave}
+      onremove={annotationPopup.mode === 'edit' ? onAnnotationRemove : undefined}
+      onclose={() => (annotationPopup = null)}
     />
   {/if}
 </div>

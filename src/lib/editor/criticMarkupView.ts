@@ -109,9 +109,18 @@ const criticDecorations = ViewPlugin.fromClass(
 // ---------------------------------------------------------------------------
 
 const COMMENT_ICON_SVG =
-  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">' +
+  '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">' +
   '<path fill="currentColor" d="M2.5 2.5h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6.6L3.7 14a.5.5 0 0 1-.85-.35V11.5H2.5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z"/>' +
   '</svg>';
+
+/**
+ * Called when a comment gutter icon is clicked: the host opens the annotation
+ * popup to edit the note. `anchor` is a stable position INSIDE the annotation
+ * (its comment start) so the host can re-find it after re-parsing; `text` is the
+ * current note; `x`/`y` are viewport coords to anchor the popup near the icon.
+ */
+export type CommentEditRequest = { anchor: number; text: string; x: number; y: number };
+export type OnCommentEdit = (req: CommentEditRequest) => void;
 
 class CriticCommentMarker extends GutterMarker {
   constructor(readonly title: string) {
@@ -166,24 +175,37 @@ function annotationOnLine(view: EditorView, pos: number): Annotation | null {
   return null;
 }
 
-const criticGutter = gutter({
-  class: 'cm-critic-gutter',
-  markers: (view) => gutterMarkers(view),
-  domEventHandlers: {
-    // Click the marker → move the caret into the note (comment content if
-    // present, else the highlighted text) and scroll it into view. A
-    // discoverable "click to edit the note".
-    mousedown(view, line) {
-      const ann = annotationOnLine(view, line.from);
-      if (!ann) return false;
-      const target = ann.comment?.contentFrom ?? ann.highlight?.contentFrom;
-      if (target == null) return false;
-      view.dispatch({ selection: { anchor: target }, scrollIntoView: true });
-      view.focus();
-      return true;
+/**
+ * The comment gutter. Clicking a marker opens the annotation popup (via
+ * `onCommentEdit`) so the note is edited in a text input rather than the raw
+ * `{>>...<<}` markup — this works in reading mode too, the preferred way to
+ * annotate. When no callback is wired (defensive), it falls back to parking the
+ * caret in the note so raw editing still has an entry point.
+ */
+function makeCriticGutter(onCommentEdit?: OnCommentEdit): Extension {
+  return gutter({
+    class: 'cm-critic-gutter',
+    markers: (view) => gutterMarkers(view),
+    domEventHandlers: {
+      mousedown(view, line, event) {
+        const ann = annotationOnLine(view, line.from);
+        if (!ann) return false;
+        if (onCommentEdit) {
+          const anchor = ann.comment?.from ?? ann.highlight?.from ?? line.from;
+          const e = event as MouseEvent;
+          onCommentEdit({ anchor, text: ann.comment?.text ?? '', x: e.clientX, y: e.clientY });
+          return true;
+        }
+        // Fallback: no popup wired — park the caret in the note for raw editing.
+        const target = ann.comment?.contentFrom ?? ann.highlight?.contentFrom;
+        if (target == null) return false;
+        view.dispatch({ selection: { anchor: target }, scrollIntoView: true });
+        view.focus();
+        return true;
+      },
     },
-  },
-});
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Hover tooltip: show the bound note over the highlighted text.
@@ -216,8 +238,8 @@ const criticTooltip = hoverTooltip((view, pos): Tooltip | null => {
  * comment gutter and the hover tooltip. Wire this into the non-`edit` modes so
  * source mode keeps raw `{==...==}` visible (see `modeExtensions` in cm.ts).
  */
-export function criticMarkupAnnotations(): Extension {
-  return [criticDecorations, criticGutter, criticTooltip];
+export function criticMarkupAnnotations(onCommentEdit?: OnCommentEdit): Extension {
+  return [criticDecorations, makeCriticGutter(onCommentEdit), criticTooltip];
 }
 
 /**
@@ -247,7 +269,10 @@ export const criticMarkupTheme: Extension = EditorView.theme({
     backgroundColor: 'rgba(255, 196, 64, 0.22)',
   },
   '.cm-critic-gutter': {
-    minWidth: '16px',
+    minWidth: '26px',
+    // Breathing room from the viewport's left edge so the icon isn't jammed
+    // against it (the live-preview editor is otherwise gutterless).
+    paddingLeft: '8px',
   },
   '.cm-critic-gutter-icon': {
     display: 'inline-flex',

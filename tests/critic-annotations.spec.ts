@@ -122,7 +122,7 @@ test('authoring: Ctrl+Alt+m wraps a selection into a collapsed highlight+comment
     .toContain('{==Highlightme==}{>>Needs a citation to the style guide<<}');
 });
 
-test('right-click menu: "Add comment" wraps the selection into an annotation', async ({
+test('right-click menu: "Add comment" opens the popup; saving wraps the annotation', async ({
   page,
 }) => {
   await page.goto('/');
@@ -159,17 +159,115 @@ test('right-click menu: "Add comment" wraps the selection into an annotation', a
 
   await menu.locator('[data-action="annotate"]').click();
 
-  // The menu closed and the selection was wrapped as an annotation; the caret is
-  // parked inside the (empty) comment. The highlight mark covers the content even
-  // while revealed, so it is present with the selected word.
+  // Instead of writing raw markup, a note popup opens. Type the note and Save.
   await expect(menu).toHaveCount(0);
-  await expect(editor.locator('.cm-critic-highlight').first()).toHaveText('Highlightme');
+  const popup = page.getByTestId('annotation-popup');
+  await expect(popup).toBeVisible();
+  await popup.getByTestId('annotation-input').fill('Clarify the wording here');
+  await popup.getByTestId('annotation-save').click();
 
+  // The popup closed and the selection was wrapped with the typed note; the
+  // highlight renders and the raw markup is on disk.
+  await expect(popup).toHaveCount(0);
+  await expect(editor.locator('.cm-critic-highlight').first()).toHaveText('Highlightme');
   await expect
     .poll(() =>
       page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-menu.md']),
     )
-    .toContain('{==Highlightme==}{>><<}');
+    .toContain('{==Highlightme==}{>>Clarify the wording here<<}');
+});
+
+test('comment gutter icon: clicking it opens the popup to edit the note', async ({ page }) => {
+  await page.goto('/');
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+
+  // Seed a Concept that already carries one annotation, so its gutter icon shows.
+  await createConcept(
+    page,
+    'critic-edit.md',
+    `${fm('Critic Edit')}# Critic Edit\n\nThe {==quick==}{>>original note<<} fox jumps.\n`,
+  );
+  await expect(tree.locator('[data-path="critic-edit.md"]')).toBeVisible();
+  await tree.locator('[data-path="critic-edit.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await expect(editor.locator('.cm-critic-highlight').first()).toHaveText('quick');
+
+  // Click the gutter icon → the edit popup opens prefilled with the current note.
+  await editor.locator('.cm-critic-gutter-icon').first().click();
+  const popup = page.getByTestId('annotation-popup');
+  await expect(popup).toBeVisible();
+  await expect(popup.getByTestId('annotation-input')).toHaveValue('original note');
+
+  // Retype the note and Save; the on-disk comment is updated in place.
+  await popup.getByTestId('annotation-input').fill('revised note');
+  await popup.getByTestId('annotation-save').click();
+  await expect(popup).toHaveCount(0);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-edit.md']),
+    )
+    .toContain('{==quick==}{>>revised note<<}');
+});
+
+test('reading mode: selecting text and annotating writes the note (preferred flow)', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+
+  await createConcept(
+    page,
+    'critic-read.md',
+    `${fm('Critic Read')}# Critic Read\n\nHighlightme is the word to annotate.\n`,
+  );
+  await expect(tree.locator('[data-path="critic-read.md"]')).toBeVisible();
+  await tree.locator('[data-path="critic-read.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('Highlightme is the word');
+
+  // Switch to Reading (view) mode — the editor is read-only here.
+  await page.getByTestId('editor-mode-view').click();
+
+  // Select the word "Highlightme" via a native DOM selection (CodeMirror does not
+  // sync the non-editable selection into state, so the app maps it via posAtDOM).
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll('.cm-line')].find((l) =>
+      l.textContent?.startsWith('Highlightme'),
+    );
+    const textNode = el!.firstChild!;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 11); // "Highlightme"
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+
+  await editor.dispatchEvent('contextmenu', { clientX: 200, clientY: 200 });
+
+  const menu = page.getByTestId('context-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('[data-action="annotate"]')).toHaveText('Add comment');
+  await menu.locator('[data-action="annotate"]').click();
+
+  const popup = page.getByTestId('annotation-popup');
+  await expect(popup).toBeVisible();
+  await popup.getByTestId('annotation-input').fill('Reviewed in reading mode');
+  await popup.getByTestId('annotation-save').click();
+  await expect(popup).toHaveCount(0);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-read.md']),
+    )
+    .toContain('{==Highlightme==}{>>Reviewed in reading mode<<}');
 });
 
 // A realistic "implementation plan" document: three highlighted phrases, each

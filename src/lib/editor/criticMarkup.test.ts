@@ -10,6 +10,7 @@ import {
   pairAnnotations,
   parseCriticMarks,
   removeAnnotation,
+  setCommentText,
   type Annotation,
 } from './criticMarkup';
 
@@ -193,6 +194,34 @@ describe('insertHighlightComment', () => {
 
   test('returns null when nothing is selected', () => {
     expect(insertHighlightComment('hello', 2, 2)).toBeNull();
+  });
+
+  test('embeds a supplied comment (the popup add path)', () => {
+    const edit = insertHighlightComment('hello world', 0, 5, 'a note')!;
+    expect(applyChanges('hello world', edit.changes)).toBe('{==hello==}{>>a note<<} world');
+  });
+});
+
+describe('setCommentText', () => {
+  test('replaces an existing comment in place', () => {
+    const doc = '{==keep==}{>>old<<}';
+    const ann = pairAnnotations(parseCriticMarks(doc))[0];
+    const edit = setCommentText(doc, ann, 'new note');
+    expect(applyChanges(doc, edit.changes)).toBe('{==keep==}{>>new note<<}');
+  });
+
+  test('appends a comment to a highlight-only annotation', () => {
+    const doc = '{==keep==}';
+    const ann = pairAnnotations(parseCriticMarks(doc))[0];
+    const edit = setCommentText(doc, ann, 'added');
+    expect(applyChanges(doc, edit.changes)).toBe('{==keep==}{>>added<<}');
+  });
+
+  test('updates a point comment', () => {
+    const doc = 'a {>>old<<} b';
+    const ann = pairAnnotations(parseCriticMarks(doc))[0];
+    const edit = setCommentText(doc, ann, 'fresh');
+    expect(applyChanges(doc, edit.changes)).toBe('a {>>fresh<<} b');
   });
 });
 
