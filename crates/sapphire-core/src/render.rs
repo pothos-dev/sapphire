@@ -540,4 +540,16 @@ mod tests {
         assert!(!p.html.contains("internal-link"));
         assert!(p.html.contains("<code>"));
     }
+
+    #[test]
+    fn mermaid_fence_emits_language_class_and_is_left_inert() {
+        // comrak leaves a ```mermaid fence as an inert code block; the web island
+        // hydrates it client-side. Confirm the stable `language-mermaid` marker
+        // the island targets, and that the source is preserved verbatim.
+        let p = render("```mermaid\ngraph TD;\nA-->B;\n```\n", "a.md", &["a.md"]);
+        assert!(p.html.contains(r#"class="language-mermaid""#));
+        assert!(p.html.contains("graph TD"));
+        // A fenced code block is not a heading → excluded from the outline.
+        assert!(p.outline.is_empty());
+    }
 }

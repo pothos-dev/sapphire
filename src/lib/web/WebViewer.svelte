@@ -9,6 +9,8 @@
   import WebTags from './WebTags.svelte';
   import WebOutline from './WebOutline.svelte';
   import WebBacklinks from './WebBacklinks.svelte';
+  import { hydrateMermaid, resolvedTheme } from './webMermaid';
+  import type { ResolvedTheme } from '$lib/editor/mermaidTheme';
 
   interface Props {
     /** SSR'd data from `+page.ts`'s `load` (talks to the Rust server). */
@@ -57,6 +59,25 @@
     document.getElementById(slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  // Mermaid Diagrams: the server leaves ```mermaid fences inert
+  // (`<code class="language-mermaid">`); this island hydrates them client-side.
+  // The rendered <article> element is bound so the hydrate effect can target it.
+  let articleEl = $state<HTMLElement | null>(null);
+  // Diagram theme follows the OS scheme (the same source the viewer's CSS tokens
+  // use); seeded + kept live in onMount. A flip re-renders the baked SVGs.
+  let mermaidTheme = $state<ResolvedTheme>('light');
+
+  // Re-render Diagrams whenever the rendered HTML changes (Concept navigation /
+  // live-reload swaps `{@html}`, producing fresh inert blocks) or the theme
+  // flips. `$effect` runs after the DOM update, so the fresh blocks exist. A
+  // malformed diagram degrades to an in-place error panel inside `hydrateMermaid`.
+  $effect(() => {
+    void data.rendered?.html;
+    const theme = mermaidTheme;
+    const el = articleEl;
+    if (el) void hydrateMermaid(el, theme);
+  });
+
   onMount(() => {
     // Live reload (SSE): subscribe to filesystem changes. When any Concept
     // changes on disk (created/modified/removed by an external tool), re-run
@@ -82,9 +103,16 @@
     };
     window.addEventListener('keydown', onKeydown, true);
 
+    // Diagram theme follows `prefers-color-scheme`; seed it and re-render on flip.
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mermaidTheme = resolvedTheme(mq.matches);
+    const onScheme = () => (mermaidTheme = resolvedTheme(mq.matches));
+    mq.addEventListener('change', onScheme);
+
     return () => {
       unsubscribe();
       window.removeEventListener('keydown', onKeydown, true);
+      mq.removeEventListener('change', onScheme);
     };
   });
 </script>
@@ -134,7 +162,7 @@
 
       <!-- Server-rendered body HTML. Links resolve to viewer nav / broken
            markers in Rust; SvelteKit intercepts the in-Bundle anchors. -->
-      <article class="rendered" data-testid="rendered">
+      <article class="rendered" data-testid="rendered" bind:this={articleEl}>
         {@html data.rendered.html}
       </article>
     {/if}
@@ -318,5 +346,63 @@
     color: var(--danger, #c0392b);
     text-decoration: underline dotted;
     cursor: help;
+  }
+
+  /* Mermaid Diagrams (hydrated client-side from inert code blocks). The
+     containers are created by webMermaid.ts inside `{@html}` content, so these
+     rules are `:global` under `.rendered`. */
+  .rendered :global(.web-mermaid) {
+    margin: 1rem 0;
+  }
+
+  .rendered :global(.web-mermaid-render) {
+    display: flex;
+    justify-content: center;
+  }
+
+  .rendered :global(.web-mermaid-render svg) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .rendered :global(.web-mermaid-loading) {
+    color: var(--text-muted, #888);
+    font-style: italic;
+    font-size: 0.9em;
+    padding: 0.5rem 0;
+  }
+
+  /* A failed render: a bordered panel (message + raw source) — visibly distinct
+     from a plain code block so a broken diagram reads as broken. */
+  .rendered :global(.web-mermaid-error) {
+    border: 1px solid var(--danger, #d33);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--danger-soft, rgba(221, 51, 51, 0.08));
+    padding: 0.6rem 0.75rem;
+  }
+
+  .rendered :global(.web-mermaid-error-heading) {
+    color: var(--danger, #d33);
+    font-weight: 600;
+    font-size: 0.85em;
+    margin-bottom: 0.35rem;
+  }
+
+  .rendered :global(.web-mermaid-error-message) {
+    color: var(--danger, #d33);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    margin-bottom: 0.5rem;
+  }
+
+  .rendered :global(.web-mermaid-error-source) {
+    margin: 0;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm, 4px);
+    background: var(--bg-sunken, rgba(0, 0, 0, 0.06));
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    overflow-x: auto;
   }
 </style>

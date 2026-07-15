@@ -197,3 +197,29 @@ test('tags section is hidden when the bundle has no tags', async ({ page }) => {
   await expect(page.getByTestId('web-viewer')).toBeVisible();
   await expect(page.getByTestId('tag-browser')).toHaveCount(0);
 });
+
+/**
+ * Mermaid Diagrams (slice: web-mermaid-diagrams). The server leaves ```mermaid
+ * fences inert (`<code class="language-mermaid">`); a client-side island
+ * hydrates them into rendered Diagrams. A valid diagram becomes an <svg>; a
+ * malformed one degrades to an in-place error panel without breaking the page.
+ * Saves tests/screenshots/web-mermaid.png.
+ */
+test('mermaid diagrams hydrate, and a malformed one degrades gracefully', async ({ page }) => {
+  await page.goto('/?path=diagram.md');
+  await expect(page.getByTestId('rendered').locator('h1')).toContainText('Diagram Concept');
+
+  // The valid diagram hydrates into an SVG inside a mermaid container.
+  await expect(
+    page.locator('[data-testid="rendered"] .web-mermaid-render svg').first(),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // The malformed diagram degrades to an in-place error panel …
+  await expect(page.getByTestId('mermaid-error')).toBeVisible({ timeout: 15_000 });
+  // … and the page is still intact (heading + body + tree present).
+  await expect(page.getByTestId('rendered').locator('h1')).toBeVisible();
+  await expect(page.getByTestId('rendered')).toContainText('stays intact');
+  await expect(page.getByTestId('web-tree')).toBeVisible();
+
+  await page.screenshot({ path: 'tests/screenshots/web-mermaid.png', fullPage: true });
+});
