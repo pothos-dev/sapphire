@@ -2,6 +2,8 @@
 // Shapes must match the Rust serde structs (serde rename_all = "camelCase").
 // See ARCHITECTURE.md and CONTEXT.md.
 
+import type { EditorMode } from '$lib/editor/cm';
+
 /**
  * A node in the Bundle's directory tree. Paths are bundle-relative,
  * '/'-separated, and '' for the root node.
@@ -104,6 +106,12 @@ export type BundleState = {
    * chevron the choice persists across Concept switches and restarts.
    */
   propertiesOpen?: boolean;
+  /**
+   * The editor's tri-state view mode (Source / Live / Reading), restored on
+   * relaunch (persist-editor-mode). Optional so older files tolerate its
+   * absence; the session store defaults it to `DEFAULT_EDITOR_MODE` on read.
+   */
+  editorMode?: EditorMode;
 };
 
 /**

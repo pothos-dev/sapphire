@@ -1,6 +1,7 @@
 import { backend } from '$lib/ipc';
 import { createDebouncer } from '$lib/debounce';
 import { remapPaths } from '$lib/path';
+import { DEFAULT_EDITOR_MODE, type EditorMode } from '$lib/editor/cm';
 import type { BundleState } from '$lib/types';
 import type { RegionId } from '$lib/regionGrid';
 import { flagsToClearOnEnter } from '$lib/transientReveal';
@@ -73,6 +74,13 @@ class SessionStore {
    */
   propertiesOpen = $state<boolean>(true);
   /**
+   * Editor view mode (persist-editor-mode). Seeds `buildEditor`'s `initialMode`
+   * on launch and is written through `setEditorMode` when the user toggles the
+   * NavBar control, so the Source / Live / Reading choice survives a relaunch.
+   * Defaults to `DEFAULT_EDITOR_MODE` ('hybrid'/Live) on a fresh/older Bundle.
+   */
+  editorMode = $state<EditorMode>(DEFAULT_EDITOR_MODE);
+  /**
    * EPHEMERAL transient-reveal flags (slice: transient-region-auto-reveal).
    * NEVER persisted — kept out of `#snapshot()`/`load()` deliberately. When
    * directional focus moves INTO a Region hidden only by a collapse (a folded
@@ -134,6 +142,7 @@ class SessionStore {
       this.backlinksOpen = state.backlinksOpen ?? true;
       this.outlineOpen = state.outlineOpen ?? true;
       this.propertiesOpen = state.propertiesOpen ?? true;
+      this.editorMode = state.editorMode ?? DEFAULT_EDITOR_MODE;
       // The right Sidebar defaults to COLLAPSED (`false`) when absent — a fresh
       // or older Bundle opens with the right Sidebar hidden.
       this.rightSidebarOpen = state.rightSidebarOpen ?? false;
@@ -264,6 +273,13 @@ class SessionStore {
     this.#scheduleSave();
   }
 
+  /** Record the editor view mode and schedule a persist. */
+  setEditorMode(mode: EditorMode): void {
+    if (mode === this.editorMode) return;
+    this.editorMode = mode;
+    this.#scheduleSave();
+  }
+
   // --- Transient auto-reveal (slice: transient-region-auto-reveal) ---------
   //
   // Effective visibility of each collapsible: persisted `*Open` OR the
@@ -367,6 +383,7 @@ class SessionStore {
       rightSidebarOpen: this.rightSidebarOpen,
       outlineOpen: this.outlineOpen,
       propertiesOpen: this.propertiesOpen,
+      editorMode: this.editorMode,
       window: this.#window,
     };
   }

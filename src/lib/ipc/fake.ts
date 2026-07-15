@@ -394,6 +394,9 @@ function loadFakeBundleState(): BundleState {
       // Properties panel collapse flag: passed through untouched (undefined when
       // absent, which the session store defaults to `true` on read).
       propertiesOpen: parsed.propertiesOpen,
+      // Editor view mode: passed through untouched (undefined when absent, which
+      // the session store defaults to `DEFAULT_EDITOR_MODE` on read).
+      editorMode: parsed.editorMode,
     };
   } catch {
     return defaultBundleState();
