@@ -5,6 +5,7 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { backend } from '$lib/ipc';
   import WebTree from './WebTree.svelte';
+  import WebSearch from './WebSearch.svelte';
 
   interface Props {
     /** SSR'd data from `+page.ts`'s `load` (talks to the Rust server). */
@@ -33,16 +34,42 @@
     void goto(`?path=${encodeURIComponent(path)}`, { keepFocus: true });
   }
 
-  // Live reload (SSE): subscribe to filesystem changes on mount. When any
-  // Concept changes on disk (created/modified/removed by an external tool),
-  // re-run `load` — which re-fetches the tree AND re-renders the open Concept
-  // through the /api proxy — so the tree refreshes and the open Concept updates
-  // without a manual reload. This mirrors how the desktop reacts to
-  // `onFileChanged` (reload tree + reload open Concept). `onFileChanged` is a
-  // no-op under SSR (no EventSource); the returned unsubscribe closes the stream
-  // on teardown. Subscribed once here (not per Concept) so the connection is
-  // stable across in-viewer navigation.
-  onMount(() => backend.onFileChanged(() => void invalidateAll()));
+  // Bundle-wide Search (Ctrl+Shift+F). A hydrated island; opening a hit routes
+  // through the same `?path=` navigation as links. (The web view renders HTML,
+  // which has no source-line mapping, so we open the Concept at the hit — a
+  // line-level scroll like the desktop editor's is not applicable here.)
+  let searchOpen = $state(false);
+  function openSearchHit(path: string) {
+    open(path);
+  }
+
+  onMount(() => {
+    // Live reload (SSE): subscribe to filesystem changes. When any Concept
+    // changes on disk (created/modified/removed by an external tool), re-run
+    // `load` — which re-fetches the tree AND re-renders the open Concept through
+    // the /api proxy — so the tree refreshes and the open Concept updates
+    // without a manual reload. Mirrors the desktop's `onFileChanged` reaction;
+    // it is a no-op under SSR (no EventSource) and its unsubscribe closes the
+    // stream on teardown. Subscribed once (not per Concept) so the connection is
+    // stable across in-viewer navigation.
+    const unsubscribe = backend.onFileChanged(() => void invalidateAll());
+
+    // Ctrl/Cmd+Shift+F toggles the Search modal (capture phase so it wins even
+    // if focus is inside the search input). Requires Shift so it never collides
+    // with a browser find.
+    const onKeydown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchOpen = !searchOpen;
+      }
+    };
+    window.addEventListener('keydown', onKeydown, true);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('keydown', onKeydown, true);
+    };
+  });
 </script>
 
 <div class="web-viewer" data-testid="web-viewer">
@@ -105,6 +132,8 @@
     </aside>
   {/if}
 </div>
+
+<WebSearch open={searchOpen} onopen={openSearchHit} onclose={() => (searchOpen = false)} />
 
 <style>
   .web-viewer {

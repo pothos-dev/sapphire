@@ -8,6 +8,7 @@
 //! - `GET /api/tree`                 → the recursive `TreeNode`
 //! - `GET /api/concept?path=<rel>`   → a Concept's raw markdown (string)
 //! - `GET /api/render?path=<rel>`    → rendered `{ html, frontmatter, outline }`
+//! - `GET /api/search?q=<query>`     → `SearchHit[]` (bundle-wide full-text)
 //! - `GET /api/events`               → SSE stream of filesystem `FileChange`s
 //!
 //! There is NO write path here. Every `path` crossing the seam is validated by
@@ -42,6 +43,7 @@ use tokio_stream::{Stream, StreamExt};
 use sapphire_core::app_state::AppState;
 use sapphire_core::bundle::{self, TreeNode};
 use sapphire_core::render::{self, RenderPayload};
+use sapphire_core::search::{self, SearchHit};
 use sapphire_core::watcher::{self, FileChange};
 
 /// Default HTTP port. Overridable via `SAPPHIRE_API_PORT`.
@@ -111,6 +113,7 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/api/tree", get(tree_handler))
         .route("/api/concept", get(concept_handler))
         .route("/api/render", get(render_handler))
+        .route("/api/search", get(search_handler))
         .route("/api/events", get(events_handler))
         .with_state(state)
 }
@@ -152,6 +155,25 @@ async fn render_handler(
         .read_index()
         .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     render::render_concept(&state.app.bundle_root, &index, &q.path)
+        .map(Json)
+        .map_err(ApiError::from_core)
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    /// The search text. Defaulted so a missing/empty `?q=` yields no matches
+    /// (core `search` treats an empty/whitespace query as "no scan").
+    #[serde(default)]
+    q: String,
+}
+
+async fn search_handler(
+    State(state): State<Arc<ServerState>>,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<Vec<SearchHit>>, ApiError> {
+    // Case-insensitive literal search over every Concept body, ordered by path
+    // then line and capped server-side (all in core `search::search`).
+    search::search(&state.app.bundle_root, &q.q)
         .map(Json)
         .map_err(ApiError::from_core)
 }
@@ -349,5 +371,21 @@ mod tests {
         let index = sapphire_core::index::Index::build(&root);
         let err = render::render_concept(&root, &index, "../secret.md").unwrap_err();
         assert_eq!(classify(&err), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn search_route_returns_ordered_hits() {
+        let root = temp_bundle(); // note.md = "# Hello\n\nbody", sub/deep.md = "deep"
+        let hits = search::search(&root, "body").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, "note.md");
+        assert!(hits[0].snippet.contains("body"));
+    }
+
+    #[test]
+    fn search_route_empty_query_yields_no_matches() {
+        let root = temp_bundle();
+        assert!(search::search(&root, "").unwrap().is_empty());
+        assert!(search::search(&root, "   ").unwrap().is_empty());
     }
 }

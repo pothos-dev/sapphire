@@ -107,3 +107,35 @@ test('live reload: external filesystem changes update the viewer via SSE', async
     await rm(LIVE_NOTE, { force: true });
   }
 });
+
+/**
+ * Bundle-wide full-text Search (slice: web-full-text-search). Ctrl+Shift+F opens
+ * the modal; a query lists path/line/snippet hits with the match highlighted;
+ * selecting a hit opens that Concept in the viewer. Saves a screenshot to
+ * tests/screenshots/web-search.png.
+ */
+test('full-text search: Ctrl+Shift+F lists hits and opens a Concept', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('web-viewer')).toBeVisible();
+
+  // Open the Search modal.
+  await page.keyboard.press('Control+Shift+F');
+  await expect(page.getByTestId('search-panel')).toBeVisible();
+
+  // A query lists hits with a highlighted snippet ("paragraph" is in the body).
+  await page.getByTestId('search-input').fill('paragraph');
+  const firstHit = page.getByTestId('search-item').first();
+  await expect(firstHit).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('search-snippet').first().locator('mark')).toContainText(
+    /paragraph/i,
+  );
+
+  await page.screenshot({ path: 'tests/screenshots/web-search.png', fullPage: true });
+
+  // Selecting a hit opens that Concept in the viewer (and closes the modal).
+  const hitPath = await firstHit.getAttribute('data-path');
+  await firstHit.click();
+  await expect(page).toHaveURL(new RegExp(`\\?path=${(hitPath ?? '').replace(/\./g, '\\.')}`));
+  await expect(page.getByTestId('search-panel')).toHaveCount(0);
+  await expect(page.getByTestId('rendered')).toBeVisible();
+});

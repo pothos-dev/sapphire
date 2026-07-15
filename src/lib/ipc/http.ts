@@ -151,7 +151,11 @@ export const httpBackend: Backend = {
   loadBundleState(): Promise<BundleState> {
     return Promise.reject(new Error(NOT_YET));
   },
-  search(): Promise<SearchHit[]> {
-    return Promise.reject(new Error(NOT_YET));
+
+  // Bundle-wide full-text search over the proxied `/api/search` (backed by the
+  // core ripgrep search: case-insensitive literal, ordered by path then line,
+  // capped server-side). An empty/whitespace query yields `[]` (no scan).
+  search(query: string): Promise<SearchHit[]> {
+    return getJson<SearchHit[]>(`/api/search?q=${encodeURIComponent(query)}`);
   },
 };
