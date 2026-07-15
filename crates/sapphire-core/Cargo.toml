@@ -1,0 +1,22 @@
+[package]
+name = "sapphire-core"
+version = "0.14.0"
+description = "Sapphire's reusable domain logic (bundle, index, rewrite, search, watcher)"
+authors = ["you"]
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Filesystem walking (respects .gitignore, fast) — tree + full-text search
+ignore = { workspace = true }
+# Filesystem change watching (slice: editing-autosave-watcher)
+notify = { workspace = true }
+# Full-text search backend (ripgrep libraries, no external binary) — slice: full-text-search
+grep-searcher = { workspace = true }
+grep-regex = { workspace = true }
+grep-matcher = { workspace = true }
+# YAML frontmatter parsing — slices: frontmatter panel, bundle index
+serde_yaml = { workspace = true }
+# OS app-data / config directory resolution — slice: config-theme-state-store
+dirs = { workspace = true }

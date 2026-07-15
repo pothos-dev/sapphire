@@ -1,47 +1,39 @@
-mod app_state;
-mod bundle;
 mod cli;
-mod config;
-mod index;
-mod paths;
-mod rewrite;
-mod search;
-mod slug;
-mod watcher;
-mod wikilink;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use app_state::AppState;
-use bundle::TreeNode;
-use config::{BundleState, WindowState};
-use index::TagCount;
-use rewrite::{AnchorRename, RewriteSummary};
-use search::SearchHit;
-use tauri::{LogicalPosition, LogicalSize, Manager, State, WindowEvent};
+use sapphire_core::app_state::AppState;
+use sapphire_core::bundle::{self, TreeNode};
+use sapphire_core::config::{self, BundleState, WindowState};
+use sapphire_core::index::TagCount;
+use sapphire_core::rewrite::{self, AnchorRename, RewriteSummary};
+use sapphire_core::search::{self, SearchHit};
+use sapphire_core::watcher::{self, FILE_CHANGED_EVENT};
+use tauri::{Emitter, LogicalPosition, LogicalSize, Manager, State, WindowEvent};
 
 /// Absolute path of the opened Bundle root.
 #[tauri::command]
-fn bundle_root(state: State<'_, AppState>) -> Result<String, String> {
+fn bundle_root(state: State<'_, Arc<AppState>>) -> Result<String, String> {
     Ok(state.bundle_root.to_string_lossy().into_owned())
 }
 
 /// Recursive directory tree of the Bundle.
 #[tauri::command]
-fn list_tree(state: State<'_, AppState>) -> Result<TreeNode, String> {
+fn list_tree(state: State<'_, Arc<AppState>>) -> Result<TreeNode, String> {
     bundle::list_tree(&state.bundle_root)
 }
 
 /// Raw markdown of a single Concept, by bundle-relative path.
 #[tauri::command]
-fn read_concept(state: State<'_, AppState>, path: String) -> Result<String, String> {
+fn read_concept(state: State<'_, Arc<AppState>>, path: String) -> Result<String, String> {
     bundle::read_concept(&state.bundle_root, &path)
 }
 
 /// Write a Concept's raw markdown back to disk (autosave). Records the write in
 /// the self-write tracker so the filesystem watcher suppresses its own echo.
 #[tauri::command]
-fn write_concept(state: State<'_, AppState>, path: String, content: String) -> Result<(), String> {
+fn write_concept(state: State<'_, Arc<AppState>>, path: String, content: String) -> Result<(), String> {
     let resolved = bundle::write_concept(&state.bundle_root, &path, &content)?;
     state.note_self_write(resolved);
     Ok(())
@@ -51,14 +43,14 @@ fn write_concept(state: State<'_, AppState>, path: String, content: String) -> R
 /// stub is an empty file; the rich frontmatter scaffold is a later slice. NOT
 /// recorded as a self-write: a structural create SHOULD refresh the tree.
 #[tauri::command]
-fn create_concept(state: State<'_, AppState>, path: String) -> Result<(), String> {
+fn create_concept(state: State<'_, Arc<AppState>>, path: String) -> Result<(), String> {
     bundle::create_concept(&state.bundle_root, &path)?;
     Ok(())
 }
 
 /// Create a new folder (and any missing parents) at `path` (bundle-relative).
 #[tauri::command]
-fn create_folder(state: State<'_, AppState>, path: String) -> Result<(), String> {
+fn create_folder(state: State<'_, Arc<AppState>>, path: String) -> Result<(), String> {
     bundle::create_folder(&state.bundle_root, &path)?;
     Ok(())
 }
@@ -71,7 +63,7 @@ fn create_folder(state: State<'_, AppState>, path: String) -> Result<(), String>
 /// files were rewritten.
 #[tauri::command]
 fn rename_path(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     from: String,
     to: String,
 ) -> Result<RewriteSummary, String> {
@@ -83,7 +75,7 @@ fn rename_path(
 /// `rename_path`; returns the same rewrite summary.
 #[tauri::command]
 fn move_path(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     from: String,
     to_dir: String,
 ) -> Result<RewriteSummary, String> {
@@ -93,7 +85,7 @@ fn move_path(
 /// Delete `path` (a Concept or a folder, recursively). The frontend confirms
 /// before calling this.
 #[tauri::command]
-fn delete_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
+fn delete_path(state: State<'_, Arc<AppState>>, path: String) -> Result<(), String> {
     bundle::delete_path(&state.bundle_root, &path)
 }
 
@@ -104,7 +96,7 @@ fn delete_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
 /// files changed. The target's own same-file anchors are handled in the buffer.
 #[tauri::command]
 fn rewrite_anchors(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     target: String,
     renames: Vec<AnchorRename>,
 ) -> Result<RewriteSummary, String> {
@@ -114,39 +106,39 @@ fn rewrite_anchors(
 /// Every Concept path in the Bundle index. The frontend seeds its synchronous
 /// broken-link existence cache from this (one query instead of per-link calls).
 #[tauri::command]
-fn list_concept_paths(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+fn list_concept_paths(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
     Ok(state.read_index()?.concept_paths())
 }
 
 /// Whether a Concept exists at `path` (bundle-relative). Convenience companion
 /// to `list_concept_paths`; the broken-link decoration uses the cached set.
 #[tauri::command]
-fn concept_exists(state: State<'_, AppState>, path: String) -> Result<bool, String> {
+fn concept_exists(state: State<'_, Arc<AppState>>, path: String) -> Result<bool, String> {
     Ok(state.read_index()?.concept_exists(&path))
 }
 
 /// Sources linking TO `path` (backlinks). Used by the backlinks panel (slice 7).
 #[tauri::command]
-fn backlinks(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
+fn backlinks(state: State<'_, Arc<AppState>>, path: String) -> Result<Vec<String>, String> {
     Ok(state.read_index()?.backlinks(&path))
 }
 
 /// All tags across the Bundle with per-tag counts. Used by the tags view (slice 8).
 #[tauri::command]
-fn all_tags(state: State<'_, AppState>) -> Result<Vec<TagCount>, String> {
+fn all_tags(state: State<'_, Arc<AppState>>) -> Result<Vec<TagCount>, String> {
     Ok(state.read_index()?.all_tags())
 }
 
 /// Concept paths carrying `tag`. Used by the tag browser (slice 8) to reveal
 /// the Concepts under a selected tag.
 #[tauri::command]
-fn concepts_by_tag(state: State<'_, AppState>, tag: String) -> Result<Vec<String>, String> {
+fn concepts_by_tag(state: State<'_, Arc<AppState>>, tag: String) -> Result<Vec<String>, String> {
     Ok(state.read_index()?.concepts_by_tag(&tag))
 }
 
 /// All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12).
 #[tauri::command]
-fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+fn all_types(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
     Ok(state.read_index()?.all_types())
 }
 
@@ -154,7 +146,7 @@ fn all_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
 /// Properties panel's key-name autocomplete (key-and-tag autocomplete slice);
 /// the OKF recommended keys are merged in client-side.
 #[tauri::command]
-fn all_keys(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+fn all_keys(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
     Ok(state.read_index()?.all_keys())
 }
 
@@ -163,7 +155,7 @@ fn all_keys(state: State<'_, AppState>) -> Result<Vec<String>, String> {
 /// returns matches (path + 1-based line + matching line snippet), ordered by
 /// path then line and capped server-side. Case-insensitive literal search.
 #[tauri::command]
-fn search(state: State<'_, AppState>, query: String) -> Result<Vec<SearchHit>, String> {
+fn search(state: State<'_, Arc<AppState>>, query: String) -> Result<Vec<SearchHit>, String> {
     search::search(&state.bundle_root, &query)
 }
 
@@ -171,7 +163,7 @@ fn search(state: State<'_, AppState>, query: String) -> Result<Vec<SearchHit>, S
 /// folders, window geometry) for the open Bundle. Robust to a missing/corrupt
 /// store: returns defaults. See `config.rs` — never written into the Bundle.
 #[tauri::command]
-fn load_bundle_state(state: State<'_, AppState>) -> Result<BundleState, String> {
+fn load_bundle_state(state: State<'_, Arc<AppState>>) -> Result<BundleState, String> {
     Ok(config::load_bundle_state(&state.bundle_root))
 }
 
@@ -181,7 +173,7 @@ fn load_bundle_state(state: State<'_, AppState>) -> Result<BundleState, String> 
 /// change. Window geometry is owned by Rust and merged separately, so the
 /// frontend's saved value here carries the window through untouched.
 #[tauri::command]
-fn save_bundle_state(state: State<'_, AppState>, bundle_state: BundleState) -> Result<(), String> {
+fn save_bundle_state(state: State<'_, Arc<AppState>>, bundle_state: BundleState) -> Result<(), String> {
     config::save_bundle_state(&state.bundle_root, bundle_state)
 }
 
@@ -344,11 +336,21 @@ pub fn run() {
                 });
             }
 
-            app.manage(AppState::new(bundle_root));
+            // The AppState is shared (behind an `Arc`) between the command layer
+            // (managed in Tauri state) and the filesystem watcher, so both the
+            // index and the self-write tracker observe one source of truth.
+            let state = Arc::new(AppState::new(bundle_root));
+            app.manage(state.clone());
 
             // Start the filesystem watcher and keep the handle alive for the
-            // app's lifetime by managing it in Tauri state.
-            match watcher::start(app.handle().clone()) {
+            // app's lifetime by managing it in Tauri state. `sapphire-core`'s
+            // watcher is host-agnostic: it hands us each `FileChange` through a
+            // sink; the desktop sink emits it to the frontend as a Tauri event.
+            let app_handle = app.handle().clone();
+            let watch_root = state.bundle_root.clone();
+            match watcher::start(watch_root, state.clone(), move |change| {
+                let _ = app_handle.emit(FILE_CHANGED_EVENT, change);
+            }) {
                 Ok(w) => {
                     app.manage(watcher::WatcherHandle::new(w));
                 }
