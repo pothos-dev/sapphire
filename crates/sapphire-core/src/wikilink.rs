@@ -231,6 +231,90 @@ pub fn wikilink_raws(body: &str) -> Vec<String> {
     out
 }
 
+/// Rewrite every wikilink (`[[ ... ]]`) in a Concept body, leaving code spans /
+/// fenced blocks / embeds untouched. For each non-embed wikilink the callback
+/// `f` receives the RAW inner text (alias/anchor included) and returns the
+/// replacement text spliced in place of the whole `[[ ... ]]`. Everything else
+/// (including embeds `![[ ... ]]` and any `[[ ... ]]` inside code) is copied
+/// verbatim.
+///
+/// This shares the exact scanning contract of [`wikilink_raws`] — the two agree
+/// on which spans are wikilinks (guarded by a test) — so the server-side render
+/// (which converts `[[name]]` to resolved anchors) sees the same links the index
+/// does. It is the single place that transforms wikilink SYNTAX.
+pub fn replace_wikilinks<F: FnMut(&str) -> String>(body: &str, mut f: F) -> String {
+    let bytes = body.as_bytes();
+    let mut out = String::with_capacity(body.len());
+    let mut last = 0usize; // start of the not-yet-copied verbatim run
+    let mut i = 0usize;
+    let mut in_inline_code = false;
+    let mut fence: Option<u8> = None;
+    let mut at_line_start = true;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+
+        if at_line_start {
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            if j + 2 < bytes.len()
+                && (bytes[j] == b'`' || bytes[j] == b'~')
+                && bytes[j + 1] == bytes[j]
+                && bytes[j + 2] == bytes[j]
+            {
+                let ch = bytes[j];
+                match fence {
+                    Some(f) if f == ch => fence = None,
+                    None => fence = Some(ch),
+                    _ => {}
+                }
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                at_line_start = true;
+                continue;
+            }
+        }
+
+        if fence.is_some() {
+            at_line_start = b == b'\n';
+            i += 1;
+            continue;
+        }
+
+        if b == b'`' {
+            in_inline_code = !in_inline_code;
+            at_line_start = false;
+            i += 1;
+            continue;
+        }
+
+        if !in_inline_code && b == b'[' && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
+            let is_embed = i > 0 && bytes[i - 1] == b'!';
+            if let Some(close) = find_double_close(bytes, i + 2) {
+                if !is_embed {
+                    // Flush the verbatim run up to this wikilink, then its
+                    // replacement; skip the whole `[[ ... ]]` span.
+                    out.push_str(&body[last..i]);
+                    out.push_str(&f(&body[i + 2..close]));
+                    last = close + 2;
+                }
+                i = close + 2;
+                at_line_start = false;
+                continue;
+            }
+        }
+
+        at_line_start = b == b'\n';
+        i += 1;
+    }
+
+    out.push_str(&body[last..]);
+    out
+}
+
 /// Index of the first `]]` at or after `from`, if any.
 pub fn find_double_close(bytes: &[u8], from: usize) -> Option<usize> {
     let mut i = from;
@@ -372,5 +456,29 @@ mod tests {
     fn scans_tilde_fence() {
         let body = "~~~\n[[fenced]]\n~~~\n[[real]]";
         assert_eq!(wikilink_raws(body), vec!["real"]);
+    }
+
+    #[test]
+    fn replace_wikilinks_agrees_with_raws_and_leaves_the_rest() {
+        let body = "See [[Alpha]] and [[beta|B]].\n\
+                    Inline `[[not a link]]` ignored.\n\
+                    ```\n[[fenced]]\n```\n\
+                    Embed ![[embedded.png]] skipped.\n\
+                    Real [[gamma#sec]].";
+        // The callback captures exactly the spans wikilink_raws reports.
+        let mut seen = Vec::new();
+        let out = replace_wikilinks(body, |raw| {
+            seen.push(raw.to_string());
+            format!("<{raw}>")
+        });
+        assert_eq!(seen, wikilink_raws(body));
+        // Non-wikilink text (code, embed, fence) is preserved verbatim.
+        assert!(out.contains("`[[not a link]]`"));
+        assert!(out.contains("![[embedded.png]]"));
+        assert!(out.contains("[[fenced]]"));
+        // The real wikilinks are rewritten.
+        assert!(out.contains("<Alpha>"));
+        assert!(out.contains("<beta|B>"));
+        assert!(out.contains("<gamma#sec>"));
     }
 }

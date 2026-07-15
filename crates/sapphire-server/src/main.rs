@@ -7,6 +7,7 @@
 //! - `GET /api/bundle-root`          → the absolute Bundle root (string)
 //! - `GET /api/tree`                 → the recursive `TreeNode`
 //! - `GET /api/concept?path=<rel>`   → a Concept's raw markdown (string)
+//! - `GET /api/render?path=<rel>`    → rendered `{ html, frontmatter, outline }`
 //!
 //! There is NO write path here. Every `path` crossing the seam is validated by
 //! `sapphire-core` against the Bundle root (bundle-relative, forward-slash);
@@ -28,6 +29,7 @@ use serde::Deserialize;
 
 use sapphire_core::app_state::AppState;
 use sapphire_core::bundle::{self, TreeNode};
+use sapphire_core::render::{self, RenderPayload};
 
 /// Default HTTP port. Overridable via `SAPPHIRE_API_PORT`.
 const DEFAULT_PORT: u16 = 8787;
@@ -62,6 +64,7 @@ fn router(state: Arc<AppState>) -> Router {
         .route("/api/bundle-root", get(bundle_root_handler))
         .route("/api/tree", get(tree_handler))
         .route("/api/concept", get(concept_handler))
+        .route("/api/render", get(render_handler))
         .with_state(state)
 }
 
@@ -87,6 +90,20 @@ async fn concept_handler(
     Query(q): Query<ConceptQuery>,
 ) -> Result<Json<String>, ApiError> {
     bundle::read_concept(&state.bundle_root, &q.path)
+        .map(Json)
+        .map_err(ApiError::from_core)
+}
+
+async fn render_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ConceptQuery>,
+) -> Result<Json<RenderPayload>, ApiError> {
+    // Resolve links against the in-memory index (built on startup). The read
+    // lock is held only for the render call; a poisoned lock is a 500.
+    let index = state
+        .read_index()
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    render::render_concept(&state.bundle_root, &index, &q.path)
         .map(Json)
         .map_err(ApiError::from_core)
 }
@@ -214,5 +231,34 @@ mod tests {
         // startup) must not panic.
         let root = temp_bundle();
         let _app = router(Arc::new(AppState::new(root)));
+    }
+
+    #[test]
+    fn render_route_returns_html_frontmatter_and_outline() {
+        // A bundle with a Concept that links to a sibling that exists.
+        let root = temp_bundle();
+        std::fs::write(
+            root.join("note.md"),
+            "---\ntype: concept\n---\n# Hello\n\nSee [deep](sub/deep.md).\n",
+        )
+        .unwrap();
+        let index = sapphire_core::index::Index::build(&root);
+        let payload = render::render_concept(&root, &index, "note.md").unwrap();
+        assert!(payload.html.contains("<h1>"));
+        assert!(payload.html.contains("<p>"));
+        // The in-bundle link resolves to an internal nav anchor.
+        assert!(payload.html.contains(r#"class="internal-link""#));
+        assert!(payload.html.contains(r#"data-path="sub/deep.md""#));
+        assert_eq!(payload.outline.len(), 1);
+        assert_eq!(payload.outline[0].text, "Hello");
+        assert_eq!(payload.frontmatter[0].key, "type");
+    }
+
+    #[test]
+    fn render_route_rejects_path_escape_with_400() {
+        let root = temp_bundle();
+        let index = sapphire_core::index::Index::build(&root);
+        let err = render::render_concept(&root, &index, "../secret.md").unwrap_err();
+        assert_eq!(classify(&err), StatusCode::BAD_REQUEST);
     }
 }

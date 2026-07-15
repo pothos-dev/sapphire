@@ -14,3 +14,7 @@ grep-regex = "0.1"
 grep-matcher = "0.1"
 serde_yaml = "0.9"
 dirs = "5"
+# Markdown -> HTML rendering for the web server-side render (slice: web-server-side-render)
+comrak = "0.29"
+# Anchor-href rewriting in rendered HTML (link-resolution markers -> viewer nav)
+regex = "1"

@@ -20,3 +20,7 @@ grep-matcher = { workspace = true }
 serde_yaml = { workspace = true }
 # OS app-data / config directory resolution — slice: config-theme-state-store
 dirs = { workspace = true }
+# Markdown -> HTML rendering for server-side Concept render (slice: web-server-side-render)
+comrak = { workspace = true }
+# Rewriting rendered-HTML anchor hrefs (link-resolution markers -> viewer nav)
+regex = { workspace = true }

@@ -3,10 +3,12 @@
 // Unlike the desktop suite (playwright.config.ts, static SPA + in-memory fake),
 // the web viewer is architecturally bound to the HTTP backend: it renders only
 // in the SSR web build and reads through `/api/*`. So this config boots the
-// real read-only stack end-to-end — the `sapphire-server` Rust binary over the
-// committed `examples/` Bundle, plus the adapter-node SvelteKit server proxying
-// `/api` to it — and drives the viewer against that read-only backend (the
-// faithful analog of "the fake backend's read-only subset": no write path).
+// real read-only stack end-to-end — the `sapphire-server` Rust binary over a
+// small committed fixture Bundle (`tests/fixtures/web-bundle`), plus the
+// adapter-node SvelteKit server proxying `/api` to it — and drives the viewer
+// against that read-only backend (the faithful analog of "the fake backend's
+// read-only subset": no write path). The fixture has deterministic content
+// (resolvable + broken links, frontmatter, headings) so render assertions hold.
 //
 // Sandbox note (see CLAUDE.md): this machine's Chromium is flaky, so run over an
 // already-running system Chromium via CDP:
@@ -37,8 +39,8 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      // The read-only Rust API server over the examples/ Bundle.
-      command: `cargo build -p sapphire-server && SAPPHIRE_BUNDLE=examples SAPPHIRE_API_PORT=${RUST_PORT} ./target/debug/sapphire-server`,
+      // The read-only Rust API server over the deterministic fixture Bundle.
+      command: `cargo build -p sapphire-server && SAPPHIRE_BUNDLE=tests/fixtures/web-bundle SAPPHIRE_API_PORT=${RUST_PORT} ./target/debug/sapphire-server`,
       url: `http://localhost:${RUST_PORT}/api/bundle-root`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,

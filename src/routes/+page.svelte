@@ -15,7 +15,15 @@
 </script>
 
 {#if data.web}
-  <WebViewer data={{ bundleRoot: data.bundleRoot, tree: data.tree }} />
+  <WebViewer
+    data={{
+      bundleRoot: data.bundleRoot,
+      tree: data.tree,
+      selected: data.selected,
+      rendered: data.rendered,
+      renderError: data.renderError,
+    }}
+  />
 {:else}
   <App />
 {/if}
