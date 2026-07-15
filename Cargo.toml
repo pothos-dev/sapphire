@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/sapphire-core", "src-tauri"]
+members = ["crates/sapphire-core", "crates/sapphire-server", "src-tauri"]
 
 # Shared dependency versions for all workspace members. Members opt in with
 # `dep = { workspace = true }`. Tauri-only deps stay in `src-tauri/Cargo.toml`.

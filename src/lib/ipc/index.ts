@@ -1,21 +1,37 @@
 import type { Backend } from './backend';
 import { tauriBackend } from './tauri';
 import { fakeBackend } from './fake';
+import { httpBackend } from './http';
 
 export type { Backend } from './backend';
 
 /**
- * Runtime selection of the Backend implementation.
+ * Selection of the Backend implementation.
  *
- * Inside the Tauri webview, `__TAURI_INTERNALS__` is present on `window`, so we
- * use the real IPC-backed impl. In plain Chromium (vite dev / Playwright) it is
- * absent, so we fall back to the in-memory fake fixture Bundle.
+ * Three targets:
+ *  - **web** (build-time `__SAPPHIRE_WEB__`, set when `SAPPHIRE_TARGET=web`):
+ *    the read-only HTTP backend talking to `sapphire-server`. In this build the
+ *    Tauri backend is stubbed out at bundle time (see `vite.config.js`), so
+ *    `@tauri-apps/api` never enters the web bundle.
+ *  - **desktop**: inside the Tauri webview `__TAURI_INTERNALS__` is present on
+ *    `window`, so we use the real IPC-backed impl.
+ *  - **fake**: plain Chromium (vite dev / Playwright) with no Tauri — the
+ *    in-memory fixture Bundle.
+ *
+ * The desktop/fake selection is UNCHANGED from before; only the web branch is
+ * new. `__SAPPHIRE_WEB__` is a build-time constant (replaced by Vite's `define`)
+ * so the unused branch is eliminated — the desktop build keeps the exact old
+ * behaviour and the web build drops the Tauri path entirely.
  *
  * See ARCHITECTURE.md "The IPC seam".
  */
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
-export const backend: Backend = isTauri ? tauriBackend : fakeBackend;
+export const backend: Backend = __SAPPHIRE_WEB__
+  ? httpBackend
+  : isTauri
+    ? tauriBackend
+    : fakeBackend;
 
 // Expose the selected backend on `window` as a stable test hook (mirrors
 // `window.__sapphireFake` in fake.ts). Playwright reads this instead of

@@ -1,17 +1,29 @@
-// Tauri doesn't have a Node.js server to do proper SSR
-// so we use adapter-static with a fallback to index.html to put the site in SPA mode
+// Adapter is target-dependent:
+//
+//  - WEB build (`SAPPHIRE_TARGET=web`): `@sveltejs/adapter-node` with SSR on
+//    (see `+layout.ts`), so the read-only viewer is server-rendered then
+//    hydrates and is served by a Node process behind the `/api` proxy.
+//  - DEFAULT (desktop/Tauri): `@sveltejs/adapter-static` in SPA mode
+//    (fallback index.html, `ssr = false`) — unchanged. Tauri has no Node
+//    server, so the frontend must be a static SPA.
+//
 // See: https://svelte.dev/docs/kit/single-page-apps
 // See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
-import adapter from "@sveltejs/adapter-static";
+import adapterStatic from "@sveltejs/adapter-static";
+import adapterNode from "@sveltejs/adapter-node";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+
+const isWeb = process.env.SAPPHIRE_TARGET === "web";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    adapter: adapter({
-      fallback: "index.html",
-    }),
+    adapter: isWeb
+      ? adapterNode({ out: process.env.SAPPHIRE_NODE_OUT || "build" })
+      : adapterStatic({
+          fallback: "index.html",
+        }),
   },
 };
 
