@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /**
  * Slice: mermaid-edit-affordance (ADR-0005, options 6a+6b).
@@ -10,6 +10,16 @@ import { test, expect } from '@playwright/test';
  *    lifting the block-replace to reveal the raw source for editing.
  * The global `edit`-mode toggle stays the always-available fallback.
  */
+
+// The editor mode is now persisted per-Bundle (persist-editor-mode). Under the
+// shared-CDP-browser sandbox run localStorage survives across tests, so a prior
+// test's Reading choice would bleed in here; clear it so every test boots from
+// the hybrid default. On CI each test already gets an isolated context (no-op).
+test.beforeEach(async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+});
+
 test('mermaid: double-clicking a diagram reveals the raw fence for editing', async ({
   page,
 }) => {
@@ -45,6 +55,46 @@ test('mermaid: double-clicking a diagram reveals the raw fence for editing', asy
     path: 'tests/screenshots/mermaid-edit-affordance.png',
     fullPage: true,
   });
+});
+
+/**
+ * Read (view) mode is read-only and never lifts the block-replace, so the edit
+ * affordance must be absent — including after a LIVE toggle from hybrid, where
+ * the mode Compartment reconfigures in place and the widget's DOM could
+ * otherwise be reused (widget `eq()` must account for `reading`).
+ */
+test('mermaid: read mode drops the edit affordance after a live toggle', async ({ page }) => {
+  await page.goto('/');
+
+  const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+  await tree.locator('[data-path="concepts/editor/live-preview.md"]').click();
+
+  const editor = page.getByTestId('editor');
+  await expect(editor).toBeVisible();
+
+  await editor.locator('.cm-scroller').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+
+  const widget = editor.locator('.cm-mermaid');
+  // Hybrid (default) first: the affordance is present, so the assertions below
+  // prove it was actively DROPPED by the toggle, not merely never added.
+  await expect(widget.locator('svg')).toBeVisible({ timeout: 15000 });
+  await expect(widget).toHaveClass(/cm-mermaid-editable/);
+  await expect(widget.locator('.cm-mermaid-edit-hint')).toHaveCount(1);
+
+  // Toggle to Reading: the diagram still renders, but the affordance is gone —
+  // no editable marker, no hover hint, no "double-click to edit" tooltip.
+  await page.getByTestId('editor-mode-view').click();
+  await expect(widget.locator('svg')).toBeVisible();
+  await expect(widget).not.toHaveClass(/cm-mermaid-editable/);
+  await expect(widget.locator('.cm-mermaid-edit-hint')).toHaveCount(0);
+  await expect(widget).not.toHaveAttribute('title', /edit/i);
+
+  // And double-clicking does NOT reveal the raw fence (read-only).
+  await widget.locator('svg').dblclick();
+  await expect(editor).not.toContainText('graph TD');
 });
 
 /**

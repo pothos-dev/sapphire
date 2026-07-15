@@ -230,9 +230,10 @@ function renderInto(
  *
  * `reading` (view mode) is carried so the edit-affordance is added ONLY in
  * hybrid — view is read-only and never lifts the block-replace, so a "click to
- * edit" hint there would be a lie. It is excluded from `eq()`: the two modes use
- * separate field instances (the mode Compartment), so a single field's widgets
- * always share one `reading` value; only `(source + theme)` affect DOM reuse.
+ * edit" hint there would be a lie. It is part of `eq()`: a live mode toggle
+ * reconfigures the mode Compartment IN PLACE (no view rebuild), so a stale
+ * hybrid widget (same source + theme) would otherwise be reused in view mode and
+ * keep its now-lying edit affordance.
  */
 class MermaidWidget extends WidgetType {
   constructor(
@@ -243,12 +244,19 @@ class MermaidWidget extends WidgetType {
     super();
   }
 
-  // Reuse DOM (skip re-render) when BOTH the diagram source and the resolved
-  // theme are unchanged. Including the theme means a theme flip produces a
-  // non-equal widget, so CM6 re-renders the diagram in the new colours; an
-  // edit elsewhere (same source + theme) reuses the existing SVG (ADR-0005).
+  // Reuse DOM (skip re-render) when the diagram source, the resolved theme AND
+  // the reading flag are unchanged. Including the theme means a theme flip
+  // produces a non-equal widget, so CM6 re-renders in the new colours; including
+  // `reading` means a hybrid↔view mode toggle (an in-place Compartment
+  // reconfigure, not a rebuild) rebuilds the DOM so the edit affordance is added
+  // in hybrid and dropped in read mode. An edit elsewhere (same source + theme +
+  // reading) reuses the existing SVG (ADR-0005).
   eq(other: MermaidWidget): boolean {
-    return other.source === this.source && other.theme === this.theme;
+    return (
+      other.source === this.source &&
+      other.theme === this.theme &&
+      other.reading === this.reading
+    );
   }
 
   toDOM(view: EditorView): HTMLElement {
