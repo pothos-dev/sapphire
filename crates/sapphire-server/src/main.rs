@@ -8,12 +8,20 @@
 //! - `GET /api/tree`                 → the recursive `TreeNode`
 //! - `GET /api/concept?path=<rel>`   → a Concept's raw markdown (string)
 //! - `GET /api/render?path=<rel>`    → rendered `{ html, frontmatter, outline }`
+//! - `GET /api/events`               → SSE stream of filesystem `FileChange`s
 //!
 //! There is NO write path here. Every `path` crossing the seam is validated by
 //! `sapphire-core` against the Bundle root (bundle-relative, forward-slash);
 //! `..`/escape attempts are rejected with a 400 — this is now a genuine network
 //! boundary, not just an in-process call.
+//!
+//! Live reload: the core `watcher` runs on startup with a sink that pushes each
+//! `FileChange` into a `tokio::sync::broadcast` channel; every `/api/events`
+//! connection subscribes and streams changes as SSE. Since the web app never
+//! writes, there is nothing to suppress — every change is a genuine external
+//! edit worth delivering to all connected browsers.
 
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,18 +29,34 @@ use std::sync::Arc;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
 use serde::Deserialize;
+use tokio::sync::broadcast;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::{Stream, StreamExt};
 
 use sapphire_core::app_state::AppState;
 use sapphire_core::bundle::{self, TreeNode};
 use sapphire_core::render::{self, RenderPayload};
+use sapphire_core::watcher::{self, FileChange};
 
 /// Default HTTP port. Overridable via `SAPPHIRE_API_PORT`.
 const DEFAULT_PORT: u16 = 8787;
+
+/// Capacity of the filesystem-change broadcast channel. A slow SSE consumer that
+/// falls this far behind sees a lag error (skipped, not fatal).
+const EVENTS_CHANNEL_CAP: usize = 256;
+
+/// Shared server state: the domain `AppState` (bundle root + index) plus the
+/// broadcast sender every `/api/events` connection subscribes to.
+struct ServerState {
+    app: Arc<AppState>,
+    events: broadcast::Sender<FileChange>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -40,9 +64,31 @@ async fn main() {
     eprintln!("sapphire-server: serving bundle {}", root.display());
 
     // Reuse the desktop's AppState (canonical root + in-memory index built on
-    // startup). Slices 5/6 will read `state.index` for sidebars + search.
-    let state = Arc::new(AppState::new(root));
+    // startup); the index is kept current by the watcher below.
+    let app_state = Arc::new(AppState::new(root.clone()));
 
+    // Broadcast filesystem changes to every connected SSE client. The core
+    // watcher is host-agnostic: it hands us each `FileChange` through a sink;
+    // our sink fans it out over the broadcast channel. No self-write
+    // suppression matters here — the web server never writes.
+    let (events, _) = broadcast::channel::<FileChange>(EVENTS_CHANNEL_CAP);
+    let sink_tx = events.clone();
+    // Kept bound (NOT dropped) for the process lifetime so watching continues.
+    let _watcher = match watcher::start(root, app_state.clone(), move |change| {
+        // Err only means "no subscribers right now" — fine to ignore.
+        let _ = sink_tx.send(change);
+    }) {
+        Ok(w) => Some(watcher::WatcherHandle::new(w)),
+        Err(e) => {
+            eprintln!("sapphire-server: filesystem watcher failed to start: {e}");
+            None
+        }
+    };
+
+    let state = Arc::new(ServerState {
+        app: app_state,
+        events,
+    });
     let app = router(state);
 
     let port = std::env::var("SAPPHIRE_API_PORT")
@@ -58,24 +104,25 @@ async fn main() {
     axum::serve(listener, app).await.expect("server error");
 }
 
-/// Build the read-only route table over an `AppState`.
-fn router(state: Arc<AppState>) -> Router {
+/// Build the read-only route table over a `ServerState`.
+fn router(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/api/bundle-root", get(bundle_root_handler))
         .route("/api/tree", get(tree_handler))
         .route("/api/concept", get(concept_handler))
         .route("/api/render", get(render_handler))
+        .route("/api/events", get(events_handler))
         .with_state(state)
 }
 
 // --- Routes -----------------------------------------------------------------
 
-async fn bundle_root_handler(State(state): State<Arc<AppState>>) -> Json<String> {
-    Json(state.bundle_root.to_string_lossy().into_owned())
+async fn bundle_root_handler(State(state): State<Arc<ServerState>>) -> Json<String> {
+    Json(state.app.bundle_root.to_string_lossy().into_owned())
 }
 
-async fn tree_handler(State(state): State<Arc<AppState>>) -> Result<Json<TreeNode>, ApiError> {
-    bundle::list_tree(&state.bundle_root)
+async fn tree_handler(State(state): State<Arc<ServerState>>) -> Result<Json<TreeNode>, ApiError> {
+    bundle::list_tree(&state.app.bundle_root)
         .map(Json)
         .map_err(ApiError::from_core)
 }
@@ -86,26 +133,45 @@ struct ConceptQuery {
 }
 
 async fn concept_handler(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServerState>>,
     Query(q): Query<ConceptQuery>,
 ) -> Result<Json<String>, ApiError> {
-    bundle::read_concept(&state.bundle_root, &q.path)
+    bundle::read_concept(&state.app.bundle_root, &q.path)
         .map(Json)
         .map_err(ApiError::from_core)
 }
 
 async fn render_handler(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServerState>>,
     Query(q): Query<ConceptQuery>,
 ) -> Result<Json<RenderPayload>, ApiError> {
-    // Resolve links against the in-memory index (built on startup). The read
-    // lock is held only for the render call; a poisoned lock is a 500.
+    // Resolve links against the in-memory index. The read lock is held only for
+    // the render call; a poisoned lock is a 500.
     let index = state
+        .app
         .read_index()
         .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    render::render_concept(&state.bundle_root, &index, &q.path)
+    render::render_concept(&state.app.bundle_root, &index, &q.path)
         .map(Json)
         .map_err(ApiError::from_core)
+}
+
+/// Stream filesystem changes as Server-Sent Events. Each connection subscribes
+/// to the broadcast channel; changes arrive as SSE `message` events with a JSON
+/// `FileChange` payload. A lagging subscriber's dropped items are skipped (not
+/// fatal). Dropping the receiver on client disconnect is automatic (the stream
+/// is tied to the response future). A keep-alive comment holds idle connections
+/// open through proxies.
+async fn events_handler(
+    State(state): State<Arc<ServerState>>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.events.subscribe();
+    let stream = BroadcastStream::new(rx).filter_map(|res| match res {
+        Ok(change) => Event::default().json_data(&change).ok().map(Ok),
+        // Lagged (slow consumer) — skip the missed items rather than error out.
+        Err(_) => None,
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 // --- Error mapping ----------------------------------------------------------
@@ -226,11 +292,34 @@ mod tests {
     }
 
     #[test]
-    fn router_builds_over_app_state() {
-        // Smoke: constructing the router with a real AppState (index built on
-        // startup) must not panic.
+    fn router_builds_over_server_state() {
+        // Smoke: constructing the router with a real ServerState (index built on
+        // startup + a broadcast sender) must not panic.
         let root = temp_bundle();
-        let _app = router(Arc::new(AppState::new(root)));
+        let (events, _) = broadcast::channel::<FileChange>(8);
+        let _app = router(Arc::new(ServerState {
+            app: Arc::new(AppState::new(root)),
+            events,
+        }));
+    }
+
+    #[tokio::test]
+    async fn broadcast_fans_a_change_out_to_every_subscriber() {
+        // The SSE wiring: a change sent on the broadcast sender reaches every
+        // subscribed receiver (each SSE connection is one subscriber).
+        let (tx, _) = broadcast::channel::<FileChange>(8);
+        let mut a = tx.subscribe();
+        let mut b = tx.subscribe();
+        let change = FileChange {
+            kind: "modified".to_string(),
+            paths: vec!["note.md".to_string()],
+        };
+        tx.send(change).unwrap();
+        let ra = a.recv().await.unwrap();
+        let rb = b.recv().await.unwrap();
+        assert_eq!(ra.kind, "modified");
+        assert_eq!(ra.paths, vec!["note.md".to_string()]);
+        assert_eq!(rb.paths, ra.paths);
     }
 
     #[test]

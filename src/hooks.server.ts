@@ -8,6 +8,12 @@ import type { Handle } from '@sveltejs/kit';
  * This hook forwards those requests to the Rust `sapphire-server` at an
  * internal base URL (`SAPPHIRE_API_INTERNAL`, default `http://localhost:8787`).
  *
+ * The upstream response BODY is streamed straight through (not buffered), so
+ * the SSE `/api/events` stream reaches the browser incrementally — awaiting the
+ * whole body would hang forever on a never-ending stream. Ordinary JSON routes
+ * stream fine too (they just end quickly). For `text/event-stream` we add
+ * `cache-control: no-cache` so no intermediary buffers the stream.
+ *
  * In the DEFAULT desktop build (adapter-static SPA) there is no server at
  * runtime, so this hook is never invoked — the static build is unaffected.
  * Everything except `/api/*` passes straight through to SvelteKit.
@@ -18,18 +24,22 @@ export const handle: Handle = async ({ event, resolve }) => {
   const { pathname, search } = event.url;
   if (pathname.startsWith('/api/')) {
     const target = `${API_INTERNAL}${pathname}${search}`;
+    const isEvents = pathname === '/api/events';
     const upstream = await fetch(target, {
       method: event.request.method,
-      headers: { accept: 'application/json' },
+      headers: { accept: isEvents ? 'text/event-stream' : 'application/json' },
+      // Let the client abort propagate to the upstream stream (SSE disconnect).
+      signal: event.request.signal,
     });
-    // Stream the upstream response back verbatim (status + content-type + body).
-    const body = await upstream.arrayBuffer();
-    return new Response(body, {
-      status: upstream.status,
-      headers: {
-        'content-type': upstream.headers.get('content-type') ?? 'application/json',
-      },
-    });
+
+    const contentType = upstream.headers.get('content-type') ?? 'application/json';
+    const headers: Record<string, string> = { 'content-type': contentType };
+    if (contentType.includes('text/event-stream')) {
+      headers['cache-control'] = 'no-cache';
+      headers['connection'] = 'keep-alive';
+    }
+    // Pass the upstream ReadableStream through un-buffered so SSE streams live.
+    return new Response(upstream.body, { status: upstream.status, headers });
   }
   return resolve(event);
 };

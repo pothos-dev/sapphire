@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { TreeNode } from '$lib/types';
   import type { RenderPayload } from './render';
-  import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
+  import { goto, invalidateAll } from '$app/navigation';
+  import { backend } from '$lib/ipc';
   import WebTree from './WebTree.svelte';
 
   interface Props {
@@ -30,6 +32,17 @@
   function open(path: string) {
     void goto(`?path=${encodeURIComponent(path)}`, { keepFocus: true });
   }
+
+  // Live reload (SSE): subscribe to filesystem changes on mount. When any
+  // Concept changes on disk (created/modified/removed by an external tool),
+  // re-run `load` — which re-fetches the tree AND re-renders the open Concept
+  // through the /api proxy — so the tree refreshes and the open Concept updates
+  // without a manual reload. This mirrors how the desktop reacts to
+  // `onFileChanged` (reload tree + reload open Concept). `onFileChanged` is a
+  // no-op under SSR (no EventSource); the returned unsubscribe closes the stream
+  // on teardown. Subscribed once here (not per Concept) so the connection is
+  // stable across in-viewer navigation.
+  onMount(() => backend.onFileChanged(() => void invalidateAll()));
 </script>
 
 <div class="web-viewer" data-testid="web-viewer">

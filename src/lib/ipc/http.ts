@@ -48,6 +48,28 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Parse one SSE `data:` payload into a `FileChange`, or `null` if it is not a
+ * well-formed change (malformed JSON, or missing/typed-wrong fields). Pure so
+ * it can be unit-tested; the `EventSource` handler in `onFileChanged` only
+ * invokes the callback for a non-null result.
+ */
+export function parseFileChange(data: string): FileChange | null {
+  try {
+    const raw = JSON.parse(data) as Partial<FileChange>;
+    if (
+      (raw.kind === 'created' || raw.kind === 'modified' || raw.kind === 'removed') &&
+      Array.isArray(raw.paths) &&
+      raw.paths.every((p) => typeof p === 'string')
+    ) {
+      return { kind: raw.kind, paths: raw.paths };
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 export const httpBackend: Backend = {
   bundleRoot(): Promise<string> {
     return getJson<string>('/api/bundle-root');
@@ -87,9 +109,21 @@ export const httpBackend: Backend = {
     return Promise.reject(new Error(READ_ONLY));
   },
 
-  // --- Filesystem change events: no-op until SSE (later slice). -------------
-  onFileChanged(_cb: (change: FileChange) => void): () => void {
-    return () => {};
+  // --- Filesystem change events over SSE (`/api/events`). -------------------
+  // Every connected browser live-updates when Concepts change on disk (edited
+  // by any external tool — the web app never writes). `EventSource` targets the
+  // relative `/api/events` (proxied to the Rust server, streamed un-buffered);
+  // it auto-reconnects on a dropped connection. The returned unsubscribe is
+  // synchronous (matching the seam contract): it closes the stream at once.
+  onFileChanged(cb: (change: FileChange) => void): () => void {
+    // No EventSource under SSR / non-browser — nothing to subscribe to.
+    if (typeof EventSource === 'undefined') return () => {};
+    const source = new EventSource('/api/events');
+    source.onmessage = (e: MessageEvent) => {
+      const change = parseFileChange(typeof e.data === 'string' ? e.data : '');
+      if (change) cb(change);
+    };
+    return () => source.close();
   },
 
   // --- Read methods that later slices implement over HTTP. ------------------

@@ -1,4 +1,9 @@
+import { writeFile, rm } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { test, expect } from './fixtures';
+
+/** A scratch Concept written into the fixture Bundle to trigger live reload. */
+const LIVE_NOTE = resolve('tests/fixtures/web-bundle/live-note.md');
 
 /**
  * The read-only "Sapphire Web" viewer with SERVER-SIDE RENDER
@@ -53,4 +58,52 @@ test('web viewer renders a Concept read-only with resolved + broken links', asyn
   await expect(page.getByTestId('root-new-concept')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '+ New…' })).toHaveCount(0);
   await expect(page.getByRole('textbox')).toHaveCount(0);
+});
+
+/**
+ * Live reload over SSE (slice: web-live-reload-sse). An EXTERNAL edit to the
+ * Bundle on disk (the web app never writes) is delivered to the viewer via
+ * `/api/events` and reacts: a create/delete refreshes the tree, and a modify to
+ * the open Concept re-renders it — all without a manual refresh. Drives real
+ * filesystem changes against the fixture Bundle the Rust server watches.
+ * Saves a screenshot to tests/screenshots/web-live-reload.png.
+ */
+test('live reload: external filesystem changes update the viewer via SSE', async ({ page }) => {
+  await rm(LIVE_NOTE, { force: true }); // clean slate
+
+  const liveRow = page.getByTestId('tree-concept').filter({ hasText: 'live-note' });
+  const heading = page.getByTestId('rendered').locator('h1');
+
+  await page.goto('/?path=index.md');
+  await expect(heading).toContainText('Web Bundle Home');
+  await expect(liveRow).toHaveCount(0);
+
+  // Let the viewer's EventSource finish subscribing on the server before the
+  // first change — a broadcast only reaches already-connected subscribers, so a
+  // change fired mid-connect would be missed (there is no DOM signal for "SSE
+  // open", hence a short settle).
+  await page.waitForTimeout(1500);
+
+  try {
+    // CREATE on disk → SSE → tree refresh (the new Concept appears).
+    await writeFile(LIVE_NOTE, '# Live One\n\nfirst body\n');
+    await expect(liveRow).toHaveCount(1, { timeout: 15_000 });
+
+    // Open it; it renders.
+    await liveRow.click();
+    await expect(page).toHaveURL(/\?path=live-note\.md/);
+    await expect(heading).toContainText('Live One');
+
+    // MODIFY the OPEN Concept on disk → SSE → re-render without manual refresh.
+    await writeFile(LIVE_NOTE, '# Live Two\n\nsecond body\n');
+    await expect(heading).toContainText('Live Two', { timeout: 15_000 });
+
+    await page.screenshot({ path: 'tests/screenshots/web-live-reload.png', fullPage: true });
+
+    // DELETE on disk → SSE → tree refresh (the row disappears).
+    await rm(LIVE_NOTE, { force: true });
+    await expect(liveRow).toHaveCount(0, { timeout: 15_000 });
+  } finally {
+    await rm(LIVE_NOTE, { force: true });
+  }
 });
