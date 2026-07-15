@@ -126,22 +126,27 @@ export const httpBackend: Backend = {
     return () => source.close();
   },
 
-  // --- Read methods that later slices implement over HTTP. ------------------
+  // --- Index-backed read queries over the proxied `/api/...` routes. --------
+  // Back the read-only sidebar Sections (Backlinks, Tags) served by the core
+  // in-memory index. Paths crossing the seam are bundle-relative, forward-slash.
   listConceptPaths(): Promise<string[]> {
-    return Promise.reject(new Error(NOT_YET));
+    return getJson<string[]>('/api/concept-paths');
   },
-  conceptExists(): Promise<boolean> {
-    return Promise.reject(new Error(NOT_YET));
+  conceptExists(path: string): Promise<boolean> {
+    return getJson<boolean>(`/api/concept-exists?path=${encodeURIComponent(path)}`);
   },
-  backlinks(): Promise<string[]> {
-    return Promise.reject(new Error(NOT_YET));
+  backlinks(path: string): Promise<string[]> {
+    return getJson<string[]>(`/api/backlinks?path=${encodeURIComponent(path)}`);
   },
   allTags(): Promise<TagCount[]> {
-    return Promise.reject(new Error(NOT_YET));
+    return getJson<TagCount[]>('/api/tags');
   },
-  conceptsByTag(): Promise<string[]> {
-    return Promise.reject(new Error(NOT_YET));
+  conceptsByTag(tag: string): Promise<string[]> {
+    return getJson<string[]>(`/api/concepts-by-tag?tag=${encodeURIComponent(tag)}`);
   },
+
+  // Not needed by the read-only web sidebars (new-concept autocomplete /
+  // Properties key autocomplete are editor-only) — land in a later slice.
   allTypes(): Promise<string[]> {
     return Promise.reject(new Error(NOT_YET));
   },

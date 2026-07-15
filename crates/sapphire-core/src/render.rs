@@ -134,15 +134,39 @@ pub fn render_body(
         }
     }
 
+    let outline = build_outline(headings);
+
     let mut buf = Vec::new();
     format_html(root, &options, &mut buf).expect("comrak html formatting");
-    let html = rewrite_marker_hrefs(&String::from_utf8_lossy(&buf));
+    // Add `id="<slug>"` to each heading (in document order, matching the outline
+    // slugs) so the Outline section can scroll the rendered view to a heading.
+    let html = inject_heading_ids(&String::from_utf8_lossy(&buf), &outline);
+    let html = rewrite_marker_hrefs(&html);
 
     RenderPayload {
         html,
         frontmatter,
-        outline: build_outline(headings),
+        outline,
     }
+}
+
+/// Add `id="<slug>"` to every heading open tag (`<h1>`…`<h6>`) comrak emitted,
+/// in document order, from the (de-duplicated) `outline` slugs. comrak emits
+/// bare heading tags; headings and the outline are both in document order, so
+/// the k-th `<hN>` gets the k-th outline slug — the anchor the Outline links to.
+fn inject_heading_ids(html: &str, outline: &[OutlineHeading]) -> String {
+    let re = Regex::new(r"<(h[1-6])>").unwrap();
+    let mut idx = 0usize;
+    re.replace_all(html, |caps: &regex::Captures| {
+        let tag = &caps[1];
+        let out = match outline.get(idx) {
+            Some(h) if !h.slug.is_empty() => format!(r#"<{tag} id="{}">"#, attr_escape(&h.slug)),
+            _ => format!("<{tag}>"),
+        };
+        idx += 1;
+        out
+    })
+    .into_owned()
 }
 
 // --- Link marking -----------------------------------------------------------
@@ -410,7 +434,7 @@ mod tests {
     #[test]
     fn renders_basic_markdown_elements() {
         let p = render("# Title\n\nA paragraph.\n", "a.md", &["a.md"]);
-        assert!(p.html.contains("<h1>"));
+        assert!(p.html.contains("<h1 id="));
         assert!(p.html.contains("<p>"));
         assert!(p.html.contains("A paragraph."));
     }
@@ -479,6 +503,18 @@ mod tests {
     }
 
     #[test]
+    fn headings_carry_id_slugs_matching_the_outline() {
+        let p = render("# One\n\n## Two\n\n## Two\n", "a.md", &["a.md"]);
+        // Each heading gets an id equal to its (de-duplicated) outline slug, so
+        // the Outline can scroll the rendered view to it.
+        assert!(p.html.contains(r#"<h1 id="one">"#));
+        assert!(p.html.contains(r#"<h2 id="two">"#));
+        assert!(p.html.contains(r#"<h2 id="two-1">"#));
+        let slugs: Vec<&str> = p.outline.iter().map(|h| h.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["one", "two", "two-1"]);
+    }
+
+    #[test]
     fn fenced_code_headings_excluded_from_outline() {
         let p = render("# Real\n\n```\n# not a heading\n```\n", "a.md", &["a.md"]);
         assert_eq!(p.outline.len(), 1);
@@ -495,7 +531,7 @@ mod tests {
         assert_eq!(tags, &vec!["a".to_string(), "b".to_string()]);
         // The `---` frontmatter fences must not leak into the rendered body.
         assert!(!p.html.contains("type: concept"));
-        assert!(p.html.contains("<h1>"));
+        assert!(p.html.contains("<h1 id="));
     }
 
     #[test]

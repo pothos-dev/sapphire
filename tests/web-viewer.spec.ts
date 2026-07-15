@@ -117,6 +117,10 @@ test('live reload: external filesystem changes update the viewer via SSE', async
 test('full-text search: Ctrl+Shift+F lists hits and opens a Concept', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('web-viewer')).toBeVisible();
+  // Gate on hydration: the Tags Section renders from its onMount fetch, which
+  // runs in the same hydration cycle as the viewer's Ctrl+Shift+F key listener,
+  // so its presence means the listener is registered.
+  await expect(page.getByTestId('tag-browser')).toBeVisible();
 
   // Open the Search modal.
   await page.keyboard.press('Control+Shift+F');
@@ -138,4 +142,58 @@ test('full-text search: Ctrl+Shift+F lists hits and opens a Concept', async ({ p
   await expect(page).toHaveURL(new RegExp(`\\?path=${(hitPath ?? '').replace(/\./g, '\\.')}`));
   await expect(page.getByTestId('search-panel')).toHaveCount(0);
   await expect(page.getByTestId('rendered')).toBeVisible();
+});
+
+/**
+ * Index-backed sidebar Sections (slice: web-index-backed-sidebars): Backlinks,
+ * Tags, and Outline over the core index. Saves tests/screenshots/web-sidebars.png.
+ */
+test('index-backed sidebars: backlinks, tags, and outline', async ({ page }) => {
+  // Open a Concept that is linked-to (index.md links to good.md) and has headings.
+  await page.goto('/?path=good.md');
+  await expect(page.getByTestId('rendered').locator('h1')).toContainText('Good Concept');
+
+  // Outline lists the open Concept's headings; the rendered headings carry the
+  // matching id slugs so selecting one scrolls the view.
+  const outline = page.getByTestId('outline');
+  await expect(outline.getByTestId('outline-entry')).toHaveCount(2);
+  await expect(page.locator('[data-testid="rendered"] h1#good-concept')).toBeVisible();
+  await expect(page.locator('[data-testid="rendered"] h2#details')).toBeVisible();
+  await outline.getByTestId('outline-entry').filter({ hasText: 'Details' }).click();
+  await expect(page.locator('[data-testid="rendered"] h2#details')).toBeInViewport();
+
+  // Tags lists bundle tags with counts; expanding one reveals its Concepts.
+  const tags = page.getByTestId('tag-browser');
+  await expect(tags).toBeVisible();
+  const demo = tags.getByTestId('tag').filter({ hasText: 'demo' });
+  await expect(demo).toBeVisible();
+  await expect(demo.getByTestId('tag-count')).toHaveText('1');
+  await demo.click();
+  await expect(tags.getByTestId('tag-concept').filter({ hasText: 'index' })).toBeVisible();
+
+  // Backlinks lists inbound linkers (index.md links to good.md).
+  const backlinks = page.getByTestId('backlinks');
+  await expect(backlinks.getByTestId('backlink')).toHaveCount(1);
+  const backlink = backlinks.getByTestId('backlink').first();
+  await expect(backlink).toHaveAttribute('data-path', 'index.md');
+
+  await page.screenshot({ path: 'tests/screenshots/web-sidebars.png', fullPage: true });
+
+  // Selecting a backlink navigates within the viewer.
+  await backlink.click();
+  await expect(page).toHaveURL(/\?path=index\.md/);
+  await expect(page.getByTestId('rendered').locator('h1')).toContainText('Web Bundle Home');
+});
+
+/**
+ * The Tags Section is hidden entirely when the Bundle carries no tags (as on
+ * desktop). Driven by mocking `/api/tags` empty at the browser network layer.
+ */
+test('tags section is hidden when the bundle has no tags', async ({ page }) => {
+  await page.route('**/api/tags', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+  await page.goto('/');
+  await expect(page.getByTestId('web-viewer')).toBeVisible();
+  await expect(page.getByTestId('tag-browser')).toHaveCount(0);
 });

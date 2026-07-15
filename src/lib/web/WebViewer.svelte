@@ -6,6 +6,9 @@
   import { backend } from '$lib/ipc';
   import WebTree from './WebTree.svelte';
   import WebSearch from './WebSearch.svelte';
+  import WebTags from './WebTags.svelte';
+  import WebOutline from './WebOutline.svelte';
+  import WebBacklinks from './WebBacklinks.svelte';
 
   interface Props {
     /** SSR'd data from `+page.ts`'s `load` (talks to the Rust server). */
@@ -43,6 +46,17 @@
     open(path);
   }
 
+  // Index-version signal for the index-backed Sections (Backlinks, Tags): the
+  // desktop threads this so those views re-query on `file-changed`. We bump it on
+  // each live-reload change event; Outline rides the render re-run (invalidateAll).
+  let indexVersion = $state(0);
+
+  // Outline click → scroll the rendered view to the heading (render gives each
+  // heading `id="<slug>"` matching the outline slugs).
+  function scrollToHeading(slug: string) {
+    document.getElementById(slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   onMount(() => {
     // Live reload (SSE): subscribe to filesystem changes. When any Concept
     // changes on disk (created/modified/removed by an external tool), re-run
@@ -52,7 +66,10 @@
     // it is a no-op under SSR (no EventSource) and its unsubscribe closes the
     // stream on teardown. Subscribed once (not per Concept) so the connection is
     // stable across in-viewer navigation.
-    const unsubscribe = backend.onFileChanged(() => void invalidateAll());
+    const unsubscribe = backend.onFileChanged(() => {
+      indexVersion += 1; // re-query Backlinks + Tags
+      void invalidateAll(); // re-fetch tree + re-render open Concept (Outline)
+    });
 
     // Ctrl/Cmd+Shift+F toggles the Search modal (capture phase so it wins even
     // if focus is inside the search input). Requires Shift so it never collides
@@ -81,6 +98,8 @@
     <nav class="tree" data-testid="web-tree" aria-label="Bundle">
       <WebTree node={data.tree} selected={data.selected} onopen={open} />
     </nav>
+    <!-- Tags Section (hidden entirely when the Bundle has no tags). -->
+    <WebTags version={indexVersion} selected={data.selected} onopen={open} />
   </aside>
 
   <main class="reader" aria-label="Concept">
@@ -121,14 +140,14 @@
     {/if}
   </main>
 
-  {#if data.rendered && data.rendered.outline.length > 0}
-    <aside class="outline" aria-label="Outline" data-testid="outline">
-      <h2 class="outline-title">Outline</h2>
-      <ul>
-        {#each data.rendered.outline as h (h.slug)}
-          <li style="padding-left: {(h.level - 1) * 12}px"><a href="#{h.slug}">{h.text}</a></li>
-        {/each}
-      </ul>
+  {#if data.rendered}
+    <!-- Right Sidebar: index-backed Sections for the open Concept. -->
+    <aside class="right-bar" aria-label="Sidebar">
+      <WebOutline outline={data.rendered.outline} onselect={scrollToHeading} />
+      <div class="right-section">
+        <h2 class="section-title">Backlinks</h2>
+        <WebBacklinks path={data.selected} version={indexVersion} onopen={open} />
+      </div>
     </aside>
   {/if}
 </div>
@@ -216,35 +235,25 @@
     padding-left: 1rem;
   }
 
-  .outline {
+  .right-bar {
     border-left: 1px solid var(--border, #e2e2e2);
-    padding: 1rem 0.75rem;
     overflow: auto;
-    min-width: 12rem;
+    min-width: 13rem;
+    max-width: 18rem;
     font-size: 0.8rem;
   }
 
-  .outline-title {
-    margin: 0 0 0.5rem;
-    font-size: 0.75rem;
+  .right-section {
+    border-top: 1px solid var(--border, #e2e2e2);
+    padding: 0.6rem 0.75rem 0.2rem;
+  }
+
+  .right-section .section-title {
+    margin: 0 0 0.2rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted, #777);
-  }
-
-  .outline ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .outline a {
-    color: inherit;
-    text-decoration: none;
-  }
-
-  .outline a:hover {
-    text-decoration: underline;
   }
 
   .status {

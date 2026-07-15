@@ -9,6 +9,11 @@
 //! - `GET /api/concept?path=<rel>`   → a Concept's raw markdown (string)
 //! - `GET /api/render?path=<rel>`    → rendered `{ html, frontmatter, outline }`
 //! - `GET /api/search?q=<query>`     → `SearchHit[]` (bundle-wide full-text)
+//! - `GET /api/backlinks?path=<rel>` → source Concept paths linking to it
+//! - `GET /api/tags`                 → `TagCount[]` (tags + counts)
+//! - `GET /api/concepts-by-tag?tag=` → Concept paths carrying the tag
+//! - `GET /api/concept-paths`        → every Concept path in the index
+//! - `GET /api/concept-exists?path=` → whether a Concept exists (bool)
 //! - `GET /api/events`               → SSE stream of filesystem `FileChange`s
 //!
 //! There is NO write path here. Every `path` crossing the seam is validated by
@@ -42,6 +47,7 @@ use tokio_stream::{Stream, StreamExt};
 
 use sapphire_core::app_state::AppState;
 use sapphire_core::bundle::{self, TreeNode};
+use sapphire_core::index::TagCount;
 use sapphire_core::render::{self, RenderPayload};
 use sapphire_core::search::{self, SearchHit};
 use sapphire_core::watcher::{self, FileChange};
@@ -114,6 +120,11 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/api/concept", get(concept_handler))
         .route("/api/render", get(render_handler))
         .route("/api/search", get(search_handler))
+        .route("/api/backlinks", get(backlinks_handler))
+        .route("/api/tags", get(tags_handler))
+        .route("/api/concepts-by-tag", get(concepts_by_tag_handler))
+        .route("/api/concept-paths", get(concept_paths_handler))
+        .route("/api/concept-exists", get(concept_exists_handler))
         .route("/api/events", get(events_handler))
         .with_state(state)
 }
@@ -176,6 +187,78 @@ async fn search_handler(
     search::search(&state.app.bundle_root, &q.q)
         .map(Json)
         .map_err(ApiError::from_core)
+}
+
+// --- Index-backed sidebar queries (read-only over the in-memory index) ------
+
+#[derive(Deserialize)]
+struct TagQuery {
+    #[serde(default)]
+    tag: String,
+}
+
+async fn backlinks_handler(
+    State(state): State<Arc<ServerState>>,
+    Query(q): Query<ConceptQuery>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    guard_rel_path(&q.path)?;
+    let index = read_index(&state)?;
+    Ok(Json(index.backlinks(&q.path)))
+}
+
+async fn tags_handler(
+    State(state): State<Arc<ServerState>>,
+) -> Result<Json<Vec<TagCount>>, ApiError> {
+    let index = read_index(&state)?;
+    Ok(Json(index.all_tags()))
+}
+
+async fn concepts_by_tag_handler(
+    State(state): State<Arc<ServerState>>,
+    Query(q): Query<TagQuery>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let index = read_index(&state)?;
+    Ok(Json(index.concepts_by_tag(&q.tag)))
+}
+
+async fn concept_paths_handler(
+    State(state): State<Arc<ServerState>>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let index = read_index(&state)?;
+    Ok(Json(index.concept_paths()))
+}
+
+async fn concept_exists_handler(
+    State(state): State<Arc<ServerState>>,
+    Query(q): Query<ConceptQuery>,
+) -> Result<Json<bool>, ApiError> {
+    guard_rel_path(&q.path)?;
+    let index = read_index(&state)?;
+    Ok(Json(index.concept_exists(&q.path)))
+}
+
+/// Acquire the shared index read lock, mapping a poisoned lock to a 500.
+fn read_index(
+    state: &ServerState,
+) -> Result<std::sync::RwLockReadGuard<'_, sapphire_core::index::Index>, ApiError> {
+    state
+        .app
+        .read_index()
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e))
+}
+
+/// Reject a `path` that escapes the Bundle (absolute, or containing a `..`
+/// segment) with a 400. These index routes never touch the filesystem, but the
+/// path is still a client-supplied bundle-relative key, so we guard the network
+/// boundary the same way the fs routes do.
+fn guard_rel_path(path: &str) -> Result<(), ApiError> {
+    if path.starts_with('/') || path.split('/').any(|c| c == "..") {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            format!("path escapes the bundle: {path}"),
+        ));
+    }
+    Ok(())
 }
 
 /// Stream filesystem changes as Server-Sent Events. Each connection subscribes
@@ -355,7 +438,7 @@ mod tests {
         .unwrap();
         let index = sapphire_core::index::Index::build(&root);
         let payload = render::render_concept(&root, &index, "note.md").unwrap();
-        assert!(payload.html.contains("<h1>"));
+        assert!(payload.html.contains("<h1 id="));
         assert!(payload.html.contains("<p>"));
         // The in-bundle link resolves to an internal nav anchor.
         assert!(payload.html.contains(r#"class="internal-link""#));
@@ -387,5 +470,34 @@ mod tests {
         let root = temp_bundle();
         assert!(search::search(&root, "").unwrap().is_empty());
         assert!(search::search(&root, "   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn guard_rel_path_rejects_escapes() {
+        assert!(guard_rel_path("a/b.md").is_ok());
+        assert!(guard_rel_path("note.md").is_ok());
+        let escape = guard_rel_path("../secret.md").unwrap_err();
+        assert_eq!(escape.0, StatusCode::BAD_REQUEST);
+        assert_eq!(guard_rel_path("/etc/passwd").unwrap_err().0, StatusCode::BAD_REQUEST);
+        assert_eq!(guard_rel_path("a/../../x.md").unwrap_err().0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn index_routes_serve_backlinks_tags_and_existence() {
+        let root = temp_bundle(); // has note.md + sub/deep.md
+        // a.md links to note.md and carries tag `x`.
+        std::fs::write(
+            root.join("a.md"),
+            "---\ntype: concept\ntags: [x]\n---\n[to note](/note.md)\n",
+        )
+        .unwrap();
+        let index = sapphire_core::index::Index::build(&root);
+
+        assert_eq!(index.backlinks("note.md"), vec!["a.md".to_string()]);
+        assert!(index.all_tags().iter().any(|t| t.tag == "x" && t.count == 1));
+        assert_eq!(index.concepts_by_tag("x"), vec!["a.md".to_string()]);
+        assert!(index.concept_paths().contains(&"note.md".to_string()));
+        assert!(index.concept_exists("note.md"));
+        assert!(!index.concept_exists("nope.md"));
     }
 }
