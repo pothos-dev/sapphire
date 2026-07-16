@@ -239,8 +239,8 @@ test('Section-collapsed Tags (left Sidebar open) is transiently revealed on Alt-
   page,
 }) => {
   // Fresh load: the left Sidebar is open and the Bundle carries tags, so the
-  // Tags Section is PRESENT. Collapse JUST the Tags Section (not the Sidebar) —
-  // its body content unmounts while the header stays.
+  // Tags Section is PRESENT but COLLAPSED by default (its per-field default) —
+  // its body content is unmounted while the header stays.
   await page.goto('/');
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -250,8 +250,6 @@ test('Section-collapsed Tags (left Sidebar open) is transiently revealed on Alt-
   await expect(tree).toBeVisible();
 
   const tagsToggle = page.getByTestId('tags-section').locator('[aria-expanded]').first();
-  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'true');
-  await tagsToggle.click();
   await expect(tagsToggle).toHaveAttribute('aria-expanded', 'false');
   // Collapsed Section: the panel content is gone, but the Section is still present.
   await expect(page.getByTestId('tag-browser')).toHaveCount(0);

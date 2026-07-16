@@ -29,12 +29,14 @@ test('quick-nav: fuzzy match, recent files, persistence', async ({ page }) => {
   const palette = page.getByTestId('quick-nav');
   await expect(palette).toBeVisible();
 
-  // "cm" should fuzzy-match concepts/codemirror.md (subsequence c..m).
+  // "codem" fuzzy-matches concepts/codemirror.md. (It ALSO surfaces the
+  // `codemirror` tag — tags are mixed into results now — so click the Concept
+  // row directly rather than pressing Enter, which would drill into the tag.)
   await page.getByTestId('quick-nav-input').fill('codem');
   const codemirror = palette.locator('[data-path="concepts/codemirror.md"]');
   await expect(codemirror).toBeVisible();
 
-  await page.keyboard.press('Enter');
+  await codemirror.click();
   await expect(palette).toBeHidden();
   await expect(page.getByTestId('editor')).toContainText('CodeMirror 6 is the editor core');
 
@@ -85,4 +87,54 @@ test('quick-nav: fuzzy match, recent files, persistence', async ({ page }) => {
     .getByTestId('quick-nav-item')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-path')));
   expect(afterReload.slice(0, 2)).toEqual(['concepts/codemirror.md', 'concepts/bundle.md']);
+});
+
+/**
+ * Slice: quick-nav tag surfacing + drill-down.
+ *
+ *  - Typing surfaces matching tags alongside Concepts (a tag row, badged).
+ *  - Choosing a tag DRILLS IN: the list is replaced by the Concepts carrying it
+ *    (rendered like normal Concept rows), and opening one navigates.
+ *  - Escape steps back OUT of the tag to the normal search before it closes the
+ *    palette (the unified Escape peel defers to the drill-down).
+ */
+test('quick-nav: surfaces tags and drills into a tag; Escape steps back', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('tree')).toBeVisible();
+
+  const palette = page.getByTestId('quick-nav');
+
+  // Typing surfaces a matching tag alongside Concepts. The `editor` tag rides on
+  // two Concepts in the fixture (codemirror + editor/live-preview).
+  await page.keyboard.press('Control+k');
+  await expect(palette).toBeVisible();
+  await page.getByTestId('quick-nav-input').fill('editor');
+  const tagRow = palette.locator('[data-testid="quick-nav-tag"][data-tag="editor"]');
+  await expect(tagRow).toBeVisible();
+
+  // Drill in: the list is replaced by the Concepts carrying the tag (no nested
+  // tag rows), and a tag-mode hint appears.
+  await tagRow.click();
+  await expect(palette.getByTestId('quick-nav-tag-hint')).toBeVisible();
+  await expect(palette.getByTestId('quick-nav-tag')).toHaveCount(0);
+  await expect(palette.locator('[data-path="concepts/codemirror.md"]')).toBeVisible();
+  await expect(palette.locator('[data-path="concepts/editor/live-preview.md"]')).toBeVisible();
+
+  // Escape steps OUT of the tag back to the normal search — the palette stays open.
+  await page.keyboard.press('Escape');
+  await expect(palette).toBeVisible();
+  await expect(palette.getByTestId('quick-nav-tag-hint')).toBeHidden();
+  await expect(palette.getByTestId('quick-nav-hint')).toHaveText('Recent files');
+
+  // A second Escape closes the palette.
+  await page.keyboard.press('Escape');
+  await expect(palette).toBeHidden();
+
+  // Drilling in again and opening a tagged Concept navigates to it.
+  await page.keyboard.press('Control+k');
+  await page.getByTestId('quick-nav-input').fill('editor');
+  await palette.locator('[data-testid="quick-nav-tag"][data-tag="editor"]').click();
+  await palette.locator('[data-path="concepts/codemirror.md"]').click();
+  await expect(palette).toBeHidden();
+  await expect(page.getByTestId('editor')).toContainText('CodeMirror 6 is the editor core');
 });

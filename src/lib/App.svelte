@@ -365,6 +365,10 @@
   // path list is refreshed from the index whenever it changes so newly-created
   // Concepts are matchable immediately.
   let quickNavOpen = $state(false);
+  // Whether the quick-nav palette is in tag drill-down mode. Bound out of the
+  // component so the global Escape peel DEFERS to it — one Escape steps out of
+  // the tag before the next closes the palette (escape-peel-restore-opener).
+  let quickNavTagActive = $state(false);
   // Full-text search panel (Ctrl+Shift+F). When a result is chosen we open the
   // Concept and stash the target line so the editor scrolls to it once the new
   // document has been loaded into the CodeMirror view.
@@ -567,7 +571,10 @@
         const propertiesPeel =
           focus.focusedRegion === 'properties' && propertiesNav.mode !== 'nav';
         const editorPeel = focus.focusedRegion === 'editor';
-        const localPeelActive = propertiesPeel || editorPeel;
+        // Quick-nav tag drill-down: Escape steps back to the normal search
+        // (handled locally in QuickNav) before the palette itself closes.
+        const quickNavTagPeel = quickNavOpen && quickNavTagActive;
+        const localPeelActive = propertiesPeel || editorPeel || quickNavTagPeel;
         if (focus.escape(localPeelActive)) e.preventDefault();
         return;
       }
@@ -1444,7 +1451,10 @@
   <QuickNav
     open={quickNavOpen}
     paths={suggestions.conceptPaths}
+    tags={suggestions.tags}
     recent={session.recentFiles}
+    conceptsForTag={(tag) => backend.conceptsByTag(tag)}
+    bind:tagActive={quickNavTagActive}
     onopen={(p) => {
       // COMMIT: opening a Concept moves focus to the Editor (the action target),
       // NOT back to the opener Region (escape-peel-restore-opener). Mirrors

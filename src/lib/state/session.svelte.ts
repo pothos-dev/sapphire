@@ -41,15 +41,22 @@ class SessionStore {
    */
   recentFiles = $state<string[]>([]);
   /**
-   * Sidebar collapse state (persist-sidebar-collapse-state). Each defaults to
-   * `true` (expanded) on a fresh/older Bundle — `load()` seeds them from the
-   * stored value, falling back to `true` when the field is absent, so no special
-   * seeding is needed for a brand-new Bundle. `App.svelte` reads/writes these
-   * through the accessors below instead of holding its own ephemeral `$state`.
+   * Sidebar collapse state (persist-sidebar-collapse-state). These default to
+   * `true` (expanded) on a fresh/older Bundle — EXCEPT `tagsOpen`, which starts
+   * collapsed (see its field). `load()` seeds them from the stored value,
+   * falling back to the per-field default when absent, so no special seeding is
+   * needed for a brand-new Bundle. `App.svelte` reads/writes these through the
+   * accessors below instead of holding its own ephemeral `$state`.
    */
   leftSidebarOpen = $state<boolean>(true);
   explorerOpen = $state<boolean>(true);
-  tagsOpen = $state<boolean>(true);
+  /**
+   * Tags Section collapse state. Unlike the other left-Sidebar Sections this
+   * defaults to `false` (COLLAPSED) on a fresh/older Bundle — Tags is a
+   * secondary browser that starts folded so the Explorer owns the sidebar; the
+   * user opts in via the Section header chevron.
+   */
+  tagsOpen = $state<boolean>(false);
   backlinksOpen = $state<boolean>(true);
   /**
    * Right Sidebar collapse state (right-sidebar-move-backlinks). Unlike the
@@ -138,7 +145,8 @@ class SessionStore {
       // or older Bundle opens with the left Sidebar and every Section expanded.
       this.leftSidebarOpen = state.leftSidebarOpen ?? true;
       this.explorerOpen = state.explorerOpen ?? true;
-      this.tagsOpen = state.tagsOpen ?? true;
+      // Tags defaults to COLLAPSED (`false`) when absent (see the field above).
+      this.tagsOpen = state.tagsOpen ?? false;
       this.backlinksOpen = state.backlinksOpen ?? true;
       this.outlineOpen = state.outlineOpen ?? true;
       this.propertiesOpen = state.propertiesOpen ?? true;

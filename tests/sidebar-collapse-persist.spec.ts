@@ -8,9 +8,10 @@ import { test, expect } from '@playwright/test';
  * `$state`), so they survive a reload. This drives the fake backend
  * (localStorage-backed, so a page RELOAD restores state exactly as the real
  * backend restores from the OS config file):
- *  - a fresh Bundle opens with the left Sidebar AND every Section expanded,
- *  - collapsing the sidebar + collapsing the Tags section persists, and both
- *    are restored after a reload.
+ *  - a fresh Bundle opens with the left Sidebar and the Explorer expanded, but
+ *    the Tags Section COLLAPSED (its per-field default),
+ *  - collapsing the sidebar + expanding the Tags section persists, and both are
+ *    restored after a reload.
  */
 
 test('sidebar + section collapse state persists across reload', async ({ page }) => {
@@ -28,9 +29,9 @@ test('sidebar + section collapse state persists across reload', async ({ page })
   await expect(tree).toBeVisible();
 
   // Fresh-Bundle defaults: the left Sidebar is expanded (the toggle is pressed)
-  // and its Sections are expanded (Explorer and Tags bodies visible). Backlinks
-  // now lives in the right Sidebar (right-sidebar-move-backlinks), so it is no
-  // longer here.
+  // and the Explorer is expanded, but the Tags Section starts COLLAPSED (its
+  // per-field default). Backlinks now lives in the right Sidebar
+  // (right-sidebar-move-backlinks), so it is no longer here.
   const sidebarToggle = page.getByTestId('sidebar-toggle');
   await expect(sidebarToggle).toHaveAttribute('aria-pressed', 'true');
 
@@ -40,12 +41,12 @@ test('sidebar + section collapse state persists across reload', async ({ page })
   const explorerToggle = explorerSection.locator('[aria-expanded]').first();
   const tagsToggle = tagsSection.locator('[aria-expanded]').first();
   await expect(explorerToggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'false');
 
-  // Collapse the Tags section, then collapse the whole left Sidebar. This is a
+  // Expand the Tags section, then collapse the whole left Sidebar. This is a
   // non-default state, so restoring it after reload proves the toggles persist.
   await tagsToggle.click();
-  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(tagsToggle).toHaveAttribute('aria-expanded', 'true');
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute('aria-pressed', 'false');
 
@@ -65,19 +66,19 @@ test('sidebar + section collapse state persists across reload', async ({ page })
     )
     .toMatchObject({
       leftSidebarOpen: false,
-      tagsOpen: false,
+      tagsOpen: true,
       explorerOpen: true,
     });
 
   // RELOAD: the left Sidebar stays COLLAPSED and the Tags section stays
-  // collapsed, while Explorer stays expanded.
+  // EXPANDED, while Explorer stays expanded.
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 
   await expect(page.getByTestId('sidebar-toggle')).toHaveAttribute('aria-pressed', 'false');
   await expect(
     page.getByTestId('tags-section').locator('[aria-expanded]').first(),
-  ).toHaveAttribute('aria-expanded', 'false');
+  ).toHaveAttribute('aria-expanded', 'true');
   await expect(
     page.getByTestId('explorer-section').locator('[aria-expanded]').first(),
   ).toHaveAttribute('aria-expanded', 'true');

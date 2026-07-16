@@ -1,17 +1,19 @@
 <script lang="ts">
   /**
-   * Quick-nav palette (slice: quick-nav-palette).
+   * Quick-nav palette (slice: quick-nav-palette; tag surfacing + drill-down).
    *
    * A centered command palette bound to Ctrl+K (the parent owns the keybinding
-   * and toggles `open`). Typing fuzzy-matches bundle-relative Concept paths;
-   * with empty input it shows the per-Bundle recent files (most-recent first).
-   * ↑/↓ move the selection, Enter opens the highlighted Concept THROUGH the
-   * navigation/history path (so back/forward keeps working), Escape closes.
+   * and toggles `open`). Typing fuzzy-matches bundle-relative Concept paths AND
+   * Bundle tags (mixed by score, tags flagged with a badge); with empty input it
+   * shows the per-Bundle recent files (most-recent first). ↑/↓ move the
+   * selection; Enter on a Concept opens it THROUGH the navigation/history path
+   * (so back/forward keeps working); Enter on a TAG drills in — the list is
+   * replaced by the Concepts carrying that tag (same render style), and Escape
+   * steps back out to the normal search before it closes the palette.
    */
-  import { fuzzyRank, type FuzzyMatch } from '$lib/fuzzy';
+  import { fuzzyRank } from '$lib/fuzzy';
   import { clampIndex, nextIndex, prevIndex } from '$lib/listNav';
-  import { splitPath } from '$lib/path';
-  import { isReservedFile } from '$lib/reserved';
+  import { splitPath, stripMd } from '$lib/path';
   import { focus } from '$lib/state/focus.svelte';
 
   interface Props {
@@ -19,34 +21,88 @@
     open: boolean;
     /** All bundle-relative Concept paths to match against. */
     paths: string[];
+    /** All Bundle tags to match against (surfaced alongside Concepts). */
+    tags: string[];
     /** Recent files (most-recent first), shown when the input is empty. */
     recent: string[];
+    /** Resolve the Concepts carrying `tag` (index query, for drill-down). */
+    conceptsForTag: (tag: string) => Promise<string[]>;
     /** Open the chosen Concept (routes through editor navigation/history). */
     onopen: (path: string) => void;
     /** Close the palette. */
     onclose: () => void;
+    /**
+     * Mirrors "the palette is in tag drill-down mode" out to the parent, so its
+     * global Escape peel DEFERS to us — one Escape steps out of the tag before
+     * the next closes the palette (escape-peel-restore-opener).
+     */
+    tagActive?: boolean;
   }
 
-  let { open, paths, recent, onopen, onclose }: Props = $props();
+  let {
+    open,
+    paths,
+    tags,
+    recent,
+    conceptsForTag,
+    onopen,
+    onclose,
+    tagActive = $bindable(false),
+  }: Props = $props();
 
   let query = $state('');
   let selected = $state(0);
   let input = $state<HTMLInputElement | null>(null);
   let list = $state<HTMLUListElement | null>(null);
 
-  // Results: ranked fuzzy matches while typing, else the recent-files list (kept
-  // only to existing Concept paths so a deleted file never lingers in the list).
-  type Result = { path: string; positions: number[] };
+  /**
+   * Tag drill-down: the tag whose Concepts the list is currently showing (null =
+   * normal search). `tagConcepts` holds the resolved Concept paths; `#tagToken`
+   * guards against a slow resolve landing after the user stepped back out or
+   * drilled a different tag.
+   */
+  let tagMode = $state<string | null>(null);
+  let tagConcepts = $state<string[]>([]);
+  let tagToken = 0;
+
+  // Mirror drill-down state to the parent for the Escape peel (see prop docs).
+  $effect(() => {
+    tagActive = tagMode !== null;
+  });
+
+  // Results. A tagged Concept is rendered exactly like a normal Concept row.
+  type Result = { kind: 'concept'; path: string } | { kind: 'tag'; tag: string };
   const results = $derived.by<Result[]>(() => {
     const q = query.trim();
+
+    // Drill-down: the Concepts carrying the active tag, fuzzy-filtered by query.
+    if (tagMode !== null) {
+      const filtered = q === '' ? tagConcepts : fuzzyRank(q, tagConcepts).map((m) => m.target);
+      return filtered.map((path): Result => ({ kind: 'concept', path }));
+    }
+
+    // Empty query: recent files (kept only to existing paths so a deleted file
+    // never lingers).
     if (q === '') {
       const known = new Set(paths);
-      return recent.filter((p) => known.has(p)).map((p) => ({ path: p, positions: [] }));
+      return recent.filter((p) => known.has(p)).map((path): Result => ({ kind: 'concept', path }));
     }
-    return fuzzyRank(q, paths).map((m: FuzzyMatch) => ({
-      path: m.target,
-      positions: m.positions,
-    }));
+
+    // Mix Concept and tag matches, best score first (ties: shorter target).
+    const scored = [
+      ...fuzzyRank(q, paths).map((m) => ({
+        r: { kind: 'concept', path: m.target } as Result,
+        score: m.score,
+        len: m.target.length,
+      })),
+      ...fuzzyRank(q, tags).map((m) => ({
+        r: { kind: 'tag', tag: m.target } as Result,
+        score: m.score,
+        len: m.target.length,
+      })),
+    ];
+    scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.len - b.len));
+    return scored.map((s) => s.r);
   });
 
   // The effective selection, clamped to the current result set without writing
@@ -78,6 +134,8 @@
       wasOpen = true;
       query = '';
       selected = 0;
+      tagMode = null;
+      tagConcepts = [];
       overlayId = focus.pushOverlay(onclose);
       queueMicrotask(() => input?.focus());
     } else if (!open) {
@@ -92,6 +150,41 @@
   function choose(path: string) {
     onopen(path);
     onclose();
+  }
+
+  /**
+   * Drill into a tag: replace the list with the Concepts carrying it (resolved
+   * via the backend index) and reset the query so the drill-down starts fresh.
+   * The token guards a slow resolve from landing after another drill / step-out.
+   */
+  function enterTag(tag: string) {
+    tagMode = tag;
+    query = '';
+    selected = 0;
+    tagConcepts = [];
+    const token = ++tagToken;
+    void conceptsForTag(tag).then((c) => {
+      if (token === tagToken) tagConcepts = c;
+    });
+    // A tag row reached by CLICK moves focus to the button (then removed from the
+    // DOM as the list swaps); pull focus back to the input so typing filters the
+    // drill-down and Escape reaches `onKeydown` to step back out.
+    queueMicrotask(() => input?.focus());
+  }
+
+  /** Step back out of tag drill-down to the normal search. */
+  function exitTag() {
+    tagMode = null;
+    tagConcepts = [];
+    tagToken++;
+    query = '';
+    selected = 0;
+  }
+
+  /** Activate a result: open a Concept, or drill into a tag. */
+  function activate(r: Result) {
+    if (r.kind === 'tag') enterTag(r.tag);
+    else choose(r.path);
   }
 
   /**
@@ -113,9 +206,16 @@
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const r = results[activeIndex];
-      if (r) choose(r.path);
+      if (r) activate(r);
+    } else if (e.key === 'Escape' && tagMode !== null) {
+      // In tag drill-down, Escape steps back to the normal search instead of
+      // closing the palette. The global peel DEFERS here (App folds `tagActive`
+      // into its `localPeelActive`), so this bubble-phase handler owns the press.
+      e.preventDefault();
+      e.stopPropagation();
+      exitTag();
     }
-    // Escape is handled by the global capture-phase peel (App.svelte →
+    // Otherwise Escape is handled by the global capture-phase peel (App.svelte →
     // focus.escape), which CANCELS this overlay and restores focus to the opener
     // Region. Handling it here too would double-fire and skip the opener-restore.
   }
@@ -132,7 +232,7 @@
       bind:value={query}
       class="qn-input"
       type="text"
-      placeholder="Jump to a Concept…"
+      placeholder={tagMode !== null ? `Filter #${tagMode}…` : 'Jump to a Concept or #tag…'}
       aria-label="Quick navigation"
       data-testid="quick-nav-input"
       autocomplete="off"
@@ -140,27 +240,45 @@
       onkeydown={onKeydown}
     />
 
-    {#if query.trim() === ''}
+    {#if tagMode !== null}
+      <p class="qn-hint" data-testid="quick-nav-tag-hint">
+        <span class="qn-badge">#{tagMode}</span> Concepts — Esc to go back
+      </p>
+    {:else if query.trim() === ''}
       <p class="qn-hint" data-testid="quick-nav-hint">Recent files</p>
     {/if}
 
     <ul bind:this={list} class="qn-results" role="listbox" data-testid="quick-nav-results">
-      {#each results as r, i (r.path)}
-        {@const sp = splitPath(r.path)}
+      {#each results as r, i (r.kind === 'tag' ? `tag:${r.tag}` : `concept:${r.path}`)}
         <li role="option" aria-selected={i === activeIndex}>
-          <button
-            type="button"
-            class="qn-item"
-            class:selected={i === activeIndex}
-            data-path={r.path}
-            data-testid="quick-nav-item"
-            onmousemove={() => (selected = i)}
-            onclick={() => choose(r.path)}
-          >
-            <span class="qn-base">{sp.base}</span>
-            {#if sp.dir}<span class="qn-dir">{sp.dir}</span>{/if}
-            {#if isReservedFile(r.path)}<span class="qn-badge">reserved</span>{/if}
-          </button>
+          {#if r.kind === 'tag'}
+            <button
+              type="button"
+              class="qn-item"
+              class:selected={i === activeIndex}
+              data-tag={r.tag}
+              data-testid="quick-nav-tag"
+              onmousemove={() => (selected = i)}
+              onclick={() => enterTag(r.tag)}
+            >
+              <span class="qn-base">#{r.tag}</span>
+              <span class="qn-badge">tag</span>
+            </button>
+          {:else}
+            {@const sp = splitPath(r.path)}
+            <button
+              type="button"
+              class="qn-item"
+              class:selected={i === activeIndex}
+              data-path={r.path}
+              data-testid="quick-nav-item"
+              onmousemove={() => (selected = i)}
+              onclick={() => choose(r.path)}
+            >
+              <span class="qn-base">{stripMd(sp.base)}</span>
+              {#if sp.dir}<span class="qn-dir">{sp.dir}</span>{/if}
+            </button>
+          {/if}
         </li>
       {:else}
         <li class="qn-empty" data-testid="quick-nav-empty">No matches</li>

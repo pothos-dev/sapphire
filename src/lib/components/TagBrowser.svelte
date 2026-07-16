@@ -26,7 +26,7 @@
   // There are deliberately NO CRUD verbs here — tags derive from frontmatter.
 
   import { backend } from '$lib/ipc';
-  import { basename, stripMd } from '$lib/path';
+  import { stripMd } from '$lib/path';
   import type { TagCount } from '$lib/types';
   import { focus } from '$lib/state/focus.svelte';
   import { tagsNav } from '$lib/state/tagsNav.svelte';
@@ -167,10 +167,11 @@
     if (row && document.activeElement !== row) row.focus();
   });
 
-  /** Leaf name of a bundle-relative path, sans `.md` — the same compact label
-   *  the Explorer tree shows for its Concept leaves (the full path is on hover). */
+  /** A Concept leaf's label: the FULL bundle-relative path, sans `.md` — mirrors
+   *  the Backlinks panel so same-named Concepts in different folders are
+   *  disambiguated by their path (e.g. `concepts/editor/live-preview`). */
   function label(p: string): string {
-    return stripMd(basename(p));
+    return stripMd(p);
   }
 </script>
 

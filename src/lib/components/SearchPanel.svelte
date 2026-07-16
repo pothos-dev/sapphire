@@ -15,7 +15,7 @@
   import { backend } from '$lib/ipc';
   import { highlightParts } from '$lib/highlight';
   import { clampIndex, nextIndex, prevIndex } from '$lib/listNav';
-  import { splitPath } from '$lib/path';
+  import { splitPath, stripMd } from '$lib/path';
   import { focus } from '$lib/state/focus.svelte';
   import type { SearchHit } from '$lib/types';
 
@@ -186,7 +186,7 @@
             onclick={() => choose(r)}
           >
             <span class="fts-loc">
-              <span class="fts-base">{sp.base}</span>
+              <span class="fts-base">{stripMd(sp.base)}</span>
               {#if sp.dir}<span class="fts-dir">{sp.dir}</span>{/if}
               <span class="fts-line">:{r.line}</span>
             </span>
