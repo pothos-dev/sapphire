@@ -7,7 +7,7 @@
    * `backend.search` (the HTTP seam → proxied `/api/search` → core ripgrep
    * search). Results list the Concept path, line number and matching line, with
    * the matched substring highlighted. Selecting a hit opens that Concept in the
-   * viewer (via the same `?path=` routing links use).
+   * viewer (via the same path-URL routing links use).
    *
    * This REUSES the shared, read-only parts of the desktop `SearchPanel`: the
    * pure `highlightParts` / `listNav` / `splitPath` helpers, the `backend.search`
@@ -24,7 +24,7 @@
   interface Props {
     /** Whether the panel is open. */
     open: boolean;
-    /** Open the chosen Concept (routes through the viewer's `?path=` nav). */
+    /** Open the chosen Concept (routes through the viewer's path-URL nav). */
     onopen: (path: string, line: number) => void;
     /** Close the panel. */
     onclose: () => void;

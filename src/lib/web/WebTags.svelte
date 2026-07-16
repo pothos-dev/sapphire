@@ -25,7 +25,7 @@
     version: number;
     /** path of the currently-open Concept, for highlighting. */
     selected: string | null;
-    /** Open a Concept (routes through the viewer's `?path=` nav). */
+    /** Open a Concept (routes through the viewer's path-URL nav). */
     onopen: (path: string) => void;
   }
 

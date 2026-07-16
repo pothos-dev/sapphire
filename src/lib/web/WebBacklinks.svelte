@@ -19,7 +19,7 @@
     path: string | null;
     /** Bumped on live-reload change events; re-query when it changes. */
     version: number;
-    /** Open a source Concept (routes through the viewer's `?path=` nav). */
+    /** Open a source Concept (routes through the viewer's path-URL nav). */
     onopen: (path: string) => void;
   }
 

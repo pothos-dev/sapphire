@@ -15,6 +15,7 @@
   import WebBacklinks from './WebBacklinks.svelte';
   import { hydrateMermaid } from './webMermaid';
   import { loadUiState, saveUiState, type WebUiState } from './uiState';
+  import { conceptToUrl, conceptTitle } from './conceptUrl';
 
   interface Props {
     /** SSR'd data from `+page.ts`'s `load` (talks to the Rust server). */
@@ -35,11 +36,16 @@
   // Backlinks) reusing the desktop `SidebarSection`, and the rendered Concept in
   // the centre. No write path / editor / CodeMirror. UI state persists (uiState).
 
+  // A Concept is addressed by its path in the URL (`/research/providers/mistral-ai`),
+  // not a `?path=` query — `conceptToUrl` drops `.md` and a trailing `/index`.
   function open(path: string) {
-    void goto(`?path=${encodeURIComponent(path)}`, { keepFocus: true });
+    void goto(conceptToUrl(path), { keepFocus: true });
   }
 
-  // Back / forward: navigation is URL-driven (`goto(?path=)` pushes history), so
+  // The document title is the open Concept's name (frontmatter title / H1 / path).
+  const pageTitle = $derived(conceptTitle(data.selected, data.rendered));
+
+  // Back / forward: navigation is URL-driven (`goto` pushes history), so
   // drive the browser history — SvelteKit's router handles popstate + re-runs load.
   function goBack() {
     if (typeof history !== 'undefined') history.back();
@@ -196,6 +202,10 @@
     };
   });
 </script>
+
+<svelte:head>
+  <title>{pageTitle}</title>
+</svelte:head>
 
 <div class="app" data-testid="web-viewer" bind:this={appRoot}>
   <div class="app-body" style="grid-template-columns: {leftCols} minmax(0, 1fr) {rightCols}">

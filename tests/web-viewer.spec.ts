@@ -32,7 +32,7 @@ test('web viewer renders a Concept read-only with resolved + broken links', asyn
   // Open the root index Concept via its header affordance (index.md is a
   // reserved file, not an ordinary tree row — mirrors desktop).
   await page.locator('[data-reserved-path="index.md"]').click();
-  await expect(page).toHaveURL(/\?path=index\.md/);
+  await expect(page).toHaveURL(/\/$/);
 
   // RENDERED output (not raw markdown): real heading + paragraph elements.
   const rendered = page.getByTestId('rendered');
@@ -52,7 +52,7 @@ test('web viewer renders a Concept read-only with resolved + broken links', asyn
   await page.screenshot({ path: 'tests/screenshots/web-viewer.png', fullPage: true });
 
   await good.click();
-  await expect(page).toHaveURL(/\?path=good\.md/);
+  await expect(page).toHaveURL(/\/good$/);
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Good Concept');
 
   // No write affordances anywhere in the read-only web build.
@@ -75,7 +75,7 @@ test('live reload: external filesystem changes update the viewer via SSE', async
   const liveRow = page.getByTestId('tree-concept').filter({ hasText: 'live-note' });
   const heading = page.getByTestId('rendered').locator('h1');
 
-  await page.goto('/?path=index.md');
+  await page.goto('/');
   await expect(heading).toContainText('Web Bundle Home');
   await expect(liveRow).toHaveCount(0);
 
@@ -92,7 +92,7 @@ test('live reload: external filesystem changes update the viewer via SSE', async
 
     // Open it; it renders.
     await liveRow.click();
-    await expect(page).toHaveURL(/\?path=live-note\.md/);
+    await expect(page).toHaveURL(/\/live-note$/);
     await expect(heading).toContainText('Live One');
 
     // MODIFY the OPEN Concept on disk → SSE → re-render without manual refresh.
@@ -140,7 +140,14 @@ test('full-text search: Ctrl+Shift+F lists hits and opens a Concept', async ({ p
   // Selecting a hit opens that Concept in the viewer (and closes the modal).
   const hitPath = await firstHit.getAttribute('data-path');
   await firstHit.click();
-  await expect(page).toHaveURL(new RegExp(`\\?path=${(hitPath ?? '').replace(/\./g, '\\.')}`));
+  // The viewer routes to the Concept's pretty URL (`.md`/`/index` dropped).
+  const pretty = (p: string): string => {
+    let s = p.replace(/\.md$/i, '');
+    if (s === 'index') return '/';
+    s = s.replace(/\/index$/, '');
+    return '/' + s.split('/').map(encodeURIComponent).join('/');
+  };
+  await expect.poll(() => new URL(page.url()).pathname).toBe(pretty(hitPath ?? ''));
   await expect(page.getByTestId('search-panel')).toHaveCount(0);
   await expect(page.getByTestId('rendered')).toBeVisible();
 });
@@ -151,7 +158,7 @@ test('full-text search: Ctrl+Shift+F lists hits and opens a Concept', async ({ p
  */
 test('index-backed sidebars: backlinks, tags, and outline', async ({ page }) => {
   // Open a Concept that is linked-to (index.md links to good.md) and has headings.
-  await page.goto('/?path=good.md');
+  await page.goto('/good');
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Good Concept');
 
   // Outline lists the open Concept's headings; the rendered headings carry the
@@ -182,7 +189,7 @@ test('index-backed sidebars: backlinks, tags, and outline', async ({ page }) => 
 
   // Selecting a backlink navigates within the viewer.
   await backlink.click();
-  await expect(page).toHaveURL(/\?path=index\.md/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Web Bundle Home');
 });
 
@@ -207,7 +214,7 @@ test('tags section is hidden when the bundle has no tags', async ({ page }) => {
  * Saves tests/screenshots/web-mermaid.png.
  */
 test('mermaid diagrams hydrate, and a malformed one degrades gracefully', async ({ page }) => {
-  await page.goto('/?path=diagram.md');
+  await page.goto('/diagram');
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Diagram Concept');
 
   // The valid diagram hydrates into an SVG inside a mermaid container.
@@ -268,7 +275,7 @@ test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sid
 
   // Clicking the folder NAME opens its implicit index.md (mirrors desktop).
   await guideDir.locator('.name-toggle').click();
-  await expect(page).toHaveURL(/\?path=guide%2Findex\.md/);
+  await expect(page).toHaveURL(/\/guide$/);
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Guide');
 
   await page.screenshot({ path: 'tests/screenshots/web-parity-shell-dark.png', fullPage: true });
@@ -288,7 +295,7 @@ test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sid
  */
 test('polish: toolbar collapse/nav, Properties collapse, and persistence', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto('/?path=good.md');
+  await page.goto('/good');
   await expect(page.getByTestId('web-viewer')).toHaveAttribute('data-theme', 'dark');
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Good Concept');
 
@@ -319,14 +326,14 @@ test('polish: toolbar collapse/nav, Properties collapse, and persistence', async
 
   // Back / forward: navigate to a sibling Concept, then step back + forward.
   await page.locator('[data-testid="tree-concept"][data-path="diagram.md"]').click();
-  await expect(page).toHaveURL(/\?path=diagram\.md/);
+  await expect(page).toHaveURL(/\/diagram$/);
   await page.getByTestId('nav-back').click();
-  await expect(page).toHaveURL(/\?path=good\.md/);
+  await expect(page).toHaveURL(/\/good$/);
   await page.getByTestId('nav-forward').click();
-  await expect(page).toHaveURL(/\?path=diagram\.md/);
+  await expect(page).toHaveURL(/\/diagram$/);
 
   // --- Persistence across reload ---
-  await page.goto('/?path=good.md');
+  await page.goto('/good');
   // Collapse the guide folder, the Tags Section, and Properties.
   const guideDir = page.getByTestId('tree-dir').filter({ hasText: 'guide' });
   await guideDir.getByRole('button', { name: 'guide' }).click();

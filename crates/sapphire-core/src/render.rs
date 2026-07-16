@@ -249,17 +249,17 @@ fn rewrite_marker_hrefs(html: &str) -> String {
             "sapint" => {
                 let path = percent_decode(payload);
                 format!(
-                    r#"class="internal-link" data-path="{}" href="?path={}""#,
+                    r#"class="internal-link" data-path="{}" href="{}""#,
                     attr_escape(&path),
-                    query_encode(&path),
+                    concept_url(&path),
                 )
             }
             "sapbroken" => {
                 let path = percent_decode(payload);
                 format!(
-                    r#"class="internal-link broken" data-path="{}" data-broken="true" href="?path={}""#,
+                    r#"class="internal-link broken" data-path="{}" data-broken="true" href="{}""#,
                     attr_escape(&path),
-                    query_encode(&path),
+                    concept_url(&path),
                 )
             }
             // External: keep comrak's already-encoded href, just drop the marker
@@ -395,6 +395,25 @@ fn query_encode(s: &str) -> String {
     out
 }
 
+/// A Concept's bundle path → its pretty viewer URL pathname, mirroring the
+/// frontend `conceptToUrl`: drop a trailing `.md` and a trailing `/index`, map
+/// the root `index.md` to `/`, and percent-encode each path segment. So
+/// `providers/index.md` → `/providers` and `research/providers/x.md` →
+/// `/research/providers/x`.
+fn concept_url(path: &str) -> String {
+    let p = if path.len() >= 3 && path[path.len() - 3..].eq_ignore_ascii_case(".md") {
+        &path[..path.len() - 3]
+    } else {
+        path
+    };
+    if p == "index" {
+        return "/".to_string();
+    }
+    let p = p.strip_suffix("/index").unwrap_or(p);
+    let encoded: Vec<String> = p.split('/').map(query_encode).collect();
+    format!("/{}", encoded.join("/"))
+}
+
 /// Decode `%XX` percent-escapes (comrak percent-encodes hrefs, e.g. space →
 /// `%20`). Invalid escapes are passed through verbatim.
 fn percent_decode(s: &str) -> String {
@@ -440,11 +459,23 @@ mod tests {
     }
 
     #[test]
+    fn concept_url_drops_md_and_index() {
+        assert_eq!(concept_url("index.md"), "/");
+        assert_eq!(concept_url("good.md"), "/good");
+        assert_eq!(concept_url("providers/index.md"), "/providers");
+        assert_eq!(
+            concept_url("research/providers/mistral-ai.md"),
+            "/research/providers/mistral-ai"
+        );
+        assert_eq!(concept_url("a b/c d.md"), "/a%20b/c%20d");
+    }
+
+    #[test]
     fn resolved_markdown_link_becomes_internal_nav() {
         let p = render("[go](/good.md)", "a.md", &["a.md", "good.md"]);
         assert!(p.html.contains(r#"class="internal-link""#));
         assert!(p.html.contains(r#"data-path="good.md""#));
-        assert!(p.html.contains(r#"href="?path=good.md""#));
+        assert!(p.html.contains(r#"href="/good""#));
         assert!(!p.html.contains("broken"));
     }
 
