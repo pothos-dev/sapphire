@@ -1,26 +1,27 @@
 <script lang="ts">
   /**
-   * Tags Section for the web viewer (slice: web-index-backed-sidebars).
+   * Tags Section content for the web viewer.
    *
-   * Lists all bundle tags with per-tag counts (`backend.allTags`); expanding a
-   * tag reveals the Concepts carrying it (`backend.conceptsByTag`, an index
-   * query — no scan). Selecting a Concept navigates within the viewer. The whole
-   * Section (header included) is HIDDEN when the Bundle carries no tags, as on
-   * desktop.
+   * Lists bundle tags with per-tag counts; expanding a tag reveals the Concepts
+   * carrying it (`backend.conceptsByTag`, an index query — no scan). Selecting a
+   * Concept navigates within the viewer. The tag LIST is supplied by the viewer
+   * (which owns the `allTags` fetch so it can hide the whole Section — header
+   * included — when the Bundle has no tags, as on desktop); this component only
+   * renders the list + lazily loads each expanded tag's Concepts.
    *
-   * REUSES the shared read-only parts of the desktop `TagBrowser`: the same
-   * allTags/conceptsByTag fetch + prune-on-`version` logic, the `basename`/
-   * `stripMd` helpers, and the markup / test-ids / styles. It drops the desktop
-   * `tagsNav`/`focus` keyboard-nav Region infra (editor-only), using plain
-   * clicks + a local expanded Set. Re-queries when `version` bumps (bumped by
-   * the viewer on each live-reload change event).
+   * REUSES the read-only parts of the desktop `TagBrowser`: the conceptsByTag
+   * expand + prune-on-`tags` logic, the `basename`/`stripMd` helpers, and the
+   * markup / test-ids / styles. It drops the desktop `tagsNav`/`focus` keyboard
+   * Region infra (editor-only), using plain clicks + a local expanded Set.
    */
   import { backend } from '$lib/ipc';
   import { basename, stripMd } from '$lib/path';
   import type { TagCount } from '$lib/types';
 
   interface Props {
-    /** Bumped on live-reload change events; re-query when it changes. */
+    /** The bundle's tags + counts (owned by the viewer's allTags fetch). */
+    tags: TagCount[];
+    /** Bumped on live-reload change events; re-query expanded tags when it changes. */
     version: number;
     /** path of the currently-open Concept, for highlighting. */
     selected: string | null;
@@ -28,31 +29,21 @@
     onopen: (path: string) => void;
   }
 
-  let { version, selected, onopen }: Props = $props();
+  let { tags, version, selected, onopen }: Props = $props();
 
-  let tags = $state<TagCount[]>([]);
   let expanded = $state(new Set<string>());
   let conceptCache = $state(new Map<string, string[]>());
 
-  // Load all tags whenever the version changes; prune expanded/cache entries
-  // whose tag no longer exists (e.g. its last Concept was untagged on disk).
+  // Prune expanded/cache entries whose tag no longer exists (e.g. its last
+  // Concept was untagged on disk), keyed on the `tags` prop.
   $effect(() => {
-    void version;
-    let cancelled = false;
-    void backend.allTags().then((result) => {
-      if (cancelled) return;
-      tags = result;
-      const live = new Set(result.map((t) => t.tag));
-      const nextExpanded = new Set<string>();
-      for (const t of expanded) if (live.has(t)) nextExpanded.add(t);
-      if (nextExpanded.size !== expanded.size) expanded = nextExpanded;
-      const nextCache = new Map<string, string[]>();
-      for (const [t, c] of conceptCache) if (live.has(t)) nextCache.set(t, c);
-      if (nextCache.size !== conceptCache.size) conceptCache = nextCache;
-    });
-    return () => {
-      cancelled = true;
-    };
+    const live = new Set(tags.map((t) => t.tag));
+    const nextExpanded = new Set<string>();
+    for (const t of expanded) if (live.has(t)) nextExpanded.add(t);
+    if (nextExpanded.size !== expanded.size) expanded = nextExpanded;
+    const nextCache = new Map<string, string[]>();
+    for (const [t, c] of conceptCache) if (live.has(t)) nextCache.set(t, c);
+    if (nextCache.size !== conceptCache.size) conceptCache = nextCache;
   });
 
   // Re-query the Concept list for every expanded tag (also on version changes so
@@ -91,10 +82,7 @@
   }
 </script>
 
-<!-- Hidden entirely when the Bundle has no tags (as on desktop). -->
-{#if tags.length > 0}
-  <section class="tag-browser" aria-label="Tags" data-testid="tag-browser">
-    <h2 class="section-title">Tags</h2>
+<section class="tag-browser" aria-label="Tags" data-testid="tag-browser">
     <ul class="tag-list" role="tree">
       {#each tags as { tag, count } (tag)}
         {@const open = expanded.has(tag)}
@@ -150,23 +138,13 @@
         </li>
       {/each}
     </ul>
-  </section>
-{/if}
+</section>
 
 <style>
   .tag-browser {
-    padding: 0.6rem 0.75rem;
+    padding: 0.4rem 0.35rem;
     font-size: 0.85rem;
     font-family: var(--font-ui, system-ui, sans-serif);
-    border-top: 1px solid var(--border, #e2e2e2);
-  }
-
-  .section-title {
-    margin: 0 0 0.4rem;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted, #777);
   }
 
   .tag-list,

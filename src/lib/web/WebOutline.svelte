@@ -25,7 +25,6 @@
 </script>
 
 <section class="outline" aria-label="Outline" data-testid="outline">
-  <h2 class="section-title">Outline</h2>
   {#if outline.length === 0}
     <p class="empty" data-testid="outline-empty">No headings</p>
   {:else}
@@ -52,16 +51,8 @@
 
 <style>
   .outline {
-    padding: 0.6rem 0.75rem;
+    padding: 0.4rem 0.35rem;
     font-size: 0.85rem;
-  }
-
-  .section-title {
-    margin: 0 0 0.4rem;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted, #777);
   }
 
   .empty {

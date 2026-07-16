@@ -29,8 +29,9 @@ test('web viewer renders a Concept read-only with resolved + broken links', asyn
   await expect(page.getByTestId('bundle-root')).toBeVisible();
   expect(await page.getByTestId('tree-concept').count()).toBeGreaterThan(0);
 
-  // Open the index Concept (drives ?path=, re-runs load, server-renders).
-  await page.getByTestId('tree-concept').filter({ hasText: 'index' }).first().click();
+  // Open the root index Concept via its header affordance (index.md is a
+  // reserved file, not an ordinary tree row — mirrors desktop).
+  await page.locator('[data-reserved-path="index.md"]').click();
   await expect(page).toHaveURL(/\?path=index\.md/);
 
   // RENDERED output (not raw markdown): real heading + paragraph elements.
@@ -222,4 +223,59 @@ test('mermaid diagrams hydrate, and a malformed one degrades gracefully', async 
   await expect(page.getByTestId('web-tree')).toBeVisible();
 
   await page.screenshot({ path: 'tests/screenshots/web-mermaid.png', fullPage: true });
+});
+
+/**
+ * Desktop parity pass (follow-up): dark-by-default theme + toggle, an icon-less
+ * collapsible Explorer with implicit index, and collapsible Accordion Sidebars.
+ * Saves a DARK-mode screenshot to tests/screenshots/web-parity-dark.png.
+ */
+test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sidebars', async ({
+  page,
+}) => {
+  // Dark by default: with a dark OS scheme and no stored choice, the app root
+  // gets data-theme="dark" (CSS tokens follow the OS, not a light fallback).
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  const root = page.getByTestId('web-viewer');
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+
+  // The header toggle flips the theme (and back).
+  await page.getByTestId('theme-toggle').click();
+  await expect(root).toHaveAttribute('data-theme', 'light');
+  await page.getByTestId('theme-toggle').click();
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+
+  // index.md is NOT an ordinary tree row (reserved, hidden) — at the root and
+  // inside the guide folder.
+  await expect(page.locator('[data-testid="tree-concept"][data-path="index.md"]')).toHaveCount(0);
+  await expect(
+    page.locator('[data-testid="tree-concept"][data-path="guide/index.md"]'),
+  ).toHaveCount(0);
+
+  // The guide folder is a collapsible row; it opens by default (depth < 2) so
+  // its ordinary child (topic.md) is visible.
+  const guideDir = page.getByTestId('tree-dir').filter({ hasText: 'guide' });
+  const topic = page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]');
+  await expect(topic).toBeVisible();
+
+  // Clicking the twisty collapses (children removed) then expands the folder.
+  const twisty = guideDir.getByRole('button', { name: 'guide' });
+  await twisty.click();
+  await expect(topic).toHaveCount(0);
+  await twisty.click();
+  await expect(topic).toBeVisible();
+
+  // Clicking the folder NAME opens its implicit index.md (mirrors desktop).
+  await guideDir.locator('.name-toggle').click();
+  await expect(page).toHaveURL(/\?path=guide%2Findex\.md/);
+  await expect(page.getByTestId('rendered').locator('h1')).toContainText('Guide');
+
+  await page.screenshot({ path: 'tests/screenshots/web-parity-dark.png', fullPage: true });
+
+  // The sidebar Sections collapse (accordion): collapsing Explorer removes the
+  // tree body.
+  await expect(page.getByTestId('web-tree')).toBeVisible();
+  await page.getByTestId('explorer-section-header').click();
+  await expect(page.getByTestId('web-tree')).toHaveCount(0);
 });

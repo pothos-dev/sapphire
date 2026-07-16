@@ -1,57 +1,99 @@
 <script lang="ts">
   import type { TreeNode } from '$lib/types';
   import { stripMd } from '$lib/path';
+  import { isReservedFile, reservedKind } from '$lib/reserved';
+  import { ordinaryChildren as ordinaryChildrenOf } from '$lib/treeNav';
   import Self from './WebTree.svelte';
 
   interface Props {
     node: TreeNode;
     /** path of the currently-open Concept (for the "open" marker) */
     selected: string | null;
-    /** called when a `.md` Concept is clicked */
+    /** called when a `.md` Concept is opened */
     onopen: (path: string) => void;
+    /** whether a folder path is expanded (owned by the viewer) */
+    isExpanded: (path: string) => boolean;
+    /** toggle a folder's expansion */
+    setExpanded: (path: string, open: boolean) => void;
     /** indentation depth (root's children start at 0) */
     depth?: number;
   }
 
-  let { node, selected, onopen, depth = 0 }: Props = $props();
+  let { node, selected, onopen, isExpanded, setExpanded, depth = 0 }: Props = $props();
 
-  // A deliberately minimal, READ-ONLY Explorer tree for the web skeleton: no
-  // create/rename/delete/move affordances, no drag-and-drop, no keyboard nav —
-  // just folders and Concepts. Everything renders server-side (SSR) so the tree
-  // is present in the initial HTML, then hydrates for click-to-open. Folders are
-  // shown always-expanded so the whole Bundle is visible without client state.
+  // A READ-ONLY Explorer tree mirroring the desktop `Tree.svelte`: a disclosure
+  // twisty in a fixed caret column (files get an equal-width spacer so labels
+  // align), collapsible folders, and reserved files (`index.md`/`log.md`) hidden
+  // as ordinary rows — a folder with an `index.md` opens it on a name-click.
+  // Deliberately NO dnd / crud / context-menu / focus-Region coupling.
+  const expanded = $derived(node.isDir && isExpanded(node.path));
+  const indent = $derived(depth * 16);
   const isMarkdown = $derived(!node.isDir && node.name.toLowerCase().endsWith('.md'));
   const displayName = $derived(node.isDir ? node.name : stripMd(node.name));
-  const indent = $derived(depth * 14);
-  // Only Concepts (`.md`) and folders show; other file types are ignored.
-  const children = $derived(
-    node.isDir ? (node.children ?? []).filter((c) => c.isDir || c.name.toLowerCase().endsWith('.md')) : [],
+  const children = $derived(ordinaryChildrenOf(node));
+
+  // This folder's `index.md`, if any. Clicking the folder name opens it (first
+  // click); once it's the open Concept, a further name-click toggles instead.
+  const indexPath = $derived(
+    node.isDir
+      ? ((node.children ?? []).find(
+          (c) => !c.isDir && isReservedFile(c.path) && reservedKind(c.path) === 'index',
+        )?.path ?? null)
+      : null,
   );
+
+  function toggle() {
+    setExpanded(node.path, !expanded);
+  }
+
+  // Folder name-click mirrors desktop `onNameClick`: open the index page when
+  // there is one and it isn't already open; otherwise toggle expansion.
+  function onNameClick() {
+    if (indexPath !== null && selected !== indexPath) onopen(indexPath);
+    else toggle();
+  }
 </script>
 
 {#if node.isDir}
   <div class="row dir" style="padding-left: {indent}px" data-testid="tree-dir" data-path={node.path}>
-    <span class="glyph" aria-hidden="true">📁</span>
-    <span class="name">{displayName}</span>
+    <!-- Fixed-width caret column: the twisty (accessible control, carries
+         aria-expanded + the folder name) toggles expansion; the name button
+         opens the index page. -->
+    <button
+      type="button"
+      class="caret-col twisty-toggle"
+      aria-expanded={expanded}
+      aria-label={displayName}
+      onclick={toggle}
+    >
+      <span class="twisty" class:open={expanded}>▸</span>
+    </button>
+    <button type="button" class="entry name-toggle" aria-hidden="true" tabindex="-1" onclick={onNameClick}>
+      <span class="name">{displayName}</span>
+    </button>
   </div>
-  <ul class="children">
-    {#each children as child (child.path)}
-      <li><Self node={child} {selected} {onopen} depth={depth + 1} /></li>
-    {/each}
-  </ul>
+  {#if expanded}
+    <ul class="children">
+      {#each children as child (child.path)}
+        <li><Self node={child} {selected} {onopen} {isExpanded} {setExpanded} depth={depth + 1} /></li>
+      {/each}
+    </ul>
+  {/if}
 {:else if isMarkdown}
-  <button
-    type="button"
-    class="row file"
-    class:selected={selected === node.path}
-    style="padding-left: {indent}px"
-    data-testid="tree-concept"
-    data-path={node.path}
-    onclick={() => onopen(node.path)}
-  >
-    <span class="glyph" aria-hidden="true">📄</span>
-    <span class="name">{displayName}</span>
-  </button>
+  <div class="row file" style="padding-left: {indent}px">
+    <!-- Empty caret column keeps file labels aligned with folder labels. -->
+    <span class="caret-col spacer" aria-hidden="true"></span>
+    <button
+      type="button"
+      class="entry file-entry"
+      class:selected={selected === node.path}
+      data-testid="tree-concept"
+      data-path={node.path}
+      onclick={() => onopen(node.path)}
+    >
+      <span class="name">{displayName}</span>
+    </button>
+  </div>
 {/if}
 
 <style>
@@ -64,44 +106,89 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    width: 100%;
-    padding-block: 0.15rem;
-    padding-right: 0.4rem;
-    border-radius: var(--radius-sm, 4px);
-    font: inherit;
-    color: inherit;
-    text-align: left;
+    border-radius: var(--radius-sm);
   }
 
-  .row.file {
+  .row.dir:hover {
+    background: var(--hover);
+  }
+
+  /* Fixed-width disclosure column: folders fill it with the twisty; files get an
+     equal-width spacer so labels line up across rows at the same depth. */
+  .caret-col {
+    flex: 0 0 auto;
+    width: 1.25rem;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .twisty-toggle {
     border: none;
     background: none;
+    color: inherit;
+    font: inherit;
+    padding: 0;
     cursor: pointer;
+    border-radius: var(--radius-sm);
   }
 
-  .row.file:hover {
-    background: var(--hover, rgba(127, 127, 127, 0.15));
-  }
-
-  .row.file.selected {
-    background: var(--accent-soft, rgba(80, 120, 255, 0.2));
-    color: var(--tag-text, inherit);
-  }
-
-  .row.dir .name {
-    font-weight: 600;
-  }
-
-  .glyph {
-    flex: 0 0 auto;
-    font-size: 0.8rem;
+  .twisty {
+    display: block;
+    font-size: 0.7rem;
     line-height: 1;
+    transition: transform 0.1s ease;
+    color: var(--text-muted);
+  }
+
+  .twisty.open {
+    transform: rotate(90deg);
+  }
+
+  .entry {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.15rem 0.4rem;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background 0.12s ease;
+  }
+
+  .entry:hover:not(:disabled) {
+    background: var(--hover);
+  }
+
+  /* The folder name-toggle is transparent; the row owns the hover highlight. */
+  .name-toggle:hover {
+    background: none;
+  }
+
+  .entry:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: -1px;
+  }
+
+  .file-entry.selected {
+    background: var(--accent-soft);
+    color: var(--tag-text);
   }
 
   .name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .dir .name {
+    font-weight: 600;
   }
 </style>
