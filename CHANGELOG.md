@@ -4,6 +4,30 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-07-16
+
+### Added
+
+- **Sapphire Web** — a server-rendered, read-only web viewer for a Bundle,
+  shipped as a Docker image. A Rust HTTP server (`sapphire-server`) runs over the
+  same core as the desktop app behind a SvelteKit SSR frontend, so a Bundle can be
+  browsed in any browser:
+  - Server-side Concept rendering with resolved markdown + wikilinks, broken-link
+    styling, frontmatter, and outline.
+  - Explorer tree, Backlinks, Tags, and Outline sidebars plus bundle-wide
+    full-text Search — matching the desktop chrome (dark/light theme, collapsible
+    sections, persisted UI state).
+  - Live reload: external edits to the Bundle stream to every connected viewer
+    over SSE.
+  - Mermaid diagrams rendered client-side.
+  - Multi-arch image published to Docker Hub on release; deploy docs cover
+    folder-mount and git-backed sidecar sync (read-only, internal-network only).
+- Editor remembers the source/live/read view mode across restarts.
+
+### Fixed
+
+- Toggling to read mode no longer leaves an editing affordance on Mermaid diagrams.
+
 ## [0.14.0] - 2026-07-13
 
 ### Added
