@@ -4,6 +4,13 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.2] - 2026-07-16
+
+### Fixed
+
+- Sapphire Web: the browser tab title now shows the open Concept's name — a
+  stray static `<title>` in the page template was overriding it.
+
 ## [0.15.1] - 2026-07-16
 
 ### Changed
