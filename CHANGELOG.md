@@ -4,6 +4,17 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-07-16
+
+### Changed
+
+- Sapphire Web now addresses a Concept by its path in the URL
+  (`/research/providers/mistral-ai`) instead of a `?path=` query, dropping the
+  `.md` extension and a trailing `/index` (the Bundle root is `/`). In-Bundle
+  links use these paths too.
+- The browser tab title is now the open Concept's name — its frontmatter
+  `title`, else its first heading, else its file name.
+
 ## [0.15.0] - 2026-07-16
 
 ### Added
