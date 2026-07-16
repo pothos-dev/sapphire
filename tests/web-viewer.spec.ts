@@ -26,7 +26,7 @@ test('web viewer renders a Concept read-only with resolved + broken links', asyn
 
   // The web viewer shell (not the desktop <App/>) with a server-rendered tree.
   await expect(page.getByTestId('web-viewer')).toBeVisible();
-  await expect(page.getByTestId('bundle-root')).toBeVisible();
+  await expect(page.getByTestId('web-tree')).toBeVisible();
   expect(await page.getByTestId('tree-concept').count()).toBeGreaterThan(0);
 
   // Open the root index Concept via its header affordance (index.md is a
@@ -228,7 +228,7 @@ test('mermaid diagrams hydrate, and a malformed one degrades gracefully', async 
 /**
  * Desktop parity pass (follow-up): dark-by-default theme + toggle, an icon-less
  * collapsible Explorer with implicit index, and collapsible Accordion Sidebars.
- * Saves a DARK-mode screenshot to tests/screenshots/web-parity-dark.png.
+ * Saves a DARK-mode screenshot to tests/screenshots/web-parity-shell-dark.png.
  */
 test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sidebars', async ({
   page,
@@ -271,11 +271,85 @@ test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sid
   await expect(page).toHaveURL(/\?path=guide%2Findex\.md/);
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Guide');
 
-  await page.screenshot({ path: 'tests/screenshots/web-parity-dark.png', fullPage: true });
+  await page.screenshot({ path: 'tests/screenshots/web-parity-shell-dark.png', fullPage: true });
 
   // The sidebar Sections collapse (accordion): collapsing Explorer removes the
   // tree body.
   await expect(page.getByTestId('web-tree')).toBeVisible();
   await page.getByTestId('explorer-section-header').click();
   await expect(page.getByTestId('web-tree')).toHaveCount(0);
+});
+
+/**
+ * Round-2 polish: the center-pane toolbar (collapse-left / back / forward /
+ * theme / collapse-right), collapsible Properties, and localStorage persistence
+ * of UI state across reloads. Saves the DARK-mode parity shot to
+ * tests/screenshots/web-parity-dark.png.
+ */
+test('polish: toolbar collapse/nav, Properties collapse, and persistence', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/?path=good.md');
+  await expect(page.getByTestId('web-viewer')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByTestId('rendered').locator('h1')).toContainText('Good Concept');
+
+  // Collapse-left button hides the left Sidebar; toggling restores it.
+  await expect(page.getByTestId('web-tree')).toBeVisible();
+  await page.getByTestId('sidebar-toggle').click();
+  await expect(page.getByTestId('web-tree')).not.toBeVisible();
+  await page.getByTestId('sidebar-toggle').click();
+  await expect(page.getByTestId('web-tree')).toBeVisible();
+
+  // Collapse-right button hides the right Sidebar; toggling restores it.
+  await expect(page.getByTestId('outline')).toBeVisible();
+  await page.getByTestId('right-sidebar-toggle').click();
+  await expect(page.getByTestId('outline')).not.toBeVisible();
+  await page.getByTestId('right-sidebar-toggle').click();
+  await expect(page.getByTestId('outline')).toBeVisible();
+
+  // Properties collapses (body removed) and re-expands.
+  await expect(page.getByTestId('properties')).toBeVisible();
+  await page.getByTestId('properties-toggle').click();
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+
+  // Screenshot the DARK parity view (toolbar on centre pane, both Sidebars,
+  // thin scrollbars) with Properties re-expanded.
+  await page.getByTestId('properties-toggle').click();
+  await expect(page.getByTestId('properties')).toBeVisible();
+  await page.screenshot({ path: 'tests/screenshots/web-parity-dark.png', fullPage: true });
+
+  // Back / forward: navigate to a sibling Concept, then step back + forward.
+  await page.locator('[data-testid="tree-concept"][data-path="diagram.md"]').click();
+  await expect(page).toHaveURL(/\?path=diagram\.md/);
+  await page.getByTestId('nav-back').click();
+  await expect(page).toHaveURL(/\?path=good\.md/);
+  await page.getByTestId('nav-forward').click();
+  await expect(page).toHaveURL(/\?path=diagram\.md/);
+
+  // --- Persistence across reload ---
+  await page.goto('/?path=good.md');
+  // Collapse the guide folder, the Tags Section, and Properties.
+  const guideDir = page.getByTestId('tree-dir').filter({ hasText: 'guide' });
+  await guideDir.getByRole('button', { name: 'guide' }).click();
+  await expect(
+    page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]'),
+  ).toHaveCount(0);
+  await page.getByTestId('tags-section-header').click();
+  await expect(page.getByTestId('tag-browser')).toHaveCount(0);
+  await page.getByTestId('properties-toggle').click();
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByTestId('rendered').locator('h1')).toContainText('Good Concept');
+  // All three collapses were restored from localStorage.
+  await expect(
+    page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]'),
+  ).toHaveCount(0);
+  await expect(page.getByTestId('tag-browser')).toHaveCount(0);
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+
+  // Sidebar-collapse also persists.
+  await page.getByTestId('sidebar-toggle').click();
+  await expect(page.getByTestId('web-tree')).not.toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('web-tree')).not.toBeVisible();
 });
