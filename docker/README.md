@@ -19,6 +19,84 @@ single-folder deployment and the image internals.
 > and **never** expose the published port to the public internet. The mount is
 > read-only, so exposure is a confidentiality risk, not an integrity one.
 
+## Publishing to Docker Hub
+
+The single-folder and git-backed guides here build the image locally. To install
+Sapphire Web on a remote host **without a repo checkout or build context**, push
+the image to Docker Hub once and pull it there (see
+[running the published image](#running-the-published-image-remote-host) below).
+
+### One-time setup (maintainer only)
+
+Pushing requires **your** Docker Hub credentials — nobody else can push under
+your namespace on your behalf. Do this once:
+
+1. Create a [Docker Hub](https://hub.docker.com/) account and, under **Account
+   Settings → Personal access tokens**, create an access token with
+   **Read & Write** scope.
+2. In this GitHub repo, under **Settings → Secrets and variables → Actions**, set:
+   - a **variable** `DOCKERHUB_USERNAME` — your Docker Hub namespace (used to
+     derive the image name `<namespace>/sapphire-web`; nothing is hardcoded), and
+   - a **secret** `DOCKERHUB_TOKEN` — the access token from step 1.
+
+The image name is always `${DOCKERHUB_USERNAME}/sapphire-web`.
+
+### Automatic path: tag a release
+
+Tagging a release (`vX.Y.Z`, the same tag the desktop
+[release flow](../.github/workflows/release.yml) reacts to) triggers
+[`publish-web-image.yml`](../.github/workflows/publish-web-image.yml). It builds
+a **multi-arch** (`linux/amd64,linux/arm64`) image and pushes two tags:
+`:<version>` (e.g. `0.14.0`, the tag with the leading `v` stripped) and
+`:latest`. The job is standalone — it does not wait on the Tauri installer build.
+
+You can also run it on demand from the **Actions** tab
+(**Publish Web Image → Run workflow**), optionally overriding the tag (defaults
+to `latest`).
+
+### Manual path: build & push from your machine
+
+If you'd rather push by hand (or don't use GitHub Actions), build multi-arch with
+buildx and push in one step. Log in first, then:
+
+```bash
+docker login                     # authenticate to Docker Hub
+
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t <your-user>/sapphire-web:<version> \
+  -t <your-user>/sapphire-web:latest \
+  --push .
+```
+
+`--platform linux/amd64,linux/arm64` matters because the image is built for a
+specific CPU architecture: if your machine is `arm64` (e.g. Apple Silicon) but
+the remote is `amd64` (or vice versa), a single-arch image won't run there.
+Building both and pushing a manifest list lets the remote pull the arch it needs.
+buildx must push a multi-arch build straight to the registry — it can't `--load`
+a multi-arch result into the local Docker daemon.
+
+### Running the published image (remote host)
+
+On the remote, use [`../docker-compose.remote.yml`](../docker-compose.remote.yml),
+which runs the published image (`image:` instead of `build:`) with the same
+read-only Bundle mount, published web port, and no-auth/internal-only posture as
+the base compose:
+
+```bash
+DOCKERHUB_USERNAME=your-user SAPPHIRE_TAG=0.14.0 \
+SAPPHIRE_BUNDLE_HOST=/srv/okf/my-bundle SAPPHIRE_WEB_PORT=8080 \
+  docker compose -f docker-compose.remote.yml pull && \
+  docker compose -f docker-compose.remote.yml up -d
+```
+
+`SAPPHIRE_TAG` defaults to `latest`. To keep a git-backed Bundle in sync on the
+remote too, combine it with a sync sidecar: run the `git-checkout` service from
+[`../docker-compose.git-checkout.yml`](../docker-compose.git-checkout.yml)
+alongside this file (`-f docker-compose.remote.yml -f docker-compose.git-checkout.yml`)
+and point `SAPPHIRE_BUNDLE` at the shared `/content` volume — the remote image
+replaces the locally-built one while the sidecar handles the content.
+
 ## How it fits together
 
 ```

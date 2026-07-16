@@ -102,6 +102,16 @@ docker run --rm -p 3000:3000 \
   sapphire-web:latest
 ```
 
+## Publishing & installing from Docker Hub
+
+To run Sapphire Web on a remote host **without a repo checkout or build context**,
+publish the image to Docker Hub (a release tag pushes it automatically, or push
+by hand) and pull it on the remote with
+[`../docker-compose.remote.yml`](../docker-compose.remote.yml). The full setup —
+the one-time credentials the maintainer must configure, the multi-arch build, and
+the remote `pull` + `up` flow — lives in
+**[`../docker/README.md`](../docker/README.md#publishing-to-docker-hub)**.
+
 ## Image layout (multi-stage build)
 
 1. **`rust-build`** (`rust:1-bookworm`) — `cargo build --release -p sapphire-server`.
