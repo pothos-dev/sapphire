@@ -66,6 +66,11 @@ pub struct BundleState {
     /// fresh/older Bundle opens with the panel expanded; the header chevron then
     /// persists the user's sticky choice across Concept switches and relaunches.
     pub properties_open: Option<bool>,
+    /// The editor's tri-state view mode ("edit" / "hybrid" / "view"), restored on
+    /// relaunch (persist-editor-mode). Optional so older files tolerate its
+    /// absence; the frontend defaults it to "hybrid" (Live) on read. Carried as an
+    /// opaque string here — the frontend owns the `EditorMode` union.
+    pub editor_mode: Option<String>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets

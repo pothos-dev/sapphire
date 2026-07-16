@@ -1,25 +1,32 @@
 //! Filesystem watcher: a `notify` recursive watcher over the Bundle root that
-//! emits a Tauri event to the frontend when files change on disk.
+//! reports file changes on disk through a caller-supplied sink.
 //!
-//! Self-write suppression lives here: before emitting, each changed path is
-//! checked against `AppState`'s self-write tracker. Paths Sapphire just wrote
-//! (autosave) are swallowed, so our own writes never cause a reload loop or
-//! cursor jump. Genuine external edits still emit and the frontend reloads.
+//! Host-agnostic: this module does NOT depend on `tauri`. `start` takes the
+//! Bundle root, a shared handle to the `AppState` (for the index + self-write
+//! tracker), and a `sink` callback that receives each `FileChange`. The desktop
+//! shell passes a sink that `app.emit(FILE_CHANGED_EVENT, change)`s to the
+//! frontend; another host (e.g. the web server) can pass any drain.
 //!
-//! Pure-ish module logic — `lib.rs` just calls `start` in setup.
+//! Self-write suppression lives here: before a change reaches the sink, each
+//! changed path is checked against `AppState`'s self-write tracker. Paths
+//! Sapphire just wrote (autosave) are swallowed, so our own writes never cause
+//! a reload loop or cursor jump. Genuine external edits still flow through.
+//!
+//! Pure-ish module logic — the host just calls `start` in setup.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
 
 use crate::app_state::AppState;
 
-/// Event name emitted to the frontend on a (non-self) filesystem change.
+/// Event name a host emits on a (non-self) filesystem change. Kept here so the
+/// Tauri shell and any other host share one canonical string.
 pub const FILE_CHANGED_EVENT: &str = "file-changed";
 
-/// Payload of a `file-changed` event. `paths` are bundle-relative,
+/// A filesystem change reported to the host's sink. `paths` are bundle-relative,
 /// '/'-separated. Matches the TS `FileChange` type across the IPC seam.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,41 +37,47 @@ pub struct FileChange {
     pub paths: Vec<String>,
 }
 
-/// Start watching the Bundle root recursively. The returned watcher must be
-/// kept alive (managed in `AppState` / a long-lived owner) or watching stops.
-pub fn start(app: AppHandle) -> Result<RecommendedWatcher, String> {
-    let state = app.state::<AppState>();
-    let root = state.bundle_root.clone();
-    let app_for_cb = app.clone();
-
+/// Start watching `root` recursively, keeping `state`'s index current and
+/// delivering each (non-self) change to `sink`. The returned watcher must be
+/// kept alive (managed in a long-lived owner) or watching stops.
+///
+/// `state` is a shared handle to the SAME `AppState` the host's command layer
+/// uses, so index updates and self-write suppression observe one source of
+/// truth. `sink` is invoked from the watcher's own thread, hence the `Send`
+/// bound.
+pub fn start<F>(root: PathBuf, state: Arc<AppState>, sink: F) -> Result<RecommendedWatcher, String>
+where
+    F: Fn(FileChange) + Send + 'static,
+{
+    let watch_root = root.clone();
     let mut watcher = notify::recommended_watcher(
         move |res: notify::Result<notify::Event>| {
             let event = match res {
                 Ok(e) => e,
                 Err(_) => return,
             };
-            handle_event(&app_for_cb, event);
+            handle_event(&state, &root, &sink, event);
         },
     )
     .map_err(|e| e.to_string())?;
 
     watcher
-        .watch(&root, RecursiveMode::Recursive)
+        .watch(&watch_root, RecursiveMode::Recursive)
         .map_err(|e| e.to_string())?;
 
     Ok(watcher)
 }
 
-/// Translate a notify event into a `file-changed` emit, applying self-write
-/// suppression and path-to-bundle-relative conversion.
-fn handle_event(app: &AppHandle, event: notify::Event) {
+/// Translate a notify event into a `FileChange` for the `sink`, applying
+/// self-write suppression and path-to-bundle-relative conversion.
+fn handle_event<F>(state: &AppState, root: &Path, sink: &F, event: notify::Event)
+where
+    F: Fn(FileChange),
+{
     let kind = match classify(&event.kind) {
         Some(k) => k,
         None => return, // access/other events are noise for the UI
     };
-
-    let state = app.state::<AppState>();
-    let root = &state.bundle_root;
 
     let mut rel_paths: Vec<String> = Vec::new();
     for abs in &event.paths {
@@ -77,7 +90,7 @@ fn handle_event(app: &AppHandle, event: notify::Event) {
         // who wrote it. (Only the *frontend event* is suppressed for self
         // writes, below, to avoid reload loops / cursor jumps.)
         if rel.ends_with(".md") {
-            update_index(&state, &rel, abs, kind);
+            update_index(state, &rel, abs, kind);
         }
 
         // Suppress Sapphire's own writes for the frontend echo.
@@ -91,11 +104,10 @@ fn handle_event(app: &AppHandle, event: notify::Event) {
         return;
     }
 
-    let payload = FileChange {
+    sink(FileChange {
         kind: kind.to_string(),
         paths: rel_paths,
-    };
-    let _ = app.emit(FILE_CHANGED_EVENT, payload);
+    });
 }
 
 /// Apply a single Concept change to the in-memory index. Created/modified read

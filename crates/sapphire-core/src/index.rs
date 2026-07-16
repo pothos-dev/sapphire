@@ -22,7 +22,7 @@ use serde::Serialize;
 use crate::paths::md_files;
 use crate::wikilink;
 
-mod frontmatter;
+pub mod frontmatter;
 mod links;
 
 use frontmatter::{parse_frontmatter, strip_frontmatter, ParsedFrontmatter};

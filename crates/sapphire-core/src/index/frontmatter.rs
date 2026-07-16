@@ -72,7 +72,7 @@ pub(super) fn parse_frontmatter(content: &str) -> ParsedFrontmatter {
 /// Both halves are derived from a single forward scan so the body offset can
 /// never disagree with the block (an earlier `content.find(block)` approach
 /// mislocated an empty block at offset 0 and leaked the closing fence).
-fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
+pub fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
     // Tolerate a leading BOM / CRLF opener.
     let opener = if content.starts_with("---\n") {
         "---\n"
@@ -100,13 +100,13 @@ fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
 
 /// Return the YAML text between the leading `---` fences, or `None` if the
 /// content does not open with a frontmatter block.
-fn frontmatter_block(content: &str) -> Option<&str> {
+pub fn frontmatter_block(content: &str) -> Option<&str> {
     split_frontmatter(content).map(|(block, _)| block)
 }
 
 /// Strip the leading frontmatter block so a `---` or link-like text inside it is
 /// not mistaken for body content.
-pub(super) fn strip_frontmatter(content: &str) -> &str {
+pub fn strip_frontmatter(content: &str) -> &str {
     match split_frontmatter(content) {
         Some((_, body)) => body,
         None => content,

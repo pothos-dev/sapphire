@@ -1,0 +1,47 @@
+# Keep the Docker build context lean. The image is built entirely from source
+# inside the stages (Rust: cargo build; frontend: bun install + build), so no
+# host-side build output or dependency tree should be shipped into the context.
+
+# Rust / Cargo build artifacts
+target/
+src-tauri/target/
+src-tauri/gen/
+
+# JS deps + build output (reinstalled/rebuilt inside the image)
+node_modules/
+build/
+.svelte-kit/
+package/
+
+# VCS + CI
+.git/
+.github/
+
+# Editor / OS / local config
+.vscode/
+.axtesys/
+.claude/
+.DS_Store
+.workspace
+
+# Tests, screenshots, Playwright artifacts
+tests/
+test-results/
+playwright-report/
+.playwright/
+playwright*.config.ts
+
+# Docs & other packaging (not needed to build the app)
+docs/
+*.md
+!README.md
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# The image never needs the desktop icons (src-tauri is stubbed in the Rust
+# stage), so keep the large icon set out of the context.
+src-tauri/icons/
+src-tauri/capabilities/

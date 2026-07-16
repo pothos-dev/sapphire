@@ -317,11 +317,14 @@
   // The editor's tri-state view mode (Obsidian parity: Source / Live / Reading).
   // Seeds `buildEditor`'s `initialMode`; thereafter the toggle calls
   // `setEditorMode`, which reconfigures the view in place (no rebuild). The mode
-  // persists across Concept switches (the editor remembers it per view). The
-  // display list of modes lives in NavBar.svelte (its only consumer).
-  let editorMode = $state<EditorMode>('hybrid');
+  // persists across Concept switches (the editor remembers it per view) and
+  // across relaunches (session.editorMode, persist-editor-mode) — seeded from the
+  // session store on startup and written back on every toggle. The display list
+  // of modes lives in NavBar.svelte (its only consumer).
+  let editorMode = $state<EditorMode>(session.editorMode);
   function changeEditorMode(mode: EditorMode): void {
     editorMode = mode;
+    session.setEditorMode(mode);
     if (view) {
       setEditorMode(view, mode);
       view.focus();
@@ -438,6 +441,13 @@
     // (the tree, the session) before applying.
     void (async () => {
       await Promise.all([bundle.load(), session.load()]);
+
+      // Restore the persisted editor mode (persist-editor-mode). Seed the rune so
+      // any LATER `buildEditor` uses it as `initialMode`, and — since the view is
+      // built early with an empty doc, before this load resolves — reconfigure the
+      // existing view in place so the restored Concept lands in the saved mode.
+      editorMode = session.editorMode;
+      if (view) setEditorMode(view, editorMode);
 
       // Seed the default-open folders (depth < 2) for a FRESH Bundle (no stored
       // session). Otherwise honour exactly what was restored.

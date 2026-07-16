@@ -106,6 +106,17 @@ bun run build        # build the static SPA
 bunx playwright test # run the end-to-end suite
 ```
 
+### Web deployment
+
+Sapphire can also be served as a read-only, server-rendered web viewer over a
+Bundle, packaged as a single Docker image. See
+[`docs/deploy-web.md`](docs/deploy-web.md) for the `docker compose` run and the
+**internal-network / no-auth** caveat, and
+[`docker/README.md`](docker/README.md) to back the served Bundle with a **git
+repo** (sidecar / hook sync patterns, with a tested live-reload verdict) or to
+**publish the image to Docker Hub** and install it on a remote from the registry.
+This is separate from the desktop release flow.
+
 ## License
 
 MIT

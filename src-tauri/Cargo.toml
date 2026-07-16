@@ -18,20 +18,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Sapphire's reusable domain logic (bundle, index, rewrite, search, watcher).
+# The desktop shell is now a thin Tauri wrapper over this crate.
+sapphire-core = { path = "../crates/sapphire-core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-# Filesystem walking (respects .gitignore, fast) — tree + full-text search
-ignore = "0.4"
-# Filesystem change watching (slice: editing-autosave-watcher)
-notify = "6"
-# Full-text search backend (ripgrep libraries, no external binary) — slice: full-text-search
-grep-searcher = "0.1"
-grep-regex = "0.1"
-grep-matcher = "0.1"
-# YAML frontmatter parsing — slices: frontmatter panel, bundle index
-serde_yaml = "0.9"
-# OS app-data / config directory resolution — slice: config-theme-state-store
-dirs = "5"
+serde = { workspace = true }
+serde_json = { workspace = true }
 

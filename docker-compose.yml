@@ -1,0 +1,42 @@
+# Sapphire Web — internal deployment.
+#
+# One container serves the SSR web viewer AND the read-only Rust API over a
+# Bundle mounted read-only from the host. See docs/deploy-web.md.
+#
+#   SAPPHIRE_BUNDLE_HOST  host path of the Bundle to serve (default ./examples)
+#   SAPPHIRE_WEB_PORT     host port to publish the web viewer on (default 3000)
+#
+# Example:
+#   SAPPHIRE_BUNDLE_HOST=/srv/okf/my-bundle SAPPHIRE_WEB_PORT=8080 docker compose up --build
+#
+# SECURITY: there is NO authentication. Publish this only on a trusted internal
+# network / behind a private reverse proxy. Do not expose it to the public
+# internet until an auth phase lands.
+
+services:
+  sapphire-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sapphire-web:latest
+    # Reap zombies + forward signals cleanly to the entrypoint (PID 1).
+    init: true
+    restart: unless-stopped
+    environment:
+      # Public SSR web server (adapter-node reads HOST/PORT).
+      HOST: 0.0.0.0
+      PORT: 3000
+      # Read-only Rust API (internal to the container).
+      SAPPHIRE_API_PORT: 8787
+      SAPPHIRE_API_INTERNAL: http://localhost:8787
+      # The Bundle root inside the container == the mount target below.
+      SAPPHIRE_BUNDLE: /bundle
+    volumes:
+      # Bundle mounted READ-ONLY (:ro): the container reads it, never writes it.
+      - type: bind
+        source: ${SAPPHIRE_BUNDLE_HOST:-./examples}
+        target: /bundle
+        read_only: true
+    ports:
+      # host:container — publish only on the internal network.
+      - "${SAPPHIRE_WEB_PORT:-3000}:3000"
