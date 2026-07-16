@@ -267,6 +267,9 @@
               <rect x="1.5" y="2.5" width="4.5" height="11" rx="1.5" fill="currentColor" opacity={leftSidebarOpen ? 0.5 : 0} stroke="none" />
             </svg>
           </button>
+          {#if data.selected}
+            <span class="reader-path" data-testid="reader-path" title={data.selected}>{data.selected}</span>
+          {/if}
         </div>
         <div class="tb-center">
           <button
@@ -322,10 +325,6 @@
         {:else if data.rendered === null}
           <p class="status" data-testid="reader-empty">Select a Concept to read it.</p>
         {:else}
-          <div class="reader-head">
-            <span class="reader-path" data-testid="reader-path">{data.selected}</span>
-          </div>
-
           {#if data.rendered.frontmatter.length > 0}
             <!-- Read-only Properties panel, collapsible (mirrors desktop). -->
             <section class="properties-panel">
@@ -492,7 +491,16 @@
   }
 
   .tb-left {
-    justify-self: start;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-self: stretch;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .tb-left .tb-btn {
+    flex: none;
   }
 
   .tb-center {
@@ -576,14 +584,17 @@
     min-height: 0;
   }
 
-  .reader-head {
-    margin-bottom: 0.6rem;
-  }
-
+  /* Concept path label in the toolbar (between the sidebar toggle and the
+     back/forward buttons). Truncates gracefully in the constrained left track. */
   .reader-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--text-muted, #777);
+    font-family: var(--font-mono, ui-monospace, monospace);
   }
 
   /* Properties panel: a collapse header (chevron + PROPERTIES) over a metadata
@@ -712,12 +723,15 @@
     padding: 0.3rem 0.55rem;
   }
 
-  .rendered :global(a.internal-link) {
+  /* All rendered links use the accent token (readable on dark, matching the
+     desktop `--atomic-editor-link: var(--accent)`) — internal, external, and
+     plain markdown links alike, so nothing falls back to raw browser blue. */
+  .rendered :global(a) {
     color: var(--accent, #2d6cdf);
     text-decoration: none;
   }
 
-  .rendered :global(a.internal-link:hover) {
+  .rendered :global(a:hover) {
     text-decoration: underline;
   }
 
