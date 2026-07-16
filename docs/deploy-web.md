@@ -77,6 +77,21 @@ filesystem watcher; the SSR proxy streams it through un-buffered. Any number of
 browsers can view the same container concurrently, and an external edit to the
 Bundle on the host is pushed to every connected viewer.
 
+The watcher attaches to the Bundle root's inode(s) at startup, so live reload
+only fires when edits are written **in place under a stable path**. This matters
+when a git sync feeds the folder: a tool that swaps a symlink to a fresh
+directory per update (e.g. git-sync) will **not** live-reload. See
+[`../docker/README.md`](../docker/README.md) for the git-backed deployment
+patterns and the tested per-approach verdict.
+
+## Serving a git-backed wiki
+
+To back the served Bundle with a git repo (a sidecar or host-side hook keeps the
+mounted folder in sync while Sapphire serves it read-only), see
+**[`../docker/README.md`](../docker/README.md)**. It covers three sync approaches
+— a `post-receive` hook and a git-checkout sidecar (both live-reload), and a
+git-sync sidecar (does not) — with copy-paste compose files.
+
 ## Building the image directly (without compose)
 
 ```bash
