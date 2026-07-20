@@ -8,9 +8,10 @@
   import { session } from '$lib/state/session.svelte';
   import { suggestions } from '$lib/state/suggestions.svelte';
   import { theme } from '$lib/state/theme.svelte';
-  import type { TreeNode } from '$lib/types';
+  import type { TreeNode, FileHistory } from '$lib/types';
   import {
     buildEditor,
+    buildReviewEditor,
     setEditorConcept,
     setEditorMode,
     setEditorMermaidTheme,
@@ -40,6 +41,8 @@
     type CommentEditRequest,
   } from '$lib/editor/cm';
   import { rewriteAnchorsIn } from '$lib/anchorRewrite';
+  import { diffToCriticMarkup } from '$lib/diff/diffToCriticMarkup';
+  import { reviewAvailability } from '$lib/editor/review';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
   import {
     splitFrontmatter,
@@ -331,6 +334,92 @@
     }
   }
 
+  // --- Review changes: working-tree ↔ HEAD (review-toggle) -----------------
+  // A dedicated toggle (NavBar, SEPARATE from the mode control) flips the open
+  // Concept into a READ-ONLY review view showing what changed since the last
+  // commit. Entering reconstructs — IN MEMORY ONLY — a CriticMarkup diff of the
+  // `HEAD` content (via `fileAtRev`) against the current working-tree buffer
+  // (`editor.content`), run through ticket 03's differ, and renders it in a
+  // separate read-only CodeMirror view (ticket 01's marks). That review buffer
+  // is NEVER wired to `editor.edit`/autosave, so the marked text can never reach
+  // disk; the normal editor keeps its untouched working-tree content behind it.
+  let reviewActive = $state(false);
+  let reviewParent = $state<HTMLDivElement | null>(null);
+  let reviewView: EditorView | null = null;
+  // The diff text to render while review is active (null when inactive).
+  let reviewText = $state<string | null>(null);
+  // The open Concept's git history, loaded on Concept switch. Drives the
+  // toggle's enabled state + tooltip via the pure `reviewAvailability` helper.
+  let reviewHistory = $state<FileHistory | null>(null);
+  const reviewAvail = $derived(reviewAvailability(reviewHistory));
+
+  // Load the git history for the open Concept so the toggle can enable/disable
+  // itself. Switching Concepts also EXITS any active review (the diff was built
+  // for the previous Concept), and a null path (nothing open) resets both.
+  $effect(() => {
+    const path = editor.path;
+    // Exit any active review on Concept switch (the diff was for the previous
+    // Concept). Written unconditionally — assigning the same value is a no-op,
+    // and NOT reading `reviewActive` keeps it out of this effect's deps.
+    reviewActive = false;
+    reviewText = null;
+    reviewHistory = null;
+    if (path === null) return;
+    let cancelled = false;
+    void backend.fileHistory(path).then((h) => {
+      if (!cancelled) reviewHistory = h;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  // Build / tear down the read-only review view as `reviewActive` flips. Built
+  // only once `reviewParent` is mounted (its `{#if reviewActive}` block) and the
+  // diff text is ready. Destroying it discards the in-memory review buffer
+  // entirely — nothing is ever written back.
+  $effect(() => {
+    if (reviewActive && reviewParent && reviewText !== null && !reviewView) {
+      // `buildReviewEditor` seeds `data-theme` from the app root; the theme
+      // effect below keeps it in sync on a live theme flip.
+      reviewView = buildReviewEditor(reviewParent, reviewText);
+      reviewView.focus();
+    } else if (!reviewActive && reviewView) {
+      reviewView.destroy();
+      reviewView = null;
+    }
+  });
+
+  // Enter review: diff HEAD against the current working-tree buffer and show the
+  // marks read-only. No-op when unavailable (no reviewable history) or when
+  // `HEAD` cannot be read. Reads `editor.content` (the live buffer, incl. unsaved
+  // edits) synchronously as the "new" side, so entering never triggers a save.
+  async function enterReview(): Promise<void> {
+    const path = editor.path;
+    if (path === null || reviewActive || !reviewAvail.enabled) return;
+    const head = await backend.fileAtRev(path, 'HEAD');
+    if (head.status !== 'ok') return;
+    // Guard against a Concept switch while awaiting the async HEAD read.
+    if (editor.path !== path) return;
+    reviewText = diffToCriticMarkup(head.content, editor.content);
+    reviewActive = true;
+  }
+
+  // Exit review: drop the diff and return to normal editing at the working-tree
+  // version (unchanged). The build effect destroys the review view; refocus the
+  // normal editor once it is shown again.
+  function exitReview(): void {
+    if (!reviewActive) return;
+    reviewActive = false;
+    reviewText = null;
+    queueMicrotask(() => view?.focus());
+  }
+
+  function toggleReview(): void {
+    if (reviewActive) exitReview();
+    else void enterReview();
+  }
+
   // The Properties panel's raw collapse state, bound out of the component so the
   // Region registration below can treat a collapsed panel as not-visible and
   // transiently reveal it on directional focus (properties-auto-reveal).
@@ -553,6 +642,21 @@
         }
       }
 
+      // Review mode owns Escape first: one press exits the read-only review view
+      // and returns to normal editing at the working-tree version (review-toggle).
+      if (
+        e.key === 'Escape' &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.shiftKey &&
+        reviewActive
+      ) {
+        e.preventDefault();
+        exitReview();
+        return;
+      }
+
       // Escape: the UNIFIED peel (slice: escape-peel-restore-opener). One layer
       // per press, innermost first — in-field edit → overlay → Region → Editor.
       // The decision lives in `focus.escape`; here we only compute whether an
@@ -621,6 +725,8 @@
       unregisterEditor = null;
       view?.destroy();
       view = null;
+      reviewView?.destroy();
+      reviewView = null;
     };
   });
 
@@ -633,6 +739,8 @@
     // The atomic-editor reads `data-theme` on the CodeMirror root; keep it in
     // sync with the app theme so the editor is themed identically.
     if (view) view.dom.setAttribute('data-theme', resolved);
+    // The read-only review buffer (when active) is themed identically.
+    if (reviewView) reviewView.dom.setAttribute('data-theme', resolved);
   });
 
   // Mermaid theme-sync (ADR-0005): a rendered Diagram is a baked SVG inside a
@@ -1321,11 +1429,15 @@
       canGoForward={editor.canGoForward}
       {editorMode}
       hasOpenConcept={editor.path !== null}
+      {reviewActive}
+      reviewEnabled={reviewAvail.enabled}
+      reviewTooltip={reviewAvail.tooltip}
       onToggleLeft={() => session.setLeftSidebarOpen(!session.leftSidebarOpen)}
       onToggleRight={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
       onBack={() => void editor.back()}
       onForward={() => void editor.forward()}
       onSetMode={changeEditorMode}
+      onToggleReview={toggleReview}
     />
     {#if editor.error}
       <p class="status error">{editor.error}</p>
@@ -1371,17 +1483,26 @@
       </div>
     {/if}
     <!-- The editor-host is CodeMirror's mount point (CM owns the inner ARIA); the
-         contextmenu handler only opens the annotate menu. -->
+         contextmenu handler only opens the annotate menu. Hidden while review is
+         active so the read-only review buffer takes its place (the normal editor
+         stays alive with its untouched working-tree content behind it). -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="editor-host"
-      class:hidden={!editor.path}
+      class:hidden={!editor.path || reviewActive}
       class:region-active={focus.focusedRegion === 'editor'}
       data-region="editor"
       data-testid="editor"
       bind:this={editorParent}
       oncontextmenu={openEditorMenu}
     ></div>
+    <!-- Read-only review buffer (working-tree ↔ HEAD). A SEPARATE CodeMirror
+         view, mounted only while review is active, showing the in-memory diff
+         with ticket 01's marks. It has no autosave wiring, so its text can never
+         reach disk. -->
+    {#if reviewActive}
+      <div class="editor-host review-host" data-testid="review-editor" bind:this={reviewParent}></div>
+    {/if}
   </main>
 
   <!-- Right Sidebar: a second accordion mirroring the left one, anchored so its

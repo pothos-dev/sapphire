@@ -253,6 +253,26 @@ The word pomegranate line 29 exists so full-text search returns many hits.
 The word pomegranate line 30 exists so full-text search returns many hits.
 `,
 
+  // A Concept whose COMMITTED content already carries a real CriticMarkup
+  // highlight+comment annotation. Drives the review-diff toggle's "pre-existing
+  // annotations still render" case (issue 04): editing an UNRELATED line leaves
+  // the annotated line unchanged between HEAD and the working tree, so the
+  // review view renders the annotation as an ordinary highlight alongside the
+  // diff marks (not nested inside a change span). No `tags` so it never perturbs
+  // the tag counts other specs assert on.
+  'concepts/annotated.md': `---
+type: concept
+title: Annotated
+---
+
+# Annotated
+
+This line has a {==pre-existing==}{>>a standing note<<} annotation that
+predates any review of the document.
+
+An unrelated closing paragraph.
+`,
+
   'concepts/editor/live-preview.md': `---
 type: concept
 title: Live Preview
@@ -315,6 +335,19 @@ Built on [CodeMirror](../codemirror.md).
 [1] [BigQuery table schema](https://example.com/bq-schema)
 `,
 };
+
+/**
+ * Snapshot of the fixture at module load — the fake's stand-in for the git
+ * COMMITTED (HEAD) state (git seam / review-diff). `FILES` is the mutable
+ * WORKING TREE (autosave + runtime `createConcept`/`simulateExternalChange`
+ * mutate it); `COMMITTED_FILES` never changes, so `fileAtRev(path, 'HEAD')`
+ * returns the original content and a review diff against the edited working tree
+ * is stable. A path present in the working tree but ABSENT here was created
+ * after the snapshot, so the fake reports it `untracked` — exactly as a real
+ * repo reports a never-committed file. String values are immutable, so a shallow
+ * copy is a faithful snapshot.
+ */
+export const COMMITTED_FILES: Record<string, string> = { ...FILES };
 
 /**
  * Explicitly-created folders that contain no `.md` file yet. Folders are

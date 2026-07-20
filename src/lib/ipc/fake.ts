@@ -14,6 +14,7 @@ import type {
 import {
   FAKE_BUNDLE_ROOT,
   FILES,
+  COMMITTED_FILES,
   FOLDERS,
   conceptPaths,
   isSafePath,
@@ -359,13 +360,14 @@ export const fakeBackend: Backend = {
   },
 
   // Git seam: canned, deterministic history/content so the review-diff UI is
-  // testable in plain Chromium with no git. Any existing Concept reports a
-  // fixed two-commit history (newest first); a missing/unknown path is reported
-  // `untracked` — the same distinguishable state the real backend surfaces so
-  // the toggle can disable itself.
+  // testable in plain Chromium with no git. A Concept present in the COMMITTED
+  // snapshot reports a fixed two-commit history (newest first); a path created
+  // at runtime (working tree only) or entirely unknown is reported `untracked`
+  // — the same distinguishable state the real backend surfaces for a
+  // never-committed file, so the review toggle can disable itself.
   async fileHistory(path: string): Promise<FileHistory> {
     if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
-    if (!Object.prototype.hasOwnProperty.call(FILES, path)) {
+    if (!Object.prototype.hasOwnProperty.call(COMMITTED_FILES, path)) {
       return { status: 'untracked' };
     }
     return { status: 'ok', commits: FAKE_COMMITS };
@@ -373,6 +375,15 @@ export const fakeBackend: Backend = {
 
   async fileAtRev(path: string, rev: string): Promise<FileAtRev> {
     if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
+    // `HEAD` (what the review toggle asks for) → the COMMITTED snapshot. The
+    // working tree is the mutable `FILES`, so once the user edits the open
+    // Concept the review diff (HEAD vs working tree) is non-empty and stable.
+    if (rev === 'HEAD') {
+      if (!Object.prototype.hasOwnProperty.call(COMMITTED_FILES, path)) {
+        return { status: 'notFound' };
+      }
+      return { status: 'ok', content: COMMITTED_FILES[path] };
+    }
     const idx = FAKE_COMMITS.findIndex((c) => c.hash === rev);
     if (idx === -1 || !Object.prototype.hasOwnProperty.call(FILES, path)) {
       return { status: 'notFound' };

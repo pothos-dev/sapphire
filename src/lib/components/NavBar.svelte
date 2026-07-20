@@ -8,11 +8,18 @@
     canGoForward: boolean;
     editorMode: EditorMode;
     hasOpenConcept: boolean;
+    /** Whether the open Concept is currently in review (working-tree ↔ HEAD) mode. */
+    reviewActive: boolean;
+    /** Whether the review toggle is available (the file has reviewable history). */
+    reviewEnabled: boolean;
+    /** Tooltip for the review toggle (explains the disabled reason when disabled). */
+    reviewTooltip: string;
     onToggleLeft: () => void;
     onToggleRight: () => void;
     onBack: () => void;
     onForward: () => void;
     onSetMode: (mode: EditorMode) => void;
+    onToggleReview: () => void;
   }
 
   let {
@@ -22,11 +29,15 @@
     canGoForward,
     editorMode,
     hasOpenConcept,
+    reviewActive,
+    reviewEnabled,
+    reviewTooltip,
     onToggleLeft,
     onToggleRight,
     onBack,
     onForward,
     onSetMode,
+    onToggleReview,
   }: Props = $props();
 
   // The editor's tri-state view mode (Obsidian parity: Source / Live / Reading).
@@ -123,6 +134,34 @@
         >
       {/each}
     </div>
+    <!-- Review changes (working-tree ↔ HEAD): a dedicated toggle SEPARATE from the
+         mode segmented control above. Disabled with an explanatory tooltip when
+         the open Concept has no reviewable git history. -->
+    <button
+      type="button"
+      class="nav-btn"
+      class:active={reviewActive}
+      data-testid="review-toggle"
+      title={reviewTooltip}
+      aria-label={reviewTooltip}
+      aria-pressed={reviewActive}
+      disabled={!hasOpenConcept || !reviewEnabled}
+      onclick={onToggleReview}
+    >
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+        <!-- git-branch glyph: two commit nodes on a branch line + a fork. -->
+        <circle cx="4" cy="3" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2" />
+        <circle cx="4" cy="13" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2" />
+        <circle cx="12" cy="5.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2" />
+        <line x1="4" y1="4.6" x2="4" y2="11.4" stroke="currentColor" stroke-width="1.2" />
+        <path
+          d="M4 8.5 Q4 5.5 10.4 5.5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.2"
+        />
+      </svg>
+    </button>
     <button
       type="button"
       class="nav-btn"
@@ -257,6 +296,14 @@
 
   .nav-btn:hover:not(:disabled) {
     background: var(--hover);
+  }
+
+  /* Review toggle "on" state: reuse the segmented control's active accent so the
+     active affordance reads consistently across the two controls. */
+  .nav-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
   }
 
   .nav-btn:disabled {

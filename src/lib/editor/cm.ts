@@ -702,6 +702,30 @@ const viewMode = new WeakMap<EditorView, EditorMode>();
  */
 const viewMermaidTheme = new WeakMap<EditorView, ResolvedTheme>();
 
+/**
+ * Build a READ-ONLY review buffer (review-toggle: working-tree ↔ HEAD).
+ *
+ * `reviewText` is the in-memory CriticMarkup diff (ticket 03's `diffToCriticMarkup`
+ * of `HEAD` vs the working tree). It is rendered in reading (`view`) mode so
+ * ticket 01's add/del marks show WITHOUT any cursor-reveal of raw markup, and
+ * the buffer is read-only. Crucially it is wired with NO `onChange`/`onBlur`, so
+ * the review text can NEVER reach `editor.edit` / autosave — it lives only in
+ * this view and is discarded when the view is destroyed on exit. Pre-existing
+ * highlight/comment annotations in the text still render (they are the same
+ * CriticMarkup decorations, active in every non-`edit` mode).
+ */
+export function buildReviewEditor(parent: HTMLElement, reviewText: string): EditorView {
+  return buildEditor({
+    parent,
+    doc: reviewText,
+    frontmatter: [],
+    // No `path` and no `onChange`/`onBlur`: this buffer is in-memory only and
+    // must never autosave. `view` mode = read-only + marks visible + no reveal.
+    path: null,
+    initialMode: 'view',
+  });
+}
+
 export function buildEditor(options: BuildEditorOptions): EditorView {
   const { parent, doc, frontmatter = [] } = options;
   const wikiCompartment = new Compartment();
