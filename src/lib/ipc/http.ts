@@ -6,6 +6,8 @@ import type {
   BundleState,
   SearchHit,
   RewriteSummary,
+  FileHistory,
+  FileAtRev,
 } from '$lib/types';
 
 /**
@@ -162,5 +164,15 @@ export const httpBackend: Backend = {
   // capped server-side). An empty/whitespace query yields `[]` (no scan).
   search(query: string): Promise<SearchHit[]> {
     return getJson<SearchHit[]>(`/api/search?q=${encodeURIComponent(query)}`);
+  },
+
+  // Git seam: the read-only web build exposes no git route, so history is
+  // simply unavailable. Report it gracefully (`gitMissing`) rather than
+  // rejecting, so the shared review-diff UI just disables its toggle.
+  fileHistory(): Promise<FileHistory> {
+    return Promise.resolve({ status: 'gitMissing' });
+  },
+  fileAtRev(): Promise<FileAtRev> {
+    return Promise.resolve({ status: 'gitMissing' });
   },
 };

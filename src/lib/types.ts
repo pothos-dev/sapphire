@@ -156,6 +156,52 @@ export type AnchorRename = {
 };
 
 /**
+ * One commit that touched a file, as returned by `Backend.fileHistory()`.
+ * Matches the Rust `FileCommit` (`serde rename_all = "camelCase"`).
+ */
+export type FileCommit = {
+  /** abbreviated commit hash (`git %h`) */
+  hash: string;
+  /** commit subject — the first line of the message (`git %s`) */
+  subject: string;
+  /** author name (`git %an`) */
+  author: string;
+  /** author date, ISO-8601 strict (`git %ad --date=iso-strict`) */
+  date: string;
+  /** human relative author date, e.g. "3 days ago" (`git %ar`) */
+  relativeDate: string;
+};
+
+/**
+ * Result of `Backend.fileHistory()`: either the ordered commit list (newest
+ * first) or a distinguishable reason the history is unavailable. A discriminated
+ * union on `status` (matches the Rust `FileHistory`, `serde tag = "status"`) so
+ * the review-diff UI can disable its toggle without a thrown error:
+ *   - `notARepo`   — the Bundle is not inside a git repository
+ *   - `untracked`  — the file is not tracked by git
+ *   - `noHistory`  — the file is tracked but no commit touches it
+ *   - `gitMissing` — the `git` binary is unavailable (also the web build, which
+ *                    has no git seam)
+ */
+export type FileHistory =
+  | { status: 'ok'; commits: FileCommit[] }
+  | { status: 'notARepo' }
+  | { status: 'untracked' }
+  | { status: 'noHistory' }
+  | { status: 'gitMissing' };
+
+/**
+ * Result of `Backend.fileAtRev()`: the file's full text at a revision, or a
+ * distinguishable failure. Discriminated union on `status` (matches the Rust
+ * `FileAtRev`, `serde tag = "status"`).
+ */
+export type FileAtRev =
+  | { status: 'ok'; content: string }
+  | { status: 'notARepo' }
+  | { status: 'notFound' }
+  | { status: 'gitMissing' };
+
+/**
  * Parsed YAML frontmatter on a Concept. Only `type` is required; other keys
  * are recommended and unknown keys must be preserved. Filled in by later
  * index slices; defined here so the vocabulary is stable.

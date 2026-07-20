@@ -9,6 +9,8 @@ import type {
   SearchHit,
   RewriteSummary,
   AnchorRename,
+  FileHistory,
+  FileAtRev,
 } from '$lib/types';
 
 /** Tauri event name emitted by the Rust watcher (matches watcher.rs). */
@@ -123,5 +125,13 @@ export const tauriBackend: Backend = {
 
   search(query: string): Promise<SearchHit[]> {
     return invoke<SearchHit[]>('search', { query });
+  },
+
+  fileHistory(path: string): Promise<FileHistory> {
+    return invoke<FileHistory>('file_history', { path });
+  },
+
+  fileAtRev(path: string, rev: string): Promise<FileAtRev> {
+    return invoke<FileAtRev>('file_at_rev', { path, rev });
   },
 };

@@ -6,6 +6,8 @@ import type {
   SearchHit,
   RewriteSummary,
   AnchorRename,
+  FileHistory,
+  FileAtRev,
 } from '$lib/types';
 
 /**
@@ -177,4 +179,28 @@ export interface Backend {
    * flood the channel or the UI; the frontend shows the capped list as-is.
    */
   search(query: string): Promise<SearchHit[]>;
+
+  // --- Git seam: file history + file-at-revision (slice: backend-git-seam) ---
+  // Just enough git for the review-diff feature; the backend does NO diffing
+  // (the frontend diffs the working-tree read against a revision). Both go
+  // through the system `git` binary. Paths are bundle-relative, forward-slash.
+
+  /**
+   * Ordered commit history (newest first) of the commits touching the
+   * bundle-relative `path`, backed by `git log --follow`. Resolves to a
+   * discriminated `FileHistory`: `{ status: 'ok', commits }` when git has
+   * history, or a distinguishable unavailable status (`notARepo` / `untracked`
+   * / `noHistory` / `gitMissing`) so the review-diff toggle can disable itself
+   * WITHOUT a thrown error. Only a path-escape rejects.
+   */
+  fileHistory(path: string): Promise<FileHistory>;
+
+  /**
+   * Full text of the bundle-relative `path` at revision `rev`, backed by
+   * `git show <rev>:<path>`. The working-tree side is the ordinary
+   * `readConcept`; the frontend diffs the two. Resolves to a discriminated
+   * `FileAtRev`: `{ status: 'ok', content }`, or a distinguishable failure
+   * (`notARepo` / `notFound` / `gitMissing`). Only a path-escape rejects.
+   */
+  fileAtRev(path: string, rev: string): Promise<FileAtRev>;
 }

@@ -9,6 +9,7 @@
 pub mod app_state;
 pub mod bundle;
 pub mod config;
+pub mod git;
 pub mod index;
 pub mod paths;
 pub mod render;

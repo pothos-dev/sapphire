@@ -6,6 +6,7 @@ use std::sync::Arc;
 use sapphire_core::app_state::AppState;
 use sapphire_core::bundle::{self, TreeNode};
 use sapphire_core::config::{self, BundleState, WindowState};
+use sapphire_core::git::{self, FileAtRev, FileHistory};
 use sapphire_core::index::TagCount;
 use sapphire_core::rewrite::{self, AnchorRename, RewriteSummary};
 use sapphire_core::search::{self, SearchHit};
@@ -157,6 +158,35 @@ fn all_keys(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
 #[tauri::command]
 fn search(state: State<'_, Arc<AppState>>, query: String) -> Result<Vec<SearchHit>, String> {
     search::search(&state.bundle_root, &query)
+}
+
+/// Commit history (newest first) of the commits touching the bundle-relative
+/// `path`, via `git log --follow`. The backend does NO diffing. Every edge
+/// (not-a-repo / untracked / no-history / git-missing) comes back as a
+/// distinguishable `FileHistory` variant so the review-diff toggle can disable
+/// itself; only a path-escape is a hard error. Paths are bundle-relative,
+/// '/'-separated.
+#[tauri::command]
+fn file_history(state: State<'_, Arc<AppState>>, path: String) -> Result<FileHistory, String> {
+    // Reject `..`/absolute escapes the same way the other path commands do; the
+    // target need not exist on disk (history can outlive the working tree).
+    bundle::resolve_new(&state.bundle_root, &path)?;
+    Ok(git::file_history(&state.bundle_root, &path))
+}
+
+/// Full text of the bundle-relative `path` at revision `rev`, via
+/// `git show <rev>:<path>`. The working-tree side is the ordinary
+/// `read_concept`; the frontend diffs the two. Edge cases surface as
+/// `FileAtRev` variants (not-a-repo / not-found / git-missing) rather than
+/// errors; only a path-escape is a hard error.
+#[tauri::command]
+fn file_at_rev(
+    state: State<'_, Arc<AppState>>,
+    path: String,
+    rev: String,
+) -> Result<FileAtRev, String> {
+    bundle::resolve_new(&state.bundle_root, &path)?;
+    Ok(git::file_at_rev(&state.bundle_root, &path, &rev))
 }
 
 /// Load the persisted per-Bundle session state (last-open Concept, expanded
@@ -380,6 +410,8 @@ pub fn run() {
             all_types,
             all_keys,
             search,
+            file_history,
+            file_at_rev,
             load_bundle_state,
             save_bundle_state
         ])

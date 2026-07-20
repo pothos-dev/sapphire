@@ -7,6 +7,9 @@ import type {
   SearchHit,
   RewriteSummary,
   AnchorRename,
+  FileCommit,
+  FileHistory,
+  FileAtRev,
 } from '$lib/types';
 import {
   FAKE_BUNDLE_ROOT,
@@ -354,7 +357,56 @@ export const fakeBackend: Backend = {
     hits.sort((a, b) => (a.path === b.path ? a.line - b.line : a.path.localeCompare(b.path)));
     return hits.slice(0, MAX_SEARCH_RESULTS);
   },
+
+  // Git seam: canned, deterministic history/content so the review-diff UI is
+  // testable in plain Chromium with no git. Any existing Concept reports a
+  // fixed two-commit history (newest first); a missing/unknown path is reported
+  // `untracked` — the same distinguishable state the real backend surfaces so
+  // the toggle can disable itself.
+  async fileHistory(path: string): Promise<FileHistory> {
+    if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
+    if (!Object.prototype.hasOwnProperty.call(FILES, path)) {
+      return { status: 'untracked' };
+    }
+    return { status: 'ok', commits: FAKE_COMMITS };
+  },
+
+  async fileAtRev(path: string, rev: string): Promise<FileAtRev> {
+    if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
+    const idx = FAKE_COMMITS.findIndex((c) => c.hash === rev);
+    if (idx === -1 || !Object.prototype.hasOwnProperty.call(FILES, path)) {
+      return { status: 'notFound' };
+    }
+    const current = FILES[path];
+    // The newest commit approximates the working tree; an older commit returns
+    // a deterministically-altered variant so a diff against the working tree is
+    // non-empty and stable for tests.
+    const content = idx === 0 ? current : `<!-- rev ${rev} -->\n${current}`;
+    return { status: 'ok', content };
+  },
 };
+
+/**
+ * Canned commit history for the fake backend (newest first). Fixed hashes/dates
+ * keep the review-diff UI deterministic under Playwright. Mirrors the real
+ * `FileHistory` `ok` shape.
+ */
+const FAKE_COMMITS: FileCommit[] = [
+  {
+    hash: 'a1b2c3d',
+    subject: 'Refine the concept',
+    author: 'Ada Lovelace',
+    date: '2026-07-19T10:00:00+00:00',
+    relativeDate: 'yesterday',
+  },
+  {
+    hash: '0f1e2d3',
+    subject: 'Initial version',
+    author: 'Grace Hopper',
+    date: '2026-07-01T09:00:00+00:00',
+    relativeDate: '3 weeks ago',
+  },
+];
 
 /** Mirror of the Rust `MAX_RESULTS` cap (search.rs). */
 const MAX_SEARCH_RESULTS = 500;
