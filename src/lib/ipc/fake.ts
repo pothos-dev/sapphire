@@ -375,31 +375,17 @@ export const fakeBackend: Backend = {
 
   async fileAtRev(path: string, rev: string): Promise<FileAtRev> {
     if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
-    // `HEAD` (what the review toggle asks for) → the COMMITTED snapshot. The
-    // working tree is the mutable `FILES`, so once the user edits the open
-    // Concept the review diff (HEAD vs working tree) is non-empty and stable.
-    if (rev === 'HEAD') {
-      if (!Object.prototype.hasOwnProperty.call(COMMITTED_FILES, path)) {
-        return { status: 'notFound' };
-      }
-      return { status: 'ok', content: COMMITTED_FILES[path] };
-    }
-    const idx = FAKE_COMMITS.findIndex((c) => c.hash === rev);
-    if (idx === -1 || !Object.prototype.hasOwnProperty.call(FILES, path)) {
-      return { status: 'notFound' };
-    }
-    const current = FILES[path];
-    // The newest commit approximates the working tree; an older commit returns
-    // a deterministically-altered variant so a diff against the working tree is
-    // non-empty and stable for tests.
-    const content = idx === 0 ? current : `<!-- rev ${rev} -->\n${current}`;
+    const content = committedContentAt(path, rev);
+    if (content === null) return { status: 'notFound' };
     return { status: 'ok', content };
   },
 };
 
 /**
  * Canned commit history for the fake backend (newest first). Fixed hashes/dates
- * keep the review-diff UI deterministic under Playwright. Mirrors the real
+ * keep the review-diff UI deterministic under Playwright. A MULTI-commit history
+ * (issue 05) lets the review-view stepper walk consecutive pairs — position 0 is
+ * working tree ↔ HEAD, then HEAD ↔ HEAD~1, HEAD~1 ↔ HEAD~2. Mirrors the real
  * `FileHistory` `ok` shape.
  */
 const FAKE_COMMITS: FileCommit[] = [
@@ -412,12 +398,56 @@ const FAKE_COMMITS: FileCommit[] = [
   },
   {
     hash: '0f1e2d3',
+    subject: 'Expand the details',
+    author: 'Grace Hopper',
+    date: '2026-07-10T09:00:00+00:00',
+    relativeDate: '10 days ago',
+  },
+  {
+    hash: '9a8b7c6',
     subject: 'Initial version',
     author: 'Grace Hopper',
     date: '2026-07-01T09:00:00+00:00',
     relativeDate: '3 weeks ago',
   },
 ];
+
+/**
+ * The generation of a git rev relative to HEAD: `HEAD` → 0, `HEAD~N` → N, or a
+ * `FAKE_COMMITS` short hash → its index (newest = 0). `null` for an unrecognized
+ * rev. Lets the fake answer `fileAtRev` for both the stepper's `HEAD~N` revs and
+ * a direct commit-hash lookup (faithful to `git show <rev>:<path>`).
+ */
+function revGeneration(rev: string): number | null {
+  const r = rev.trim();
+  const m = /^HEAD(?:~(\d+))?$/.exec(r);
+  if (m) return m[1] ? Number(m[1]) : 0;
+  const idx = FAKE_COMMITS.findIndex((c) => c.hash === r);
+  return idx === -1 ? null : idx;
+}
+
+/**
+ * Deterministic committed content of `path` at `rev` (the fake's stand-in for
+ * `git show <rev>:<path>`), or `null` when the path was never committed or the
+ * rev is out of this file's history. HEAD is the COMMITTED snapshot; each older
+ * generation prepends one UNIQUE marker line PER generation, so every
+ * consecutive pair (`HEAD~k ↔ HEAD~(k-1)`) yields a distinct, non-empty diff —
+ * enough for the history stepper to be exercised end-to-end under Playwright.
+ * The working tree is the mutable `FILES`, so the position-0 (working ↔ HEAD)
+ * diff stays driven by the user's live edits, exactly as issue 04.
+ */
+function committedContentAt(path: string, rev: string): string | null {
+  const base = COMMITTED_FILES[path];
+  if (base === undefined) return null;
+  const gen = revGeneration(rev);
+  if (gen === null || gen < 0 || gen >= FAKE_COMMITS.length) return null;
+  if (gen === 0) return base;
+  const markers: string[] = [];
+  for (let g = gen; g >= 1; g--) {
+    markers.push(`> revision marker ${g} — older wording (generation ${g})`);
+  }
+  return `${markers.join('\n')}\n\n${base}`;
+}
 
 /** Mirror of the Rust `MAX_RESULTS` cap (search.rs). */
 const MAX_SEARCH_RESULTS = 500;

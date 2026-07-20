@@ -726,6 +726,20 @@ export function buildReviewEditor(parent: HTMLElement, reviewText: string): Edit
   });
 }
 
+/**
+ * Replace a review buffer's document with a new CriticMarkup diff (history
+ * stepper: re-render on each step, issue 05) WITHOUT rebuilding the view.
+ *
+ * The review buffer is read-only, but a PROGRAMMATIC dispatch still applies
+ * (`EditorState.readOnly` only blocks user input, not `view.dispatch`), and —
+ * built with no `onChange`/`onBlur` wiring — it can never autosave. Reuses
+ * `setEditorConcept`'s in-place branch: the review buffer's path stays `null`,
+ * so this never triggers a state rebuild, and the empty frontmatter is a no-op.
+ */
+export function setReviewText(view: EditorView, reviewText: string): void {
+  setEditorConcept(view, reviewText, [], null);
+}
+
 export function buildEditor(options: BuildEditorOptions): EditorView {
   const { parent, doc, frontmatter = [] } = options;
   const wikiCompartment = new Compartment();

@@ -12,6 +12,7 @@
   import {
     buildEditor,
     buildReviewEditor,
+    setReviewText,
     setEditorConcept,
     setEditorMode,
     setEditorMermaidTheme,
@@ -43,6 +44,7 @@
   import { rewriteAnchorsIn } from '$lib/anchorRewrite';
   import { diffToCriticMarkup } from '$lib/diff/diffToCriticMarkup';
   import { reviewAvailability } from '$lib/editor/review';
+  import { reviewStep, maxStep } from '$lib/editor/reviewStepper';
   import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
   import {
     splitFrontmatter,
@@ -352,6 +354,20 @@
   // toggle's enabled state + tooltip via the pure `reviewAvailability` helper.
   let reviewHistory = $state<FileHistory | null>(null);
   const reviewAvail = $derived(reviewAvailability(reviewHistory));
+  // --- History stepper (issue 05) ---------------------------------------------
+  // The review view walks BACKWARD through the open Concept's commit history, one
+  // pair at a time: position 0 = working tree ↔ HEAD (04's default), position k =
+  // HEAD~(k-1) ↔ HEAD~k. The pure `reviewStepper` helper turns the position + the
+  // commit list into the (oldRev, newRev, label, newer-commit, bounds) to render;
+  // `renderReviewStep` fetches both sides (working tree at position 0) and re-runs
+  // the differ. Reset to 0 on Concept switch (below) and on each fresh enter.
+  let reviewPosition = $state(0);
+  // The commit list backing the stepper (empty unless the history resolved `ok`).
+  const reviewCommits = $derived(
+    reviewHistory?.status === 'ok' ? reviewHistory.commits : [],
+  );
+  // The current comparison: bar label + newer-side commit + button-bounding flags.
+  const reviewStepInfo = $derived(reviewStep(reviewCommits, reviewPosition));
 
   // Load the git history for the open Concept so the toggle can enable/disable
   // itself. Switching Concepts also EXITS any active review (the diff was built
@@ -364,6 +380,7 @@
     reviewActive = false;
     reviewText = null;
     reviewHistory = null;
+    reviewPosition = 0;
     if (path === null) return;
     let cancelled = false;
     void backend.fileHistory(path).then((h) => {
@@ -390,19 +407,58 @@
     }
   });
 
-  // Enter review: diff HEAD against the current working-tree buffer and show the
-  // marks read-only. No-op when unavailable (no reviewable history) or when
-  // `HEAD` cannot be read. Reads `editor.content` (the live buffer, incl. unsaved
-  // edits) synchronously as the "new" side, so entering never triggers a save.
+  // Render the comparison at stepper `pos` into `reviewText`: fetch the OLDER
+  // side from git (`fileAtRev`) and the NEWER side (the live working-tree buffer
+  // at position 0, else the newer commit's content), then run ticket 03's differ.
+  // Reads `editor.content` synchronously so entering/stepping never triggers a
+  // save. Guards against a Concept switch mid-await, and returns false (leaving
+  // the current buffer untouched) when a side can't be read. When the review view
+  // is already mounted it also pushes the new diff in place (no rebuild).
+  async function renderReviewStep(pos: number): Promise<boolean> {
+    const path = editor.path;
+    if (path === null) return false;
+    const step = reviewStep(reviewCommits, pos);
+    const oldSide = await backend.fileAtRev(path, step.oldRev);
+    if (oldSide.status !== 'ok') return false;
+    let newContent: string;
+    if (step.newRev === null) {
+      newContent = editor.content;
+    } else {
+      const newSide = await backend.fileAtRev(path, step.newRev);
+      if (newSide.status !== 'ok') return false;
+      newContent = newSide.content;
+    }
+    // A Concept switch (or review exit) while awaiting invalidates this diff.
+    if (editor.path !== path) return false;
+    reviewText = diffToCriticMarkup(oldSide.content, newContent);
+    // Update an already-mounted review buffer in place; the build effect creates
+    // it on the initial enter (when `reviewView` is still null).
+    if (reviewView) setReviewText(reviewView, reviewText);
+    return true;
+  }
+
+  // Enter review at position 0 (working tree ↔ HEAD): diff and show the marks
+  // read-only. No-op when unavailable (no reviewable history) or when a side
+  // cannot be read.
   async function enterReview(): Promise<void> {
     const path = editor.path;
     if (path === null || reviewActive || !reviewAvail.enabled) return;
-    const head = await backend.fileAtRev(path, 'HEAD');
-    if (head.status !== 'ok') return;
-    // Guard against a Concept switch while awaiting the async HEAD read.
+    reviewPosition = 0;
+    if (!(await renderReviewStep(0))) return;
+    // Guard against a Concept switch while awaiting the async reads.
     if (editor.path !== path) return;
-    reviewText = diffToCriticMarkup(head.content, editor.content);
     reviewActive = true;
+  }
+
+  // Step the review comparison by `delta` (+1 = one commit OLDER, -1 = one NEWER,
+  // toward the working tree), bounded by the ends of history. Re-renders the diff
+  // for the new position in place. No-op outside review or at a bound.
+  function stepReview(delta: number): void {
+    if (!reviewActive) return;
+    const next = reviewPosition + delta;
+    if (next < 0 || next > maxStep(reviewCommits)) return;
+    reviewPosition = next;
+    void renderReviewStep(next);
   }
 
   // Exit review: drop the diff and return to normal editing at the working-tree
@@ -1501,6 +1557,47 @@
          with ticket 01's marks. It has no autosave wiring, so its text can never
          reach disk. -->
     {#if reviewActive}
+      <!-- History stepper (issue 05): walk backward through the open Concept's
+           commit history, one pair at a time. `← older` steps back a commit,
+           `newer →` steps toward the working tree; both disable at the ends. The
+           bar shows the current comparison and — for a committed newer side — its
+           short hash, subject and relative date. -->
+      <div class="review-stepper" data-testid="review-stepper">
+        <button
+          type="button"
+          class="nav-btn"
+          data-testid="review-older"
+          title="Compare the previous (older) commit pair"
+          aria-label="Older change"
+          disabled={!reviewStepInfo.canOlder}
+          onclick={() => stepReview(1)}>← older</button
+        >
+        <div class="review-stepper-meta">
+          <span class="review-comparison" data-testid="review-stepper-label"
+            >{reviewStepInfo.label}</span
+          >
+          {#if reviewStepInfo.newer}
+            <span class="review-hash" data-testid="review-stepper-hash"
+              >{reviewStepInfo.newer.hash}</span
+            >
+            <span class="review-subject" data-testid="review-stepper-subject"
+              >{reviewStepInfo.newer.subject}</span
+            >
+            <span class="review-date" data-testid="review-stepper-date"
+              >{reviewStepInfo.newer.relativeDate}</span
+            >
+          {/if}
+        </div>
+        <button
+          type="button"
+          class="nav-btn"
+          data-testid="review-newer"
+          title="Compare the next (newer) commit pair"
+          aria-label="Newer change"
+          disabled={!reviewStepInfo.canNewer}
+          onclick={() => stepReview(-1)}>newer →</button
+        >
+      </div>
       <div class="editor-host review-host" data-testid="review-editor" bind:this={reviewParent}></div>
     {/if}
   </main>
@@ -1769,6 +1866,82 @@
 
   .editor-host.hidden {
     display: none;
+  }
+
+  /* History-stepper bar (issue 05): a compact strip above the read-only review
+     buffer. `← older` / `newer →` flank a centred label showing the current
+     comparison and, for a committed newer side, its short hash / subject /
+     relative date. Kept visually quiet — it is review chrome, not the content. */
+  .review-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: none;
+    padding: 0.35rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elevated);
+    font-size: 0.8rem;
+  }
+
+  .review-stepper-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    justify-content: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .review-comparison {
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .review-hash {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: var(--accent);
+  }
+
+  .review-subject {
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .review-date {
+    color: var(--text-muted);
+    flex: none;
+  }
+
+  /* The stepper buttons: same chrome as the NavBar's `.nav-btn`, but scoped here
+     (Svelte styles don't cross components) and sized for a text label. */
+  .review-stepper .nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    height: 1.7rem;
+    padding: 0 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+
+  .review-stepper .nav-btn:hover:not(:disabled) {
+    background: var(--hover);
+  }
+
+  .review-stepper .nav-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   .editor-host :global(.cm-editor) {
