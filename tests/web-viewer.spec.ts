@@ -264,18 +264,19 @@ test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sid
     page.locator('[data-testid="tree-concept"][data-path="guide/index.md"]'),
   ).toHaveCount(0);
 
-  // The guide folder is a collapsible row; it opens by default (depth < 2) so
-  // its ordinary child (topic.md) is visible.
+  // The guide folder holds an index.md (progressive-disclosure listing), so it
+  // opens COLLAPSED by default — its ordinary child (topic.md) is hidden until
+  // the folder is expanded (mirrors desktop; see treeNav.defaultOpenFolders).
   const guideDir = page.getByTestId('tree-dir').filter({ hasText: 'guide' });
   const topic = page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]');
-  await expect(topic).toBeVisible();
+  await expect(topic).toHaveCount(0);
 
-  // Clicking the twisty collapses (children removed) then expands the folder.
+  // Clicking the twisty expands the folder (child appears) then collapses it.
   const twisty = guideDir.getByRole('button', { name: 'guide' });
   await twisty.click();
-  await expect(topic).toHaveCount(0);
-  await twisty.click();
   await expect(topic).toBeVisible();
+  await twisty.click();
+  await expect(topic).toHaveCount(0);
 
   // Clicking the folder NAME opens its implicit index.md (mirrors desktop).
   await guideDir.locator('.name-toggle').click();
@@ -338,12 +339,14 @@ test('polish: toolbar collapse/nav, Properties collapse, and persistence', async
 
   // --- Persistence across reload ---
   await page.goto('/good');
-  // Collapse the guide folder, the Tags Section, and Properties.
+  // The guide folder holds an index.md, so it defaults COLLAPSED. EXPAND it (a
+  // non-default folder state), and collapse the Tags Section and Properties, so
+  // the reload below proves all three UI choices round-trip through localStorage.
   const guideDir = page.getByTestId('tree-dir').filter({ hasText: 'guide' });
+  const topic = page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]');
+  await expect(topic).toHaveCount(0);
   await guideDir.getByRole('button', { name: 'guide' }).click();
-  await expect(
-    page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]'),
-  ).toHaveCount(0);
+  await expect(topic).toBeVisible();
   await page.getByTestId('tags-section-header').click();
   await expect(page.getByTestId('tag-browser')).toHaveCount(0);
   await page.getByTestId('properties-toggle').click();
@@ -351,10 +354,8 @@ test('polish: toolbar collapse/nav, Properties collapse, and persistence', async
 
   await page.reload();
   await expect(page.getByTestId('rendered').locator('h1')).toContainText('Good Concept');
-  // All three collapses were restored from localStorage.
-  await expect(
-    page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]'),
-  ).toHaveCount(0);
+  // The expanded folder and the two collapses were restored from localStorage.
+  await expect(topic).toBeVisible();
   await expect(page.getByTestId('tag-browser')).toHaveCount(0);
   await expect(page.getByTestId('properties')).toHaveCount(0);
 

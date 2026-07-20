@@ -31,23 +31,27 @@ test('session state persists across reload; theme follows OS', async ({ page }) 
   // default emulated scheme is light.
   await expect(appRoot).toHaveAttribute('data-theme', /^(light|dark)$/);
 
-  // `concepts/` and `concepts/editor/` are expanded by default (depth < 2), so
-  // the deep Concept is visible. Open it, then COLLAPSE `concepts/editor/` to
-  // produce a non-default folder state — restoring it after reload proves
-  // expand/collapse changes persist, not just defaults.
+  // `concepts/` holds an `index.md`, so it starts COLLAPSED by default (its
+  // index page stands in for browsing its contents); the deep Concept is
+  // therefore hidden on a fresh Bundle. EXPAND `concepts/` to produce a
+  // non-default folder state — restoring it after reload proves expand/collapse
+  // changes persist, not just defaults.
   const livePreview = tree.locator('[data-path="concepts/editor/live-preview.md"]');
+  await expect(livePreview).toBeHidden();
+
+  // Expand `concepts/` via its disclosure twisty (its NAME-click would open the
+  // index page instead of toggling). Its child `concepts/editor` is seeded open
+  // (no index.md), so the deep file surfaces once its collapsed ancestor opens.
+  await tree.locator('[data-row-path="concepts"] button.twisty-toggle').click();
   await expect(livePreview).toBeVisible();
   await livePreview.click();
 
   const editorPane = page.getByTestId('editor');
   await expect(editorPane).toContainText('Obsidian-style hybrid editing');
 
-  // Collapse `concepts/editor` (its toggle reads "editor"); the deep file hides.
-  await tree.locator('button.dir-toggle', { hasText: 'editor' }).click();
-  await expect(livePreview).toBeHidden();
-
   // Give the debounced save time to flush to localStorage: the open Concept is
-  // the deep one, and the expanded set no longer contains `concepts/editor`.
+  // the deep one, and the expanded set now contains the manually-opened
+  // `concepts` on top of the seeded `concepts/editor`.
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -58,20 +62,17 @@ test('session state persists across reload; theme follows OS', async ({ page }) 
     )
     .toMatchObject({
       lastOpenConcept: 'concepts/editor/live-preview.md',
-      expandedFolders: expect.not.arrayContaining(['concepts/editor']),
+      expandedFolders: expect.arrayContaining(['concepts', 'concepts/editor']),
     });
 
-  // RELOAD: the last-open Concept reopens; `concepts/editor` stays COLLAPSED
-  // (its child hidden) while `concepts` stays expanded.
+  // RELOAD: the last-open Concept reopens; `concepts` stays EXPANDED (its
+  // deep child visible again) rather than snapping back to the collapsed default.
   await page.reload();
 
   await expect(page.getByTestId('tree')).toBeVisible();
-  // The deep Concept's row is hidden because `concepts/editor` is collapsed,
-  // but `concepts/` itself is still expanded (its toggle is visible).
-  await expect(page.getByTestId('tree').locator('button.dir-toggle', { hasText: 'editor' })).toBeVisible();
   await expect(
     page.getByTestId('tree').locator('[data-path="concepts/editor/live-preview.md"]'),
-  ).toBeHidden();
+  ).toBeVisible();
   // The last-open Concept is reopened (open state is independent of tree visibility).
   await expect(page.getByTestId('editor')).toContainText('Obsidian-style hybrid editing');
 

@@ -41,7 +41,7 @@ async function openConcept(page: Page) {
   await page.goto('/');
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -144,7 +144,7 @@ test('absent (no Concept → Properties/Editor) and empty (no tags → Tags) Reg
   await page.goto('/');
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -244,7 +244,7 @@ test('Section-collapsed Tags (left Sidebar open) is transiently revealed on Alt-
   await page.goto('/');
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();

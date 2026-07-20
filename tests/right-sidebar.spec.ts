@@ -23,7 +23,7 @@ test('right sidebar starts collapsed, expands to reveal Backlinks, and persists'
 
   // Clean slate so the "fresh Bundle" defaults apply deterministically. Clear
   // AFTER the first load and reload once to boot fresh.
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();

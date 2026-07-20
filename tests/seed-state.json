@@ -1,0 +1,14 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:1420",
+      "localStorage": [
+        {
+          "name": "sapphire:bundleState:/fake/bundle",
+          "value": "{\"expandedFolders\":[\"concepts\",\"concepts/editor\"]}"
+        }
+      ]
+    }
+  ]
+}

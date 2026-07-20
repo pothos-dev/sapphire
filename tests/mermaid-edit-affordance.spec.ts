@@ -17,7 +17,7 @@ import { test, expect } from './fixtures';
 // the hybrid default. On CI each test already gets an isolated context (no-op).
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
 });
 
 test('mermaid: double-clicking a diagram reveals the raw fence for editing', async ({

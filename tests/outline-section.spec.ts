@@ -24,8 +24,9 @@ test('outline lists headings, skips frontmatter/code, scrolls on click, and pers
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
 
-  // Clean slate so fresh-Bundle defaults apply deterministically.
-  await page.evaluate(() => window.localStorage.clear());
+  // Reset to a deterministic state: concepts/ + concepts/editor/ expanded (concepts/
+  // now defaults COLLAPSED as it holds an index.md), everything else at defaults.
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();

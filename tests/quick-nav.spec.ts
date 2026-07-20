@@ -19,7 +19,7 @@ test('quick-nav: fuzzy match, recent files, persistence', async ({ page }) => {
   await expect(tree).toBeVisible();
 
   // Clean slate so recent files start empty and deterministic.
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();

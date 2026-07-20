@@ -23,7 +23,7 @@ test('sidebar + section collapse state persists across reload', async ({ page })
   // Clean slate so the "fresh Bundle" defaults apply deterministically. Clear
   // AFTER the first load (not via addInitScript, which would re-clear on the
   // reload under test) and reload once to boot fresh.
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -97,8 +97,9 @@ test('properties panel collapse state persists across reload', async ({ page }) 
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
 
-  // Clean slate so fresh-Bundle defaults apply deterministically.
-  await page.evaluate(() => window.localStorage.clear());
+  // Reset to a deterministic state: concepts/ + concepts/editor/ expanded (concepts/
+  // now defaults COLLAPSED as it holds an index.md), everything else at defaults.
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 

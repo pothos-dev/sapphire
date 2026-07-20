@@ -41,6 +41,13 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:1420',
     trace: 'on-first-retry',
+    // Seed each context's localStorage so the fake Bundle opens with `concepts/`
+    // and `concepts/editor/` expanded — the pre-existing depth-<2 default. This
+    // keeps the many specs that click straight into `concepts/…` on load working
+    // now that a folder holding an index.md (like `concepts/`) opens COLLAPSED by
+    // default (see treeNav.defaultOpenFolders). `config-state.spec.ts` clears
+    // localStorage itself, so it still exercises the true fresh-Bundle default.
+    storageState: './tests/seed-state.json',
   },
   projects: [
     {

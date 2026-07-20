@@ -37,7 +37,11 @@ async function rovingCount(page: Page): Promise<number> {
 async function freshLoad(page: Page) {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
-  await page.evaluate(() => window.localStorage.clear());
+  // Seed a deterministic tree state: `concepts/` + `concepts/editor/` expanded.
+  // `concepts/` holds an index.md so it now opens COLLAPSED by default (see
+  // treeNav.defaultOpenFolders); seeding the expanded set keeps these keyboard-nav
+  // assertions focused on movement rather than the fresh-Bundle collapse default.
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 }
@@ -60,8 +64,8 @@ test('Explorer keyboard nav: move/expand/collapse/descend/parent, clamp, roving 
 
   // Enter the Explorer by clicking a FILE row (clicking a folder row's body
   // would hit its toggle). A click makes the row the Focused item (roving
-  // tabindex) without arrowing yet. `concepts` + `concepts/editor` are expanded
-  // by default (depth<2 seed), so the nested file is visible.
+  // tabindex) without arrowing yet. `concepts` + `concepts/editor` are seeded
+  // expanded by `freshLoad`, so the nested file is visible.
   await tree.locator('.row[data-row-path="concepts/editor/live-preview.md"]').click();
   await expect.poll(() => rovingRow(page)).toBe('concepts/editor/live-preview.md');
   await expect.poll(() => rovingCount(page)).toBe(1);
@@ -73,7 +77,7 @@ test('Explorer keyboard nav: move/expand/collapse/descend/parent, clamp, roving 
   await page.keyboard.press('ArrowUp');
   await expect.poll(() => focusedRow(page)).toBe('concepts');
 
-  // `concepts` is expanded by default (depth<2 seed); ArrowRight on an expanded
+  // `concepts` is seeded expanded (see `freshLoad`); ArrowRight on an expanded
   // folder descends into its first child — the `concepts/editor` folder.
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => focusedRow(page)).toBe('concepts/editor');

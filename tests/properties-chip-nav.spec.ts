@@ -57,7 +57,7 @@ function chipTexts(page: Page): Promise<string[]> {
 async function openCodemirror(page: Page) {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
   await page.getByTestId('tree').locator('[data-path="concepts/codemirror.md"]').click();

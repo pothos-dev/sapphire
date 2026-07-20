@@ -81,7 +81,7 @@ test('editor modes: chosen mode persists across a reload', async ({ page }) => {
 
   // The fake backend is localStorage-backed and (under the shared CDP browser)
   // survives across runs, so clear it and reload to boot from a clean session.
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
 
   const tree = page.getByTestId('tree');
