@@ -11,6 +11,7 @@ import { RangeSet, StateField, type EditorState, type Extension } from '@codemir
 import {
   parseCriticMarks,
   pairAnnotations,
+  changeMarkDecorations,
   type Annotation,
 } from './criticMarkup';
 
@@ -29,6 +30,12 @@ import {
 //     edited or deleted — exactly like wiki-links.ts reveals raw source. The
 //     highlight background stays on the content even when revealed.
 //
+// Slice A also renders the track-change marks — addition (`{++…++}`, green),
+// deletion (`{--…--}`, red) and substitution (`{~~old~>new~~}`, red `old` span
+// immediately followed by a green `new` span) — reusing the same delimiter-
+// hiding + reveal-on-cursor behaviour. Their decoration computation lives in the
+// pure `changeMarkDecorations` helper; this module maps it to tint marks.
+//
 // The pure parsing / pairing / editing logic lives in `criticMarkup.ts`; this
 // module is the thin CodeMirror wiring over it. Parsing the whole doc per
 // recompute is fine for v1 (annotations are sparse and docs modest).
@@ -36,6 +43,9 @@ import {
 
 const highlightMark = Decoration.mark({ class: 'cm-critic-highlight' });
 const hideMark = Decoration.replace({});
+// Track-change marks (Slice A): removed text tinted red, new text tinted green.
+const delMark = Decoration.mark({ class: 'cm-critic-del' });
+const addMark = Decoration.mark({ class: 'cm-critic-add' });
 
 /**
  * Is the selection touching this annotation's overall span (inclusive)? When
@@ -54,7 +64,8 @@ function isRevealed(state: EditorState, ann: Annotation): boolean {
  * ranges are skipped — `Decoration.replace` over an empty range is invalid.
  */
 function computeDecorations(state: EditorState, allowReveal: boolean): DecorationSet {
-  const anns = pairAnnotations(parseCriticMarks(state.doc.toString()));
+  const marks = parseCriticMarks(state.doc.toString());
+  const anns = pairAnnotations(marks);
   const decos: { from: number; to: number; value: Decoration }[] = [];
   for (const ann of anns) {
     // Reading mode never reveals raw markup (allowReveal=false): the cursor-inside
@@ -77,6 +88,13 @@ function computeDecorations(state: EditorState, allowReveal: boolean): Decoratio
     if (comment && !revealed && comment.from < comment.to) {
       decos.push({ from: comment.from, to: comment.to, value: hideMark });
     }
+  }
+  // Track-change marks (addition/deletion/substitution). Computed by the pure helper so the
+  // reveal-on-cursor / delimiter-hiding logic stays unit-testable; mapped to the tint marks here.
+  const selections = state.selection.ranges.map((r) => ({ from: r.from, to: r.to }));
+  for (const d of changeMarkDecorations(marks, selections, allowReveal)) {
+    const value = d.kind === 'del' ? delMark : d.kind === 'add' ? addMark : hideMark;
+    decos.push({ from: d.from, to: d.to, value });
   }
   return Decoration.set(
     decos.map((d) => d.value.range(d.from, d.to)),
@@ -272,6 +290,31 @@ export const criticMarkupTheme: Extension = EditorView.theme({
   },
   '&[data-theme="dark"] .cm-critic-highlight': {
     backgroundColor: 'rgba(255, 196, 64, 0.22)',
+  },
+  // Track-change tints (Slice A). Annotation-specific red/green — like the amber highlight
+  // above, these are NOT design tokens; they are scoped per theme so both papers stay legible.
+  // Explicitly no strikethrough / underline: that vocabulary is reserved for real markdown.
+  '.cm-critic-del': {
+    color: '#b3261e',
+    backgroundColor: 'rgba(179, 38, 30, 0.12)',
+    borderRadius: '2px',
+    padding: '0 1px',
+    textDecoration: 'none',
+  },
+  '.cm-critic-add': {
+    color: '#1a7f37',
+    backgroundColor: 'rgba(26, 127, 55, 0.14)',
+    borderRadius: '2px',
+    padding: '0 1px',
+    textDecoration: 'none',
+  },
+  '&[data-theme="dark"] .cm-critic-del': {
+    color: '#f2b8b5',
+    backgroundColor: 'rgba(248, 81, 73, 0.20)',
+  },
+  '&[data-theme="dark"] .cm-critic-add': {
+    color: '#7ee787',
+    backgroundColor: 'rgba(63, 185, 80, 0.20)',
   },
   '.cm-critic-gutter': {
     minWidth: '26px',

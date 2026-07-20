@@ -134,6 +134,87 @@ export function pairAnnotations(marks: CriticMark[]): Annotation[] {
   return annotations;
 }
 
+/** A single decoration descriptor for a change mark (addition/deletion/substitution), independent
+ *  of CodeMirror so it can be unit-tested. `kind`:
+ *   - `del`  → red-tinted "removed" span (the `{--…--}` body, or a substitution's `old` half),
+ *   - `add`  → green-tinted "new" span (the `{++…++}` body, or a substitution's `new` half),
+ *   - `hide` → a delimiter / separator run that is replaced (hidden) while the mark is collapsed. */
+export type CriticDecoKind = 'del' | 'add' | 'hide';
+
+export interface CriticDeco {
+  from: number;
+  to: number;
+  kind: CriticDecoKind;
+}
+
+/** A caret/selection range, forward-slash of CodeMirror's `SelectionRange` (pure, testable). */
+export interface DecoRange {
+  from: number;
+  to: number;
+}
+
+/** True when any selection range touches [from,to] inclusively — the cursor-inside test that
+ *  decides whether a mark reveals its raw markup. */
+function anyRangeTouches(ranges: DecoRange[], from: number, to: number): boolean {
+  return ranges.some((r) => r.from <= to && r.to >= from);
+}
+
+/**
+ * Compute the track-change decorations for the addition/deletion/substitution marks among `marks`
+ * (highlight/comment marks are ignored — those are handled by the annotation flow). Pure logic so
+ * the decoration set can be unit-tested over plain marks; the CM view maps each descriptor to a
+ * `Decoration.mark` (`del`/`add`) or `Decoration.replace` (`hide`).
+ *
+ * A mark is "revealed" (its raw markup shown, delimiters NOT hidden) when `allowReveal` is true AND
+ * the selection touches its span — the same cursor-inside affordance the annotations use. In view
+ * (reading) mode `allowReveal` is false, so marks never reveal. Zero-length spans are skipped
+ * (`Decoration.replace`/`mark` over an empty range is invalid / pointless).
+ */
+export function changeMarkDecorations(
+  marks: CriticMark[],
+  selections: DecoRange[],
+  allowReveal: boolean,
+): CriticDeco[] {
+  const decos: CriticDeco[] = [];
+  for (const mark of marks) {
+    const { kind, from, to, contentFrom, contentTo } = mark;
+    if (kind !== 'addition' && kind !== 'deletion' && kind !== 'substitution') continue;
+    const revealed = allowReveal && anyRangeTouches(selections, from, to);
+    const push = (f: number, t: number, k: CriticDecoKind) => {
+      if (f < t) decos.push({ from: f, to: t, kind: k });
+    };
+    const hideDelimiters = () => {
+      if (!revealed) {
+        push(from, contentFrom, 'hide');
+        push(contentTo, to, 'hide');
+      }
+    };
+    if (kind === 'addition') {
+      push(contentFrom, contentTo, 'add');
+      hideDelimiters();
+    } else if (kind === 'deletion') {
+      push(contentFrom, contentTo, 'del');
+      hideDelimiters();
+    } else {
+      // Substitution: `old` half tinted red, then `new` half tinted green, with the `~>`
+      // separator hidden between them. `deleted`/`inserted` lengths locate the split; a `~>` is
+      // present iff the two halves + the 2-char separator account for the whole content.
+      const dLen = mark.deleted?.length ?? 0;
+      const iLen = mark.inserted?.length ?? 0;
+      const hasSep = dLen + 2 + iLen === contentTo - contentFrom;
+      const delTo = contentFrom + dLen;
+      push(contentFrom, delTo, 'del');
+      if (hasSep) {
+        const insFrom = delTo + 2;
+        if (!revealed) push(delTo, insFrom, 'hide'); // the `~>` separator
+        push(insFrom, contentTo, 'add');
+      }
+      hideDelimiters();
+    }
+  }
+  return decos;
+}
+
 /** The annotation whose overall [from,to) span contains `pos` (pos treated as a caret between chars;
  *  an annotation matches when from <= pos <= to), or null. */
 export function annotationAt(annotations: Annotation[], pos: number): Annotation | null {
