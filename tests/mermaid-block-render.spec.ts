@@ -29,6 +29,14 @@ test('mermaid: a mermaid fence renders as an SVG diagram; cursor reveals raw', a
   await expect(editor).toBeVisible();
   await expect(editor).toContainText('Obsidian-style hybrid editing');
 
+  // --- A non-mermaid fenced block is unaffected (still a code block) --------
+  // The ```ts block (near the top of the doc) renders with the atomic-editor
+  // fenced-code class, proving mermaid handling didn't swallow ordinary code
+  // fences. Assert it BEFORE scrolling to the mermaid fence: the editor viewport
+  // is short, so scrolling to the bottom virtualizes this top block out of the
+  // DOM (CM6 only mounts line DOM for the visible range).
+  await expect(editor.locator('.cm-atomic-fenced-code').first()).toBeVisible();
+
   // Bring the mermaid fence (lower in the doc) into the viewport so CM6 mounts
   // its line DOM and the block widget renders.
   await editor.locator('.cm-scroller').evaluate((el) => {
@@ -38,11 +46,6 @@ test('mermaid: a mermaid fence renders as an SVG diagram; cursor reveals raw', a
   // --- The mermaid fence renders as an SVG Diagram (hybrid, cursor outside) --
   const diagram = editor.locator('.cm-mermaid svg');
   await expect(diagram).toBeVisible({ timeout: 15000 });
-
-  // --- A non-mermaid fenced block is unaffected (still a code block) --------
-  // The ```ts block above renders with the atomic-editor fenced-code class,
-  // proving mermaid handling didn't swallow ordinary code fences.
-  await expect(editor.locator('.cm-atomic-fenced-code').first()).toBeVisible();
 
   await page.screenshot({
     path: 'tests/screenshots/mermaid-block-render.png',

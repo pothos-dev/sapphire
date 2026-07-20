@@ -276,7 +276,7 @@ class MermaidWidget extends WidgetType {
     // hybrid only (view is read-only, never lifts the replace).
     if (!this.reading) {
       wrap.classList.add('cm-mermaid-editable');
-      wrap.title = 'Double-click to edit diagram';
+      wrap.title = 'Click to edit diagram';
 
       // A subtle "click to edit" hint shown on hover (CSS reveals it).
       const hint = document.createElement('span');

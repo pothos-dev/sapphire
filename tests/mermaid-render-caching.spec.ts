@@ -46,6 +46,13 @@ test('mermaid: editing text outside a diagram does not re-render it', async ({
   // Give any (unwanted) re-render a chance to swap the SVG, then assert the id
   // is unchanged — the diagram DOM was reused, not re-rendered.
   await page.waitForTimeout(500);
+  // `Control+Home` scrolled the view to the top; the short editor viewport
+  // virtualizes the diagram (at the bottom) out of the DOM. Scroll it back into
+  // view before reading its id. The `(source, theme)` render cache keeps the id
+  // stable across the remount, so this still asserts "no re-render".
+  await editor.locator('.cm-scroller').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
   const after = await editor.locator('.cm-mermaid svg').getAttribute('id');
   expect(after).toBe(before);
 });

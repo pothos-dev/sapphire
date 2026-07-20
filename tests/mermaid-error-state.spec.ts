@@ -39,8 +39,12 @@ test('mermaid: invalid source renders a bordered error panel with the raw source
   await diagram.click();
   await expect(editor).toContainText('graph TD');
 
-  // Break the diagram: select the `graph TD` keyword and replace it with a token
-  // mermaid cannot parse, so the next render throws.
+  // Break the diagram: replace the `graph TD` line (the diagram TYPE) with a
+  // token mermaid cannot parse, so the next render throws. Click that specific
+  // line first so the caret is on it (the reveal click above lands the caret at
+  // the fence boundary, not necessarily this line) — replacing the wrong line
+  // could clobber a ``` fence marker and drop the block entirely.
+  await editor.locator('.cm-line').filter({ hasText: 'graph TD' }).click();
   await page.keyboard.press('Home');
   await page.keyboard.press('Shift+End');
   await page.keyboard.type('!!!not a diagram!!!');
@@ -51,6 +55,12 @@ test('mermaid: invalid source renders a bordered error panel with the raw source
     el.scrollTop = 0;
   });
   await editor.locator('.cm-content').click({ position: { x: 5, y: 5 } });
+
+  // Bring the fence back into view: the short editor viewport virtualizes the
+  // (now error) widget out of the DOM when scrolled to the top.
+  await editor.locator('.cm-scroller').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
 
   // The error panel appears: bordered, with mermaid's message, distinct from a
   // plain code block (own `.cm-mermaid-error` class).

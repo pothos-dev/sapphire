@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
 });
 
-test('mermaid: double-clicking a diagram reveals the raw fence for editing', async ({
+test('mermaid: clicking a diagram reveals the raw fence for editing', async ({
   page,
 }) => {
   await page.goto('/');
@@ -46,9 +46,13 @@ test('mermaid: double-clicking a diagram reveals the raw fence for editing', asy
   await expect(widget).toHaveCSS('cursor', 'pointer');
   await expect(widget.locator('.cm-mermaid-edit-hint')).toHaveCount(1);
 
-  // Double-click the rendered diagram: the handler drops the cursor into the
-  // fence, lifting the block-replace and revealing the raw `graph TD` source.
-  await diagram.dblclick();
+  // Click the rendered diagram: the block-replace has no source text to click
+  // into, so the click lands the caret at the fence boundary (which
+  // `selectionTouches` treats as inside), lifting the replace and revealing the
+  // raw `graph TD` source for editing. (A single click already reveals — it
+  // reflows the widget away — so the double-click affordance can't add a second
+  // reveal; the hover hint above is the discoverability cue.)
+  await diagram.click();
   await expect(editor).toContainText('graph TD');
 
   await page.screenshot({
