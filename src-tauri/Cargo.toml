@@ -28,10 +28,20 @@ tauri-plugin-dialog = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Direct (dialog-free) PDF export from the print window on Linux goes through the
-# WebKitGTK `WebKitPrintOperation`. Versions are pinned to what wry already
-# resolves so no duplicate native bindings are pulled in.
+# Direct (dialog-free) PDF export from the print window uses each platform's
+# webview PDF API. Versions match what wry already resolves so no duplicate
+# native bindings are pulled in. Linux is the tested path; macOS/Windows are
+# best-effort (implemented to the documented API, not runtime-verified here).
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"
 gtk = "0.18"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKPDFConfiguration", "block2"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSError"] }
+block2 = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows = "0.61"
 

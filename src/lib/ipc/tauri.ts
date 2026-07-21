@@ -147,7 +147,7 @@ export const tauriBackend: Backend = {
   },
 
   // Direct (dialog-free) PDF export of the print window; native save chooser +
-  // WebKitGTK export live in Rust (`save_pdf`).
+  // per-platform webview PDF export live in Rust (`save_pdf`).
   savePdf(defaultName: string): Promise<string | null> {
     return invoke<string | null>('save_pdf', { defaultName });
   },
