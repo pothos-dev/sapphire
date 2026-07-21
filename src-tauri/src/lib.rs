@@ -8,6 +8,7 @@ use sapphire_core::bundle::{self, TreeNode};
 use sapphire_core::config::{self, BundleState, WindowState};
 use sapphire_core::git::{self, FileAtRev, FileHistory};
 use sapphire_core::index::TagCount;
+use sapphire_core::render::{self, RenderPayload};
 use sapphire_core::rewrite::{self, AnchorRename, RewriteSummary};
 use sapphire_core::search::{self, SearchHit};
 use sapphire_core::watcher::{self, FILE_CHANGED_EVENT};
@@ -187,6 +188,17 @@ fn file_at_rev(
 ) -> Result<FileAtRev, String> {
     bundle::resolve_new(&state.bundle_root, &path)?;
     Ok(git::file_at_rev(&state.bundle_root, &path, &rev))
+}
+
+/// Render the Concept at `path` (bundle-relative) to server-quality HTML: the
+/// body rendered with CriticMarkup annotations and resolved wikilinks, plus the
+/// parsed frontmatter and heading outline. Same core render the web viewer uses
+/// (`sapphire_core::render`); feeds the desktop "Export as PDF" print path. Links
+/// resolve against the in-memory index; the read lock is held only for the call.
+#[tauri::command]
+fn render_concept(state: State<'_, Arc<AppState>>, path: String) -> Result<RenderPayload, String> {
+    let index = state.read_index()?;
+    render::render_concept(&state.bundle_root, &index, &path)
 }
 
 /// Load the persisted per-Bundle session state (last-open Concept, expanded
@@ -412,6 +424,7 @@ pub fn run() {
             search,
             file_history,
             file_at_rev,
+            render_concept,
             load_bundle_state,
             save_bundle_state
         ])

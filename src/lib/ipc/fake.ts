@@ -10,6 +10,7 @@ import type {
   FileCommit,
   FileHistory,
   FileAtRev,
+  RenderPayload,
 } from '$lib/types';
 import {
   FAKE_BUNDLE_ROOT,
@@ -21,6 +22,7 @@ import {
   folderExists,
 } from './fake/store';
 import { buildTree, renameInternal, deleteInternal } from './fake/tree';
+import { renderConcept as renderConceptFake } from './fake/render';
 import { outboundLinks, planRewrites } from './fake/links';
 import { rewriteAnchorsIn } from '$lib/anchorRewrite';
 import {
@@ -378,6 +380,18 @@ export const fakeBackend: Backend = {
     const content = committedContentAt(path, rev);
     if (content === null) return { status: 'notFound' };
     return { status: 'ok', content };
+  },
+
+  // Server-quality render: a minimal in-browser stand-in for the Rust renderer
+  // (no comrak here). Emits CriticMarkup marks to the same `critic-*` markup so
+  // the desktop print/annotation path is testable under Playwright; see
+  // `./fake/render`. Path validation + missing-file behaviour mirror
+  // `readConcept` (which the render reads through).
+  async renderConcept(path: string): Promise<RenderPayload> {
+    if (!isSafePath(path)) throw new Error(`path escapes the bundle: ${path}`);
+    const content = FILES[path];
+    if (content === undefined) throw new Error(`no such concept: ${path}`);
+    return renderConceptFake(content);
   },
 };
 

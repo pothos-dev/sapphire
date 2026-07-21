@@ -8,6 +8,7 @@ import type {
   RewriteSummary,
   FileHistory,
   FileAtRev,
+  RenderPayload,
 } from '$lib/types';
 
 /**
@@ -174,5 +175,12 @@ export const httpBackend: Backend = {
   },
   fileAtRev(): Promise<FileAtRev> {
     return Promise.resolve({ status: 'gitMissing' });
+  },
+
+  // Server-quality render over the proxied `/api/render` — the same route the
+  // web viewer's `loadConcept` uses (body HTML + frontmatter + outline). Paths
+  // are bundle-relative, forward-slash.
+  renderConcept(path: string): Promise<RenderPayload> {
+    return getJson<RenderPayload>(`/api/render?path=${encodeURIComponent(path)}`);
   },
 };

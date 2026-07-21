@@ -13,6 +13,7 @@
 
 import { parse } from 'yaml';
 import { splitFrontmatter } from '$lib/frontmatter';
+import type { FrontmatterField } from '$lib/types';
 
 /** Parse the top-level YAML mapping of a Concept's frontmatter, or null. */
 function parseMapping(content: string): Record<string, unknown> | null {
@@ -50,6 +51,35 @@ export function parseFrontmatter(content: string): { type: string | null; tags: 
     }
   }
   return { type, tags };
+}
+
+/**
+ * Frontmatter entries in document order, as the render payload's read-only
+ * Properties view wants them: each top-level key with its value(s) (a scalar →
+ * one value, a sequence → several). Mirrors the Rust `frontmatter_fields` in
+ * `render.rs`; the `yaml` parse preserves mapping insertion order like
+ * `serde_yaml`. Returns `[]` when there is no valid block.
+ */
+export function parseFrontmatterFields(content: string): FrontmatterField[] {
+  const map = parseMapping(content);
+  if (map === null) return [];
+  return Object.entries(map).map(([key, value]) => ({ key, values: yamlValues(value) }));
+}
+
+/** A YAML value → its scalar string form(s): a sequence yields several. */
+function yamlValues(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(scalarString) : [scalarString(value)];
+}
+
+/** Stringify a scalar YAML value the way the Rust `scalar_string` does. */
+function scalarString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  // Nested map / non-flat sequence: a compact readable form (rare in fixtures).
+  return JSON.stringify(value);
 }
 
 /**

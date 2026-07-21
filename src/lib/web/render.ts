@@ -1,28 +1,10 @@
-// Web-local types for the server-side render payload (`/api/render`).
+// Render-payload types for the server-side render (`/api/render`) and — since
+// the desktop print/PDF path now needs the same server-quality HTML — the
+// `Backend.renderConcept` seam.
 //
-// Deliberately NOT part of the shared `Backend` interface: server render is a
-// web-only concern (the desktop uses CodeMirror, not server render), so the
-// seam stays unpolluted. These mirror the Rust `RenderPayload` serde shape
-// (`serde rename_all = "camelCase"`).
+// The shapes originally lived here (web-only), but now cross the IPC seam, so
+// they live in the shared `$lib/types` module (mirroring the Rust
+// `RenderPayload` serde shape, `serde rename_all = "camelCase"`). Re-exported
+// here so existing web imports (`./render`) keep working unchanged.
 
-/** One frontmatter entry for the read-only Properties view. */
-export interface FrontmatterField {
-  key: string;
-  /** scalar → one value; sequence (e.g. `tags`) → several */
-  values: string[];
-}
-
-/** One outline heading (document order): level, text, de-duplicated slug. */
-export interface OutlineHeading {
-  level: number;
-  text: string;
-  slug: string;
-}
-
-/** The rendered read-only view of a Concept. */
-export interface RenderPayload {
-  /** rendered body HTML (frontmatter excluded; links resolved to viewer nav) */
-  html: string;
-  frontmatter: FrontmatterField[];
-  outline: OutlineHeading[];
-}
+export type { RenderPayload, FrontmatterField, OutlineHeading } from '$lib/types';

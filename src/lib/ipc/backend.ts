@@ -8,6 +8,7 @@ import type {
   AnchorRename,
   FileHistory,
   FileAtRev,
+  RenderPayload,
 } from '$lib/types';
 
 /**
@@ -203,4 +204,18 @@ export interface Backend {
    * (`notARepo` / `notFound` / `gitMissing`). Only a path-escape rejects.
    */
   fileAtRev(path: string, rev: string): Promise<FileAtRev>;
+
+  // --- Server-quality render (slice: desktop-render-seam) ---
+
+  /**
+   * Render the Concept at `path` (bundle-relative) to a `RenderPayload`: the
+   * body rendered to read-only HTML (CriticMarkup annotations track-changed to
+   * their `critic-*` classes, wikilinks/markdown links resolved against the
+   * Bundle index), plus the parsed frontmatter and heading outline. This is the
+   * SAME server-quality render the web viewer consumes; on the desktop it feeds
+   * the "Export as PDF" print path (the reading view itself stays CodeMirror).
+   * Rendering lives in Rust core; the fake backend approximates it enough to be
+   * behaviourally useful under Playwright.
+   */
+  renderConcept(path: string): Promise<RenderPayload>;
 }

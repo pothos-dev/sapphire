@@ -202,6 +202,42 @@ export type FileAtRev =
   | { status: 'gitMissing' };
 
 /**
+ * One frontmatter entry for the read-only Properties view of a rendered
+ * Concept. A scalar has a single value; a sequence (e.g. `tags`) has several.
+ * Matches the Rust `FrontmatterField` (`serde rename_all = "camelCase"`).
+ */
+export interface FrontmatterField {
+  key: string;
+  /** scalar → one value; sequence (e.g. `tags`) → several */
+  values: string[];
+}
+
+/**
+ * One outline heading (document order): level, text, de-duplicated GitHub slug.
+ * Matches the Rust `OutlineHeading` (`serde rename_all = "camelCase"`).
+ */
+export interface OutlineHeading {
+  level: number;
+  text: string;
+  slug: string;
+}
+
+/**
+ * The server-quality rendered read-only view of a Concept: body HTML (with
+ * CriticMarkup annotations and resolved wikilinks; frontmatter excluded), the
+ * parsed frontmatter, and the heading outline. Produced in Rust core by
+ * `render_concept` — consumed by the web viewer AND, over the seam, by the
+ * desktop print/PDF path. Matches the Rust `RenderPayload`
+ * (`serde rename_all = "camelCase"`). Returned by `Backend.renderConcept()`.
+ */
+export interface RenderPayload {
+  /** rendered body HTML (frontmatter excluded; links resolved to viewer nav) */
+  html: string;
+  frontmatter: FrontmatterField[];
+  outline: OutlineHeading[];
+}
+
+/**
  * Parsed YAML frontmatter on a Concept. Only `type` is required; other keys
  * are recommended and unknown keys must be preserved. Filled in by later
  * index slices; defined here so the vocabulary is stable.

@@ -11,6 +11,7 @@ import type {
   AnchorRename,
   FileHistory,
   FileAtRev,
+  RenderPayload,
 } from '$lib/types';
 
 /** Tauri event name emitted by the Rust watcher (matches watcher.rs). */
@@ -133,5 +134,9 @@ export const tauriBackend: Backend = {
 
   fileAtRev(path: string, rev: string): Promise<FileAtRev> {
     return invoke<FileAtRev>('file_at_rev', { path, rev });
+  },
+
+  renderConcept(path: string): Promise<RenderPayload> {
+    return invoke<RenderPayload>('render_concept', { path });
   },
 };
