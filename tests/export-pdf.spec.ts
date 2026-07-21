@@ -120,7 +120,9 @@ test('preview (toolbar) renders the Concept and Print calls window.print', async
   await expect(body.locator('h1')).toContainText('Annotated');
   await expect(body.locator('.critic-highlight')).toContainText('pre-existing');
 
-  // Reader controls are present; Print / Save-as-PDF drives window.print once.
+  // Reader controls are present: a direct Save-as-PDF button, a Print… button
+  // (drives window.print once), and the margin selector.
+  await expect(page.getByTestId('save-pdf')).toBeEnabled();
   await expect(page.getByTestId('margin-select')).toBeVisible();
   const printAction = page.getByTestId('print-action');
   await expect(printAction).toBeEnabled();

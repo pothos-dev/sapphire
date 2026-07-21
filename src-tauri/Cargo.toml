@@ -23,6 +23,15 @@ tauri-build = { version = "2", features = [] }
 sapphire-core = { path = "../crates/sapphire-core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# Native save-file chooser for the print window's "Save as PDF" button.
+tauri-plugin-dialog = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# Direct (dialog-free) PDF export from the print window on Linux goes through the
+# WebKitGTK `WebKitPrintOperation`. Versions are pinned to what wry already
+# resolves so no duplicate native bindings are pulled in.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "=2.0.2"
+gtk = "0.18"
 

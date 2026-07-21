@@ -400,6 +400,12 @@ export const fakeBackend: Backend = {
   async openPrintWindow(path: string): Promise<void> {
     window.open(`/?print=${encodeURIComponent(path)}&toolbar=1`, '_blank');
   },
+
+  // No native filesystem under plain Chromium: direct save is a no-op (the
+  // desktop print flow is still exercisable; the button just yields nothing).
+  async savePdf(_defaultName: string): Promise<string | null> {
+    return null;
+  },
 };
 
 /**

@@ -84,6 +84,25 @@
   function incFont() {
     fontSize = Math.min(28, fontSize + 1);
   }
+
+  // Direct Save-as-PDF: write a PDF file straight from this window, skipping the
+  // OS print dialog (native save chooser + WebKitGTK export, in Rust). Falls
+  // back to the print dialog on platforms without direct export.
+  let saving = $state(false);
+  let savedMsg = $state<string | null>(null);
+  async function savePdf() {
+    if (saving || !ready) return;
+    saving = true;
+    savedMsg = null;
+    try {
+      const saved = await backend.savePdf(`${document.title}.pdf`);
+      if (saved) savedMsg = `Saved to ${saved}`;
+    } catch {
+      window.print(); // no direct export here — use the print dialog instead
+    } finally {
+      saving = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -96,10 +115,17 @@
       <button
         type="button"
         class="pt-btn primary"
+        data-testid="save-pdf"
+        disabled={!ready || saving}
+        onclick={savePdf}
+      >{saving ? 'Saving…' : 'Save as PDF'}</button>
+      <button
+        type="button"
+        class="pt-btn"
         data-testid="print-action"
         disabled={!ready}
         onclick={() => window.print()}
-      >Print / Save as PDF</button>
+      >Print…</button>
 
       <div class="pt-group" aria-label="Font size">
         <span class="pt-label">Font</span>
@@ -116,6 +142,10 @@
           <option value="wide">Wide</option>
         </select>
       </div>
+
+      {#if savedMsg}
+        <span class="pt-saved" data-testid="save-status">{savedMsg}</span>
+      {/if}
     </nav>
   {/if}
 
@@ -211,6 +241,15 @@
 
   .pt-btn.primary:hover:not(:disabled) {
     filter: brightness(1.08);
+  }
+
+  .pt-saved {
+    font-size: 0.8rem;
+    color: var(--text-muted, #4a7);
+    margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .pt-select {

@@ -190,4 +190,10 @@ export const httpBackend: Backend = {
   async openPrintWindow(path: string): Promise<void> {
     window.open(`/?print=${encodeURIComponent(path)}&toolbar=1`, '_blank');
   },
+
+  // The web viewer relies on the browser's native print → Save-as-PDF, so direct
+  // export has no server-side counterpart; resolve to `null` (no file written).
+  async savePdf(_defaultName: string): Promise<string | null> {
+    return null;
+  },
 };

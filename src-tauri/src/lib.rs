@@ -244,6 +244,78 @@ fn open_print_window(app: tauri::AppHandle, path: String) -> Result<(), String> 
     Ok(())
 }
 
+/// Export the print window's current rendering straight to a PDF FILE, skipping
+/// the OS print dialog. Prompts for a destination with a native save-file
+/// chooser (default name `default_name`), then writes the PDF. Returns the saved
+/// path, or `None` if the chooser was cancelled. Direct export is implemented
+/// via WebKitGTK on Linux; other platforms return an error so the frontend can
+/// fall back to the print dialog (`window.print()`).
+#[tauri::command]
+async fn save_pdf(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    default_name: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let chosen = app
+        .dialog()
+        .file()
+        .add_filter("PDF", &["pdf"])
+        .set_file_name(&default_name)
+        .blocking_save_file();
+    let Some(chosen) = chosen else {
+        return Ok(None); // user cancelled the save dialog
+    };
+    let path = chosen.into_path().map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "linux")]
+    {
+        export_webview_pdf(&window, &path)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (&window, &path);
+        Err("direct PDF export is currently supported on Linux only".into())
+    }
+}
+
+/// WebKitGTK-backed PDF export: drive the webview's `WebKitPrintOperation` with
+/// GTK print settings pointed at a "Print to File" PDF output, so `print()`
+/// writes the file WITHOUT showing a dialog. Runs on the GTK main thread via
+/// `with_webview`.
+#[cfg(target_os = "linux")]
+fn export_webview_pdf(
+    window: &tauri::WebviewWindow,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    use webkit2gtk::{PrintOperation, PrintOperationExt};
+
+    let uri = format!("file://{}", path.to_string_lossy());
+    window
+        .with_webview(move |platform| {
+            let webview = platform.inner();
+            let settings = gtk::PrintSettings::new();
+            settings.set("output-uri", Some(uri.as_str()));
+            settings.set("output-file-format", Some("pdf"));
+            let op = PrintOperation::new(&webview);
+            op.set_print_settings(&settings);
+            // `print()` is asynchronous; keep the operation alive until it emits
+            // `finished` (otherwise dropping the wrapper here cancels the export).
+            // A self-reference held in the `finished` handler is released once the
+            // file is written, letting the operation drop.
+            let hold = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let hold_in = hold.clone();
+            op.connect_finished(move |_| {
+                hold_in.borrow_mut().take();
+            });
+            *hold.borrow_mut() = Some(op.clone());
+            op.print();
+        })
+        .map_err(|e| e.to_string())
+}
+
 /// Load the persisted per-Bundle session state (last-open Concept, expanded
 /// folders, window geometry) for the open Bundle. Robust to a missing/corrupt
 /// store: returns defaults. See `config.rs` — never written into the Bundle.
@@ -386,6 +458,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let bundle_root = resolve_bundle_root(cli_path);
 
@@ -469,6 +542,7 @@ pub fn run() {
             file_at_rev,
             render_concept,
             open_print_window,
+            save_pdf,
             load_bundle_state,
             save_bundle_state
         ])

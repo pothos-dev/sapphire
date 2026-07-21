@@ -233,4 +233,14 @@ export interface Backend {
    * native print → Save-as-PDF UI, so it does not use this seam.
    */
   openPrintWindow(path: string): Promise<void>;
+
+  /**
+   * Export the print window's current rendering straight to a PDF FILE, skipping
+   * the OS print dialog. Prompts for a destination with a native save-file
+   * chooser (default file name `defaultName`) and writes the PDF, resolving to
+   * the saved absolute path — or `null` if the chooser was cancelled. Rejects on
+   * platforms without direct export so the caller can fall back to
+   * `window.print()`. Desktop-only; the fake/HTTP impls resolve to `null`.
+   */
+  savePdf(defaultName: string): Promise<string | null>;
 }
