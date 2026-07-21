@@ -14,10 +14,14 @@
 //      region": the lines are paired up 1:1 as changed lines; any leftover lines
 //      are pure deletes / inserts.
 //   2. WORD/TOKEN level, INSIDE a changed line, but only when the two lines share
-//      the SAME leading block marker (same heading level, same list marker, …).
-//      Then the marker is left untouched at line start and only the differing
-//      content tokens are wrapped. Whitespace and punctuation are their own
-//      tokens so unchanged structure survives verbatim.
+//      the SAME leading block marker (same heading level, same list marker, …)
+//      AND the edit is localized to a SINGLE change region. Then the marker is
+//      left untouched at line start and only the differing content tokens are
+//      wrapped. Whitespace and punctuation are their own tokens so unchanged
+//      structure survives verbatim. When a line has several scattered edits, an
+//      inline word diff shreds it into `{--a--}{++b--} … {--d--}{++e--}`
+//      fragments where neither version is legible, so we instead replace the
+//      whole content as one delete + one add (see MAX_INLINE_CHANGE_REGIONS).
 //
 // Structure-awareness (WHY): CodeMirror parses the RAW review text and the marks
 // are visual-only. Keeping the marker outside the marks — `# {--Old--}{++New++}
@@ -126,13 +130,33 @@ const wrapDel = (s: string): string => `{--${s}--}`;
 const wrapIns = (s: string): string => `{++${s}++}`;
 
 /**
- * Word/token-level diff of two content strings, wrapping only the differing
- * tokens. Adjacent deletion+addition (a substitution) comes out as
- * `{--old--}{++new++}`.
+ * How many inline word-level marks a single changed line may carry before we
+ * stop word-diffing it and replace the whole line instead. A "change region" is
+ * a maximal stretch of adjacent delete/insert runs (a lone add, a lone delete,
+ * or a substitution all count as ONE). At most one such region reads cleanly as
+ * a localized edit; two or more scatter the line into `{--a--}{++b--} c
+ * {--d--}{++e--}` fragments where neither the old nor the new sentence is
+ * legible, so we fall back to a whole-line delete + add.
  */
-function diffContent(oldContent: string, newContent: string): string {
-  if (oldContent === newContent) return oldContent;
-  const runs = lcsDiff(tokenize(oldContent), tokenize(newContent));
+const MAX_INLINE_CHANGE_REGIONS = 1;
+
+/** Count maximal stretches of adjacent non-`equal` runs (see MAX_INLINE_CHANGE_REGIONS). */
+function countChangeRegions(runs: DiffRun[]): number {
+  let regions = 0;
+  let inChange = false;
+  for (const run of runs) {
+    if (run.op === 'equal') {
+      inChange = false;
+    } else if (!inChange) {
+      regions++;
+      inChange = true;
+    }
+  }
+  return regions;
+}
+
+/** Render token-level diff runs into inline CriticMarkup, wrapping only differing tokens. */
+function renderRuns(runs: DiffRun[]): string {
   let out = '';
   for (const run of runs) {
     const text = run.items.join('');
@@ -145,19 +169,36 @@ function diffContent(oldContent: string, newContent: string): string {
 
 /**
  * Emit the review form of a single changed (old, new) line pair into `out`:
- *   - same leading block marker → keep the marker at line start and word-diff the
- *     content, so the block still parses;
+ *   - same leading block marker AND at most one word-level change region → keep
+ *     the marker at line start and word-diff the content, so the block still
+ *     parses and a localized edit shows inline;
+ *   - same marker but several scattered edits → keep the shared marker but
+ *     replace the whole content (one delete + one add) so each version reads as
+ *     a whole line instead of a shredded word soup;
  *   - different markers → whole-line delete + whole-line add, on separate lines.
  */
 function emitChangedLine(oldLine: string, newLine: string, out: string[]): void {
   const o = parseBlock(oldLine);
   const n = parseBlock(newLine);
-  if (o.marker === n.marker) {
-    out.push(o.marker + diffContent(o.content, n.content));
-  } else {
+  if (o.marker !== n.marker) {
     out.push(wrapDel(oldLine));
     out.push(wrapIns(newLine));
+    return;
   }
+  if (o.content === n.content) {
+    out.push(oldLine);
+    return;
+  }
+  const runs = lcsDiff(tokenize(o.content), tokenize(n.content));
+  if (countChangeRegions(runs) > MAX_INLINE_CHANGE_REGIONS) {
+    // Whole content as one delete chunk + one insert chunk, marker kept at line
+    // start. Reads the full old sentence then the full new one, round-trips
+    // cleanly (reject → marker+old, accept → marker+new), and the block still
+    // parses since the marker is not straddled.
+    out.push(o.marker + wrapDel(o.content) + wrapIns(n.content));
+    return;
+  }
+  out.push(o.marker + renderRuns(runs));
 }
 
 /**

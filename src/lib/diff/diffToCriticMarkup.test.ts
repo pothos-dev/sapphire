@@ -136,4 +136,32 @@ describe('diffToCriticMarkup', () => {
     expect(review).toBe('{--plain line--}\n{++```++}');
     assertClean(review);
   });
+
+  test('several scattered edits -> whole content replaced instead of word soup', () => {
+    // Two independent word swaps in one sentence would fragment into
+    // `{--quick--}{++slow--} brown {--fox--}{++dog--}`; keep each version whole
+    // as one delete chunk followed by one insert chunk.
+    const review = diffToCriticMarkup('the quick brown fox', 'the slow brown dog');
+    expect(review).toBe('{--the quick brown fox--}{++the slow brown dog++}');
+    assertClean(review);
+    expect(reject(review)).toBe('the quick brown fox');
+    expect(accept(review)).toBe('the slow brown dog');
+  });
+
+  test('scattered edits under a shared marker keep the marker at line start', () => {
+    const review = diffToCriticMarkup('- the quick brown fox', '- the slow brown dog');
+    expect(review).toBe('- {--the quick brown fox--}{++the slow brown dog++}');
+    assertClean(review);
+    expect(reject(review)).toBe('- the quick brown fox');
+    expect(accept(review)).toBe('- the slow brown dog');
+  });
+
+  test('a single multi-word change region still shows inline', () => {
+    // One contiguous edit region reads fine as a before/after, so it stays inline.
+    const review = diffToCriticMarkup('I like cats', 'I like big dogs');
+    expect(review).toBe('I like {--cats--}{++big dogs++}');
+    assertClean(review);
+    expect(reject(review)).toBe('I like cats');
+    expect(accept(review)).toBe('I like big dogs');
+  });
 });
