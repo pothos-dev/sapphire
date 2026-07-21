@@ -226,6 +226,15 @@ body {
   }
 }
 
+/* Print → PDF page geometry. `@page` cannot live in a scoped component style,
+   so the shared page margin for the Export-as-PDF feature (web viewer + desktop
+   print container) lives here. Per-surface chrome hiding is in the components. */
+@media print {
+  @page {
+    margin: 18mm;
+  }
+}
+
 /* Table cell width cap. The atomic-editor table sizes columns to content
    (`width: max-content`), so a single long-prose cell makes the whole table
    run wide and horizontal-scroll. Capping cell width lets long content wrap

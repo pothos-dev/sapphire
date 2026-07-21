@@ -365,3 +365,42 @@ test('polish: toolbar collapse/nav, Properties collapse, and persistence', async
   await page.reload();
   await expect(page.getByTestId('web-tree')).not.toBeVisible();
 });
+
+/**
+ * CriticMarkup annotations (slice: web-critic-markup-styling). The shared Rust
+ * renderer emits track-change + annotation HTML in the Concept body — addition
+ * (<ins.critic-add>), deletion (<del.critic-del>), substitution (adjacent
+ * del+add), highlight (<mark.critic-highlight>) and an inline comment callout
+ * (<span.critic-comment>). The web viewer styles them (mirroring the desktop CM
+ * palette). Asserts each mark type is present + visible in the rendered body.
+ * Saves a screenshot to tests/screenshots/web-critic.png.
+ */
+test('critic markup: additions, deletions, substitutions, highlights, and comments render', async ({
+  page,
+}) => {
+  await page.goto('/critic');
+  const rendered = page.getByTestId('rendered');
+  await expect(rendered.locator('h1')).toContainText('Critic Concept');
+
+  // Addition + deletion track-changes are present and visible.
+  await expect(rendered.locator('ins.critic-add').first()).toBeVisible();
+  await expect(rendered.locator('del.critic-del').first()).toBeVisible();
+  await expect(rendered.locator('ins.critic-add').first()).toContainText('inserted text');
+  await expect(rendered.locator('del.critic-del').first()).toContainText('removed text');
+
+  // A substitution is an adjacent deletion + addition pair, so both mark types
+  // appear more than once across the document.
+  await expect(rendered.locator('del.critic-del')).toHaveCount(2); // deletion + substitution's old
+  await expect(rendered.locator('ins.critic-add')).toHaveCount(2); // addition + substitution's new
+
+  // Highlight + its bound inline comment callout (icon + note text).
+  const highlight = rendered.locator('mark.critic-highlight');
+  await expect(highlight).toBeVisible();
+  await expect(highlight).toContainText('highlighted term');
+  const comment = rendered.locator('span.critic-comment');
+  await expect(comment).toBeVisible();
+  await expect(comment.locator('.critic-comment-text')).toContainText('an editorial note');
+  await expect(comment.locator('.critic-comment-icon svg')).toBeVisible();
+
+  await page.screenshot({ path: 'tests/screenshots/web-critic.png', fullPage: true });
+});

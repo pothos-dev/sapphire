@@ -300,6 +300,31 @@
           >
         </div>
         <div class="tb-right">
+          <!-- Export the open Concept as PDF via the browser's Print → Save as
+               PDF. The print stylesheet below strips the chrome (sidebars,
+               toolbar, Properties) so only the rendered body prints; the page
+               <title> ({pageTitle}) pre-fills the PDF file name. -->
+          <button
+            type="button"
+            class="tb-btn"
+            data-testid="export-pdf"
+            title="Export as PDF"
+            aria-label="Export as PDF"
+            disabled={!data.rendered}
+            onclick={() => window.print()}
+          >
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path
+                d="M4 2.5h5l3 3v8a0 0 0 0 1 0 0H4a0 0 0 0 1 0 0z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linejoin="round"
+              />
+              <path d="M9 2.5v3h3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
+              <path d="M8 7.5v4m0 0 1.6-1.6M8 11.5 6.4 9.9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
           <button
             type="button"
             class="tb-btn"
@@ -752,6 +777,92 @@
     cursor: help;
   }
 
+  /* --- CriticMarkup track-changes + annotations -------------------------------
+     The shared Rust renderer emits these inline in the Concept body:
+       <ins class="critic-add">    addition
+       <del class="critic-del">    deletion
+       <mark class="critic-highlight">  highlight
+       <span class="critic-comment">…icon…text…</span>  inline comment callout
+     A substitution is an adjacent <del.critic-del><ins.critic-add> pair. The
+     palette mirrors the desktop CM view (criticMarkupView.ts): warm amber
+     highlight, green additions, red deletions — annotation-specific colours (NOT
+     design tokens), scoped per theme so both papers stay legible. Explicit,
+     opaque-text colour values (not tokens) so the marks survive the light-forced
+     print block (print-color-adjust: exact) legibly on white paper. There is
+     deliberately NO underline / strikethrough here — that vocabulary is reserved
+     for real markdown. `{@html}` content is unscoped, so these are `:global`. */
+  .rendered :global(.critic-highlight) {
+    background-color: rgba(255, 208, 0, 0.35);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
+  .rendered :global(ins.critic-add) {
+    color: #1a7f37;
+    background-color: rgba(26, 127, 55, 0.14);
+    border-radius: 2px;
+    padding: 0 1px;
+    text-decoration: none;
+  }
+
+  .rendered :global(del.critic-del) {
+    color: #b3261e;
+    background-color: rgba(179, 38, 30, 0.12);
+    border-radius: 2px;
+    padding: 0 1px;
+    text-decoration: none;
+  }
+
+  /* Dark paper: annotation-specific tints re-scoped so they stay legible on the
+     charcoal background (data-theme lives on `.app`, an ancestor of `.rendered`). */
+  :global([data-theme='dark']) .rendered :global(.critic-highlight) {
+    background-color: rgba(255, 196, 64, 0.22);
+  }
+
+  :global([data-theme='dark']) .rendered :global(ins.critic-add) {
+    color: #7ee787;
+    background-color: rgba(63, 185, 80, 0.2);
+  }
+
+  :global([data-theme='dark']) .rendered :global(del.critic-del) {
+    color: #f2b8b5;
+    background-color: rgba(248, 81, 73, 0.2);
+  }
+
+  /* Comment: a small bordered inline "pill" (speech-bubble icon + note text)
+     reading as an editorial note. Uses design tokens so it tracks light/dark for
+     free; rendered inline as ordinary text (not hover-only) so it shows on paper
+     in the PDF export. */
+  .rendered :global(.critic-comment) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    margin: 0 0.12em;
+    padding: 0.05em 0.45em;
+    border: 1px solid var(--border, #d7dde6);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-elevated, #f9fafc);
+    color: var(--text-muted, #6b7280);
+    font-size: 0.85em;
+    line-height: 1.4;
+    vertical-align: baseline;
+  }
+
+  .rendered :global(.critic-comment-icon) {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-faint, #99a0ac);
+  }
+
+  .rendered :global(.critic-comment-icon svg) {
+    width: 0.95em;
+    height: 0.95em;
+  }
+
+  .rendered :global(.critic-comment-text) {
+    white-space: pre-wrap;
+  }
+
   /* Mermaid Diagrams (hydrated client-side from inert code blocks). The
      containers are created by webMermaid.ts inside `{@html}` content, so these
      rules are `:global` under `.rendered`. */
@@ -808,5 +919,82 @@
     font-size: 0.85em;
     white-space: pre-wrap;
     overflow-x: auto;
+  }
+
+  /* --- Print → PDF (export-pdf button / Ctrl+P) ---------------------------
+     Only the rendered Concept body prints: hide all chrome (both Sidebars, the
+     toolbar) and the Properties panel (frontmatter is excluded by decision).
+     The layout is flattened to normal flow (no clipped scroll containers) so
+     the WHOLE document paginates, and the theme is forced light regardless of
+     the on-screen theme — dark "paper" wastes ink and reads wrong on paper. */
+  @media print {
+    /* Force the light palette + a white page, whatever `data-theme` is set. */
+    .app {
+      --bg: #fff;
+      --bg-elevated: #fff;
+      --bg-sunken: #f2f2f2;
+      --text: #111;
+      --text-muted: #444;
+      --border: #ccc;
+      --accent: #1a3a6b;
+      background: #fff;
+      color: #111;
+      height: auto;
+      display: block;
+      /* Keep code-block / diagram backgrounds in the PDF. */
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    .side-bar,
+    .toolbar,
+    .properties-panel {
+      display: none !important;
+    }
+
+    .app-body,
+    .center {
+      display: block;
+      height: auto;
+      overflow: visible;
+    }
+
+    .reader {
+      overflow: visible;
+      padding: 0;
+    }
+
+    /* Don't strand a heading at the bottom of a page, and don't split code
+       blocks, tables, or diagrams across a page boundary. */
+    .rendered :global(h1),
+    .rendered :global(h2),
+    .rendered :global(h3),
+    .rendered :global(h4) {
+      break-after: avoid;
+    }
+
+    .rendered :global(pre),
+    .rendered :global(table),
+    .rendered :global(.web-mermaid) {
+      break-inside: avoid;
+    }
+
+    /* CriticMarkup: force the light-paper palette whatever the on-screen theme
+       (the dark green/red tints wash out on white). Scoped under `.app` so these
+       out-rank the `[data-theme='dark']` on-screen rules above; the highlight /
+       tint colours are explicit so print-color-adjust: exact keeps them. */
+    .app .rendered :global(.critic-highlight) {
+      background-color: rgba(255, 208, 0, 0.35);
+    }
+
+    .app .rendered :global(ins.critic-add) {
+      color: #1a7f37;
+      background-color: rgba(26, 127, 55, 0.14);
+    }
+
+    .app .rendered :global(del.critic-del) {
+      color: #b3261e;
+      background-color: rgba(179, 38, 30, 0.12);
+    }
   }
 </style>
