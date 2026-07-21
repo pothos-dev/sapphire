@@ -15,8 +15,11 @@ cd "$SCRIPT_DIR"
 
 BIN_NAME="sapphire"
 INSTALL_DIR="$HOME/.local/bin"
-# Honour CARGO_TARGET_DIR if set, else Tauri's default (src-tauri/target).
-TARGET_DIR="${CARGO_TARGET_DIR:-$SCRIPT_DIR/src-tauri/target}"
+# Honour CARGO_TARGET_DIR if set, else the cargo WORKSPACE-ROOT target dir.
+# (The repo is a cargo workspace — crates/* + src-tauri — so build output lands
+# in ./target, NOT src-tauri/target. A pre-workspace src-tauri/target/release
+# binary may still linger and would install a stale version if used.)
+TARGET_DIR="${CARGO_TARGET_DIR:-$SCRIPT_DIR/target}"
 BUILT_BIN="$TARGET_DIR/release/$BIN_NAME"
 
 if ! command -v bun >/dev/null 2>&1; then
