@@ -1,12 +1,9 @@
 <script lang="ts">
-  import type { EditorMode } from '$lib/editor/cm';
-
   interface Props {
     leftSidebarOpen: boolean;
     rightSidebarOpen: boolean;
     canGoBack: boolean;
     canGoForward: boolean;
-    editorMode: EditorMode;
     hasOpenConcept: boolean;
     /** Whether the open Concept is currently in review (working-tree ↔ HEAD) mode. */
     reviewActive: boolean;
@@ -18,7 +15,6 @@
     onToggleRight: () => void;
     onBack: () => void;
     onForward: () => void;
-    onSetMode: (mode: EditorMode) => void;
     onToggleReview: () => void;
     /** Export the open Concept as PDF (render → print container → print). */
     onExportPdf: () => void;
@@ -29,7 +25,6 @@
     rightSidebarOpen,
     canGoBack,
     canGoForward,
-    editorMode,
     hasOpenConcept,
     reviewActive,
     reviewEnabled,
@@ -38,19 +33,9 @@
     onToggleRight,
     onBack,
     onForward,
-    onSetMode,
     onToggleReview,
     onExportPdf,
   }: Props = $props();
-
-  // The editor's tri-state view mode (Obsidian parity: Source / Live / Reading).
-  // Display-only data for the mode toggle; the mode state and switch logic live
-  // in App.svelte.
-  const EDITOR_MODES: { mode: EditorMode; label: string; title: string }[] = [
-    { mode: 'edit', label: 'Source', title: 'Source — raw markdown' },
-    { mode: 'hybrid', label: 'Live', title: 'Live preview — render with the cursor line shown raw' },
-    { mode: 'view', label: 'Read', title: 'Reading view — fully rendered, read-only' },
-  ];
 </script>
 
 <nav class="nav-bar" aria-label="Navigation history">
@@ -117,29 +102,10 @@
     >
   </div>
   <div class="nav-right">
-    <div
-      class="mode-toggle"
-      role="group"
-      aria-label="Editor mode"
-      data-testid="editor-mode-toggle"
-    >
-      {#each EDITOR_MODES as m (m.mode)}
-        <button
-          type="button"
-          class="mode-btn"
-          class:active={editorMode === m.mode}
-          data-testid={`editor-mode-${m.mode}`}
-          title={m.title}
-          aria-label={m.title}
-          aria-pressed={editorMode === m.mode}
-          disabled={!hasOpenConcept}
-          onclick={() => onSetMode(m.mode)}>{m.label}</button
-        >
-      {/each}
-    </div>
-    <!-- Review changes (working-tree ↔ HEAD): a dedicated toggle SEPARATE from the
-         mode segmented control above. Disabled with an explanatory tooltip when
-         the open Concept has no reviewable git history. -->
+    <!-- Review changes (working-tree ↔ HEAD): a dedicated toggle. Disabled with
+         an explanatory tooltip when the open Concept has no reviewable git
+         history. (The Source/Live/Read mode control now overlays the Concept
+         view — see ModeToggle.svelte.) -->
     <button
       type="button"
       class="nav-btn"
@@ -264,46 +230,6 @@
     gap: 0.5rem;
     align-items: center;
     justify-self: end;
-  }
-
-  /* Tri-state mode toggle: a connected segmented control (Source / Live / Read). */
-  .mode-toggle {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-
-  .mode-btn {
-    padding: 0 0.55rem;
-    height: 1.9rem;
-    border: none;
-    border-left: 1px solid var(--border);
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.12s ease;
-  }
-
-  .mode-btn:first-child {
-    border-left: none;
-  }
-
-  .mode-btn:hover:not(:disabled):not(.active) {
-    background: var(--hover);
-  }
-
-  .mode-btn.active {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  .mode-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 
   .nav-btn {

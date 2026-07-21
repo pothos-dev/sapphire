@@ -67,6 +67,7 @@
   import TagBrowser from '$lib/components/TagBrowser.svelte';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import NavBar from '$lib/components/NavBar.svelte';
+  import ModeToggle from '$lib/components/ModeToggle.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
@@ -1506,7 +1507,6 @@
       rightSidebarOpen={session.rightSidebarOpen}
       canGoBack={editor.canGoBack}
       canGoForward={editor.canGoForward}
-      {editorMode}
       hasOpenConcept={editor.path !== null}
       {reviewActive}
       reviewEnabled={reviewAvail.enabled}
@@ -1515,7 +1515,6 @@
       onToggleRight={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
       onBack={() => void editor.back()}
       onForward={() => void editor.forward()}
-      onSetMode={changeEditorMode}
       onToggleReview={toggleReview}
       onExportPdf={exportPdf}
     />
@@ -1624,6 +1623,14 @@
       </div>
       <div class="editor-host review-host" data-testid="review-editor" bind:this={reviewParent}></div>
     {/if}
+    <!-- Source / Live / Read view-mode control, floated over the lower-right of
+         the Concept view (icons: hashtag / pen / book). Display-only; the mode
+         state + switch logic stay here (`editorMode` / `changeEditorMode`). -->
+    <ModeToggle
+      {editorMode}
+      hasOpenConcept={editor.path !== null}
+      onSetMode={changeEditorMode}
+    />
   </main>
 
   <!-- Right Sidebar: a second accordion mirroring the left one, anchored so its
