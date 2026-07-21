@@ -2,26 +2,24 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 
 /**
- * Desktop Export-as-PDF (Layer 3).
+ * Export as PDF → print/PDF preview window (Layer 3).
  *
  * The desktop reading view is CodeMirror (virtualized), so it can't be printed
- * directly. The Export-as-PDF button (and Ctrl+P) instead render the open
- * Concept to static HTML via `backend.renderConcept`, inject it into a hidden
- * `.print-root` container styled by the shared `rendered.css`, hydrate Mermaid,
- * set the document title, and call `window.print()`.
+ * directly. The Export-as-PDF button (and Ctrl+P) now open a SEPARATE, chrome-
+ * free print/PDF preview in its own window/tab (`backend.openPrintWindow`),
+ * which renders the open Concept via `backend.renderConcept` and offers reader
+ * controls (font size, margins) plus Print / Save-as-PDF — so the PDF can be
+ * inspected before saving. On the desktop this is a native window; under the
+ * fake backend (Chromium/Playwright) it is a new tab at `/?print=<path>&toolbar=1`.
  *
- * Drives it over the fake backend (whose `renderConcept` emits CriticMarkup to
- * the SAME `critic-*` classes the Rust renderer uses). Asserts:
- *   - the export button is DISABLED with no Concept open, ENABLED once one is;
- *   - clicking it calls `window.print()` AND fills `.print-root` with the
- *     rendered body (a heading + a `.critic-add` mark from the fixture);
- *   - Ctrl+P routes through the same export flow.
+ * Two surfaces exercised:
+ *   - the desktop shell opens the preview WITH the reader toolbar (`toolbar=1`);
+ *   - the preview itself (`PrintView`) rendered directly for a fixture Concept:
+ *     toolbar variant (controls + Print button) and the bare web variant (no
+ *     toolbar, auto-invokes the browser's print → Save-as-PDF preview).
  *
- * Uses the runtime fake-watcher seed hook (like critic-changes.spec.ts) so the
- * shared Explorer tree other specs screenshot is left untouched. `window.print`
- * is stubbed via `addInitScript` (headless Chromium has no print dialog) — the
- * stub records call count and does NOT fire `afterprint`, so the injected body
- * survives for inspection.
+ * `window.print` is stubbed via `addInitScript` (headless Chromium has no print
+ * dialog); the stub just records a call count.
  */
 
 type FakeWindow = Window & {
@@ -33,13 +31,13 @@ type FakeWindow = Window & {
 
 const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 
-const BODY =
-  `# Export Me\n\n` +
-  `An {++inserted++} phrase and a {--removed--} phrase.\n`;
+const BODY = `# Export Me\n\nAn ordinary paragraph.\n`;
+
+// A Concept that already lives in the seeded fake Bundle (so a freshly-loaded
+// preview tab can render it), carrying CriticMarkup to prove the shared render.
+const FIXTURE = 'concepts/annotated.md';
 
 async function stubPrint(page: Page): Promise<void> {
-  // Record print calls on the window; suppress the (nonexistent, headless) dialog
-  // and deliberately do NOT dispatch `afterprint`, so the print body stays put.
   await page.addInitScript(() => {
     (window as unknown as { __printCalls: number }).__printCalls = 0;
     window.print = () => {
@@ -76,7 +74,6 @@ async function openConcept(page: Page, path: string, body: string) {
 test('export button is disabled with no Concept open and enabled once one is', async ({
   page,
 }) => {
-  await stubPrint(page);
   await page.goto('/');
 
   const exportBtn = page.getByTestId('export-pdf');
@@ -88,35 +85,64 @@ test('export button is disabled with no Concept open and enabled once one is', a
   await expect(exportBtn).toBeEnabled();
 });
 
-test('clicking Export renders the Concept body into .print-root and calls print', async ({
-  page,
-}) => {
-  await stubPrint(page);
+test('clicking Export opens the print preview window for the open Concept', async ({ page }) => {
   await page.goto('/');
   await openConcept(page, 'export-me.md', `${fm('Export Me')}${BODY}`);
 
+  const popupPromise = page.waitForEvent('popup');
   await page.getByTestId('export-pdf').click();
+  const popup = await popupPromise;
 
-  // window.print was invoked exactly once.
+  // Opened the chrome-free preview for THIS Concept, with the desktop toolbar.
+  expect(popup.url()).toContain('print=export-me.md');
+  expect(popup.url()).toContain('toolbar=1');
+});
+
+test('Ctrl+P opens the print preview window (not the native print)', async ({ page }) => {
+  await page.goto('/');
+  await openConcept(page, 'export-me.md', `${fm('Export Me')}${BODY}`);
+
+  const popupPromise = page.waitForEvent('popup');
+  await page.keyboard.press('ControlOrMeta+p');
+  const popup = await popupPromise;
+
+  expect(popup.url()).toContain('print=export-me.md');
+  expect(popup.url()).toContain('toolbar=1');
+});
+
+test('preview (toolbar) renders the Concept and Print calls window.print', async ({ page }) => {
+  await stubPrint(page);
+  await page.goto(`/?print=${encodeURIComponent(FIXTURE)}&toolbar=1`);
+
+  // The rendered body: the fixture heading + a CriticMarkup highlight (the fake
+  // render emits the same `critic-*` HTML the Rust renderer does).
+  const body = page.getByTestId('print-body');
+  await expect(body.locator('h1')).toContainText('Annotated');
+  await expect(body.locator('.critic-highlight')).toContainText('pre-existing');
+
+  // Reader controls are present; Print / Save-as-PDF drives window.print once.
+  await expect(page.getByTestId('margin-select')).toBeVisible();
+  const printAction = page.getByTestId('print-action');
+  await expect(printAction).toBeEnabled();
+  await printAction.click();
   await expect.poll(() => printCalls(page)).toBe(1);
 
-  // The hidden print container now holds the rendered body: the heading and the
-  // CriticMarkup addition mark (the fake render emits the same `critic-*` HTML).
-  const printRoot = page.getByTestId('print-root');
-  await expect(printRoot.locator('h1')).toContainText('Export Me');
-  await expect(printRoot.locator('ins.critic-add')).toHaveText('inserted');
-  await expect(printRoot.locator('del.critic-del')).toHaveText('removed');
+  // Font controls adjust the displayed size.
+  await expect(page.getByTestId('font-size')).toHaveText('16px');
+  await page.getByTestId('font-inc').click();
+  await expect(page.getByTestId('font-size')).toHaveText('17px');
 
   await page.screenshot({ path: 'tests/screenshots/export-pdf.png', fullPage: true });
 });
 
-test('Ctrl+P routes through the export flow (not the native print)', async ({ page }) => {
+test('preview (web, no toolbar) renders and auto-invokes the browser print', async ({ page }) => {
   await stubPrint(page);
-  await page.goto('/');
-  await openConcept(page, 'export-me.md', `${fm('Export Me')}${BODY}`);
+  await page.goto(`/?print=${encodeURIComponent(FIXTURE)}`);
 
-  await page.keyboard.press('ControlOrMeta+p');
+  // No reader toolbar — the browser's native print → Save-as-PDF UI is used.
+  await expect(page.getByTestId('print-body').locator('h1')).toContainText('Annotated');
+  await expect(page.getByTestId('print-action')).toHaveCount(0);
 
+  // The bare tab hands straight to the browser's print preview on load.
   await expect.poll(() => printCalls(page)).toBe(1);
-  await expect(page.getByTestId('print-root').locator('h1')).toContainText('Export Me');
 });

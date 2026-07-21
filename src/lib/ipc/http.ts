@@ -183,4 +183,11 @@ export const httpBackend: Backend = {
   renderConcept(path: string): Promise<RenderPayload> {
     return getJson<RenderPayload>(`/api/render?path=${encodeURIComponent(path)}`);
   },
+
+  // The web viewer opens its own chrome-free print tab directly (no toolbar,
+  // relying on the browser's native print → Save-as-PDF UI), so this seam is
+  // unused on web; implemented for interface parity as a new tab WITH toolbar.
+  async openPrintWindow(path: string): Promise<void> {
+    window.open(`/?print=${encodeURIComponent(path)}&toolbar=1`, '_blank');
+  },
 };

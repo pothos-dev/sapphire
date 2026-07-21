@@ -82,10 +82,6 @@
   import { propertiesNav } from '$lib/state/propertiesNav.svelte';
   import { region } from '$lib/region';
   import { directionForKey } from '$lib/regionGrid';
-  // Export-as-PDF: reuse the web viewer's Mermaid hydration + Concept-title
-  // helper so the desktop print container renders the SAME server HTML.
-  import { hydrateMermaid } from '$lib/web/webMermaid';
-  import { conceptTitle } from '$lib/web/conceptUrl';
 
   // Sidebar accordions (VSCode-style): the left Sidebar holds the Bundle tree
   // (Explorer) + Tags; the right Sidebar holds Backlinks (Outline arrives in a
@@ -569,39 +565,15 @@
 
   // --- Export as PDF (export-pdf button / Ctrl+P) --------------------------
   // The desktop reading view is CodeMirror, which VIRTUALIZES its content — so
-  // it can't be printed directly. Instead we render the open Concept to static,
-  // server-quality HTML via `backend.renderConcept`, drop it into a hidden print
-  // container (`.print-root`, styled by the shared `rendered.css`), hydrate any
-  // Mermaid diagrams (forced light for paper), set the document title so the PDF
-  // filename is sensible, then `window.print()`. The print stylesheet (the
-  // scoped style block below) hides the app shell and shows ONLY `.print-root`.
-  // Cleanup (clear the container + restore the title) runs on `afterprint`.
-  let printRoot = $state<HTMLElement | null>(null);
-
+  // it can't be printed directly. Instead we open a SEPARATE print/PDF preview
+  // window (`backend.openPrintWindow`) that renders the open Concept to static,
+  // server-quality HTML and offers reader controls (font size, margins) plus
+  // Print / Save-as-PDF — so the PDF can be inspected before saving. NO-OP when
+  // no Concept is open.
   async function exportPdf(): Promise<void> {
     const path = editor.path;
-    if (path === null || !printRoot) return; // nothing open / not mounted: no-op.
-    const payload = await backend.renderConcept(path);
-    // A Concept switch (or unmount) while awaiting invalidates this export.
-    if (editor.path !== path || !printRoot) return;
-
-    // Inject the rendered BODY HTML (frontmatter already excluded by the render).
-    printRoot.innerHTML = payload.html;
-    // Hydrate Mermaid diagrams in the container; force the light theme for paper.
-    await hydrateMermaid(printRoot, 'light');
-    if (!printRoot) return;
-
-    // Name the PDF after the Concept; restore the previous title after printing.
-    const prevTitle = document.title;
-    document.title = conceptTitle(path, payload);
-
-    const cleanup = () => {
-      if (printRoot) printRoot.innerHTML = '';
-      document.title = prevTitle;
-      window.removeEventListener('afterprint', cleanup);
-    };
-    window.addEventListener('afterprint', cleanup);
-    window.print();
+    if (path === null) return;
+    await backend.openPrintWindow(path);
   }
 
   onMount(() => {
@@ -693,8 +665,8 @@
         return;
       }
 
-      // Export as PDF: Ctrl/Cmd+P. Intercept so the OS/webview print dialog
-      // prints our clean `.print-root` container, not the virtualized editor.
+      // Export as PDF: Ctrl/Cmd+P. Intercept so it opens our clean print/PDF
+      // preview window (not the OS print dialog over the virtualized editor).
       // Only when a Concept is open; otherwise let the browser handle it.
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'p') {
         if (editor.path === null) return; // nothing open: don't hijack print.
@@ -1783,13 +1755,6 @@
   {/if}
 </div>
 
-<!-- Export-as-PDF print container. A SIBLING of the app shell (not a descendant),
-     so the print stylesheet can hide `.app` entirely and show ONLY this. Normally
-     `display:none`; `exportPdf` injects the rendered body HTML here, then prints.
-     Carries `rendered` so the shared `rendered.css` styles the body identically
-     to the web viewer. -->
-<article class="print-root rendered" data-testid="print-root" bind:this={printRoot}></article>
-
 <style>
   /* Theme is driven by `data-theme` on the app root (set by the theme store,
      state/theme.svelte.ts — OS-driven default). The attribute selects the token
@@ -2110,57 +2075,5 @@
   .root-new:hover {
     background: var(--hover);
     opacity: 1;
-  }
-
-  /* --- Export as PDF -------------------------------------------------------
-     The hidden print container holding the rendered Concept body. Off-screen
-     entirely on screen; the `@media print` block below hides the whole app
-     shell and shows ONLY this, forced to a light palette on white paper. The
-     shared page margin (`@page { margin: 18mm }`) lives in app.css. */
-  .print-root {
-    display: none;
-  }
-
-  @media print {
-    /* Hide the entire on-screen app shell; only the print container prints. */
-    .app {
-      display: none !important;
-    }
-
-    .print-root {
-      display: block;
-      /* Force the LIGHT palette regardless of the on-screen `data-theme`
-         (dark "paper" wastes ink and reads wrong on paper) — mirrors what the
-         web viewer's print block does on `.app`. Explicit token values so the
-         shared `rendered.css` (which reads these vars) renders light. */
-      --bg: #fff;
-      --bg-elevated: #fff;
-      --bg-sunken: #f2f2f2;
-      --text: #111;
-      --text-muted: #444;
-      --border: #ccc;
-      --accent: #1a3a6b;
-      background: #fff;
-      color: #111;
-      /* Keep code-block / diagram / mark backgrounds in the PDF. */
-      print-color-adjust: exact;
-      -webkit-print-color-adjust: exact;
-    }
-
-    /* Don't strand a heading at a page bottom; don't split code blocks, tables
-       or diagrams across a page boundary. The body is injected via innerHTML
-       (unscoped), so these descendant selectors are `:global`. */
-    .print-root :global(h1),
-    .print-root :global(h2),
-    .print-root :global(h3),
-    .print-root :global(h4) {
-      break-after: avoid;
-    }
-
-    .print-root :global(pre),
-    .print-root :global(table),
-    .print-root :global(.web-mermaid) {
-      break-inside: avoid;
-    }
   }
 </style>

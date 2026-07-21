@@ -300,10 +300,11 @@
           >
         </div>
         <div class="tb-right">
-          <!-- Export the open Concept as PDF via the browser's Print → Save as
-               PDF. The print stylesheet below strips the chrome (sidebars,
-               toolbar, Properties) so only the rendered body prints; the page
-               <title> ({pageTitle}) pre-fills the PDF file name. -->
+          <!-- Export the open Concept as PDF: open a chrome-free print TAB
+               (`/?print=<path>`) that renders just the Concept body and hands
+               straight to the browser's native print → Save-as-PDF preview (its
+               built-in print/download controls are the inspect-before-save UI,
+               so we add none). The tab's <title> pre-fills the PDF file name. -->
           <button
             type="button"
             class="tb-btn"
@@ -311,7 +312,7 @@
             title="Export as PDF"
             aria-label="Export as PDF"
             disabled={!data.rendered}
-            onclick={() => window.print()}
+            onclick={() => data.selected && window.open(`/?print=${encodeURIComponent(data.selected)}`, '_blank')}
           >
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
               <path
@@ -719,85 +720,9 @@
   }
 
   /* Rendered-body content styles (prose typography, links, broken-link,
-     CriticMarkup marks + light/dark variants, Mermaid) moved to the shared
-     global stylesheet `src/lib/rendered.css` so the desktop Export-as-PDF
-     `.print-root` styles the SAME server-rendered HTML identically. The web
-     viewer's own CHROME + the print chrome-hiding below stay scoped here. */
-
-  /* --- Print → PDF (export-pdf button / Ctrl+P) ---------------------------
-     Only the rendered Concept body prints: hide all chrome (both Sidebars, the
-     toolbar) and the Properties panel (frontmatter is excluded by decision).
-     The layout is flattened to normal flow (no clipped scroll containers) so
-     the WHOLE document paginates, and the theme is forced light regardless of
-     the on-screen theme — dark "paper" wastes ink and reads wrong on paper. */
-  @media print {
-    /* Force the light palette + a white page, whatever `data-theme` is set. */
-    .app {
-      --bg: #fff;
-      --bg-elevated: #fff;
-      --bg-sunken: #f2f2f2;
-      --text: #111;
-      --text-muted: #444;
-      --border: #ccc;
-      --accent: #1a3a6b;
-      background: #fff;
-      color: #111;
-      height: auto;
-      display: block;
-      /* Keep code-block / diagram backgrounds in the PDF. */
-      print-color-adjust: exact;
-      -webkit-print-color-adjust: exact;
-    }
-
-    .side-bar,
-    .toolbar,
-    .properties-panel {
-      display: none !important;
-    }
-
-    .app-body,
-    .center {
-      display: block;
-      height: auto;
-      overflow: visible;
-    }
-
-    .reader {
-      overflow: visible;
-      padding: 0;
-    }
-
-    /* Don't strand a heading at the bottom of a page, and don't split code
-       blocks, tables, or diagrams across a page boundary. */
-    .rendered :global(h1),
-    .rendered :global(h2),
-    .rendered :global(h3),
-    .rendered :global(h4) {
-      break-after: avoid;
-    }
-
-    .rendered :global(pre),
-    .rendered :global(table),
-    .rendered :global(.web-mermaid) {
-      break-inside: avoid;
-    }
-
-    /* CriticMarkup: force the light-paper palette whatever the on-screen theme
-       (the dark green/red tints wash out on white). Scoped under `.app` so these
-       out-rank the `[data-theme='dark']` on-screen rules above; the highlight /
-       tint colours are explicit so print-color-adjust: exact keeps them. */
-    .app .rendered :global(.critic-highlight) {
-      background-color: rgba(255, 208, 0, 0.35);
-    }
-
-    .app .rendered :global(ins.critic-add) {
-      color: #1a7f37;
-      background-color: rgba(26, 127, 55, 0.14);
-    }
-
-    .app .rendered :global(del.critic-del) {
-      color: #b3261e;
-      background-color: rgba(179, 38, 30, 0.12);
-    }
-  }
+     CriticMarkup marks + light/dark variants, Mermaid) live in the shared
+     global stylesheet `src/lib/rendered.css`, so the print/PDF preview
+     (`PrintView`) styles the SAME server-rendered HTML identically. Printing is
+     now handled by the dedicated chrome-free print tab (`/?print=<path>`), not
+     by printing the viewer in place, so no `@media print` chrome-hiding here. */
 </style>

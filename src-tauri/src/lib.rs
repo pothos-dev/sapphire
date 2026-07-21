@@ -201,6 +201,49 @@ fn render_concept(state: State<'_, Arc<AppState>>, path: String) -> Result<Rende
     render::render_concept(&state.bundle_root, &index, &path)
 }
 
+/// Percent-encode a string for use in a URL query value (RFC 3986 unreserved
+/// set passes through; everything else is `%XX`). Small local helper so the
+/// print-window URL below needs no extra dependency.
+fn encode_query(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Open a chrome-free print/PDF preview of the Concept at `path` in a SEPARATE
+/// native window (WebKitGTK has no rich PDF chrome of its own, so the preview
+/// carries its own reader controls). The window loads the same SPA shell with
+/// `?print=<path>&toolbar=1`, which the root route resolves to `PrintView`.
+/// If a print window is already open it is reused (navigated + focused).
+#[tauri::command]
+fn open_print_window(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let query = format!("?print={}&toolbar=1", encode_query(&path));
+    if let Some(existing) = app.get_webview_window("print") {
+        existing
+            .eval(&format!("window.location.replace('index.html{query}')"))
+            .map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "print",
+        tauri::WebviewUrl::App(format!("index.html{query}").into()),
+    )
+    .title("Print — Sapphire")
+    .inner_size(900.0, 1100.0)
+    .build()
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Load the persisted per-Bundle session state (last-open Concept, expanded
 /// folders, window geometry) for the open Bundle. Robust to a missing/corrupt
 /// store: returns defaults. See `config.rs` — never written into the Bundle.
@@ -425,6 +468,7 @@ pub fn run() {
             file_history,
             file_at_rev,
             render_concept,
+            open_print_window,
             load_bundle_state,
             save_bundle_state
         ])

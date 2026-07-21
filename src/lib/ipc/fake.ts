@@ -393,6 +393,13 @@ export const fakeBackend: Backend = {
     if (content === undefined) throw new Error(`no such concept: ${path}`);
     return renderConceptFake(content);
   },
+
+  // No native window under plain Chromium (dev / Playwright): open the print
+  // preview as a new browser tab WITH the desktop reader toolbar, so the
+  // desktop print flow stays exercisable without the Tauri shell.
+  async openPrintWindow(path: string): Promise<void> {
+    window.open(`/?print=${encodeURIComponent(path)}&toolbar=1`, '_blank');
+  },
 };
 
 /**

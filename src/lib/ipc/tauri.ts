@@ -139,4 +139,10 @@ export const tauriBackend: Backend = {
   renderConcept(path: string): Promise<RenderPayload> {
     return invoke<RenderPayload>('render_concept', { path });
   },
+
+  // Open the print/PDF preview as a SEPARATE native window (built in Rust so the
+  // window + its capability live on that side; see `open_print_window`).
+  openPrintWindow(path: string): Promise<void> {
+    return invoke<void>('open_print_window', { path });
+  },
 };

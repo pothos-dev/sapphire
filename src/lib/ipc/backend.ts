@@ -218,4 +218,19 @@ export interface Backend {
    * behaviourally useful under Playwright.
    */
   renderConcept(path: string): Promise<RenderPayload>;
+
+  // --- Print / PDF preview (slice: print-preview-window) ---
+
+  /**
+   * Open a chrome-free print/PDF preview of the Concept at `path`
+   * (bundle-relative) in its OWN window/tab, so it can be inspected before
+   * saving. The preview renders the same server-quality HTML as `renderConcept`
+   * and offers reader controls (font size, margins) plus Print / Save-as-PDF.
+   *
+   * On the desktop this opens a SEPARATE native window (WebKitGTK has no rich
+   * PDF chrome of its own); the fake/HTTP impls open a new browser tab. The web
+   * viewer opens a bare tab directly (no toolbar) and relies on the browser's
+   * native print → Save-as-PDF UI, so it does not use this seam.
+   */
+  openPrintWindow(path: string): Promise<void>;
 }
