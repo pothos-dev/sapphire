@@ -20,6 +20,8 @@
     onForward: () => void;
     onSetMode: (mode: EditorMode) => void;
     onToggleReview: () => void;
+    /** Export the open Concept as PDF (render → print container → print). */
+    onExportPdf: () => void;
   }
 
   let {
@@ -38,6 +40,7 @@
     onForward,
     onSetMode,
     onToggleReview,
+    onExportPdf,
   }: Props = $props();
 
   // The editor's tri-state view mode (Obsidian parity: Source / Live / Reading).
@@ -160,6 +163,31 @@
           stroke="currentColor"
           stroke-width="1.2"
         />
+      </svg>
+    </button>
+    <!-- Export as PDF: render the open Concept to static HTML and print it via a
+         clean hidden container (App.svelte's `exportPdf`), NOT the virtualized
+         CodeMirror editor. Disabled with no Concept open. The icon mirrors the
+         web viewer's export-pdf button for consistency. -->
+    <button
+      type="button"
+      class="nav-btn"
+      data-testid="export-pdf"
+      title="Export as PDF"
+      aria-label="Export as PDF"
+      disabled={!hasOpenConcept}
+      onclick={onExportPdf}
+    >
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+        <path
+          d="M4 2.5h5l3 3v8a0 0 0 0 1 0 0H4a0 0 0 0 1 0 0z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.2"
+          stroke-linejoin="round"
+        />
+        <path d="M9 2.5v3h3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
+        <path d="M8 7.5v4m0 0 1.6-1.6M8 11.5 6.4 9.9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
     </button>
     <button
