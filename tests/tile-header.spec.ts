@@ -98,18 +98,12 @@ test('tile header: title, undo/redo, review + export live in the header', async 
   await page.screenshot({ path: 'tests/screenshots/tile-header.png', fullPage: true });
 });
 
-test('tile header: close affordance clears the Tile to the empty state', async ({ page }) => {
+test('tile header: close affordance is hidden when only one tile is on screen', async ({ page }) => {
   await openCodemirror(page);
 
-  const closeBtn = page.getByTestId('tile-close');
-  await expect(closeBtn).toBeEnabled();
-  await closeBtn.click();
-
-  // The Tile returns to the empty "Select a Concept" placeholder; the editor is
-  // hidden and the per-Concept controls disable.
-  await expect(page.getByTestId('placeholder')).toBeVisible();
-  await expect(page.getByTestId('tile-close')).toBeDisabled();
-  await expect(page.getByTestId('editor-mode-hybrid')).toBeDisabled();
+  // With a single tile there is nothing to close down to (it would just clear to
+  // the empty state), so the Close affordance is not rendered at all.
+  await expect(page.getByTestId('tile-close')).toHaveCount(0);
 });
 
 test('nav bar: global-only — view-mode + Properties + sidebar toggles, no per-Tile controls', async ({

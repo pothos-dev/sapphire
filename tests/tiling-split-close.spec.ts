@@ -7,7 +7,8 @@ import { test, expect } from './fixtures';
  * Split Right opens the active Concept in a new column; Split Down opens it in a
  * new tile below. Dividers resize columns/tiles. The same Concept open in two
  * tiles shares one Document (an edit in one shows in the other). Closing a tile
- * focuses a neighbour; closing the last tile returns to the empty state.
+ * focuses a neighbour; the Close affordance only appears while more than one
+ * tile is on screen.
  */
 
 const CM = 'concepts/codemirror.md';
@@ -21,7 +22,7 @@ async function openCodemirror(page: import('@playwright/test').Page) {
   await expect(page.getByTestId('editor')).toContainText(NEEDLE);
 }
 
-test('tiling: split right + down, resize a divider, shared-doc sync, close to neighbour then empty', async ({
+test('tiling: split right + down, resize a divider, shared-doc sync, close to neighbour then single', async ({
   page,
 }) => {
   await openCodemirror(page);
@@ -72,11 +73,10 @@ test('tiling: split right + down, resize a divider, shared-doc sync, close to ne
   // Exactly one Tile is marked active (the focused neighbour).
   await expect(page.locator('[data-testid="tile"].tile-active')).toHaveCount(1);
 
-  // --- Close the remaining tiles down to the empty state ---------------------
+  // --- Close down to the last tile → the Close affordance disappears ---------
   await page.getByTestId('tile').last().getByTestId('tile-close').click();
   await expect(page.getByTestId('editor')).toHaveCount(1);
-  // The final close clears the last Tile to the empty "Select a Concept" state.
-  await page.getByTestId('tile-close').click();
-  await expect(page.getByTestId('placeholder')).toBeVisible();
-  await expect(page.getByTestId('tile-close')).toBeDisabled();
+  // With a single tile left, closing it would only clear it to the empty state,
+  // so the Close affordance is no longer shown.
+  await expect(page.getByTestId('tile-close')).toHaveCount(0);
 });
