@@ -1,41 +1,94 @@
 mod cli;
+mod session;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use sapphire_core::app_state::AppState;
 use sapphire_core::bundle::{self, TreeNode};
-use sapphire_core::config::{self, BundleState, WindowState};
+use sapphire_core::config::{self, BundleState, KnownBundle, WindowState};
 use sapphire_core::git::{self, FileAtRev, FileHistory};
 use sapphire_core::index::TagCount;
 use sapphire_core::render::{self, RenderPayload};
 use sapphire_core::rewrite::{self, AnchorRename, RewriteSummary};
 use sapphire_core::search::{self, SearchHit};
-use sapphire_core::watcher::{self, FILE_CHANGED_EVENT};
-use tauri::{Emitter, LogicalPosition, LogicalSize, Manager, State, WindowEvent};
+use session::Session;
+use tauri::{Manager, State, WindowEvent};
 
-/// Absolute path of the opened Bundle root.
+/// Absolute path of the currently-open Bundle root. Errors in launcher mode (no
+/// Bundle open); the frontend uses `current_bundle` when it may be either.
 #[tauri::command]
-fn bundle_root(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+fn bundle_root(session: State<'_, Arc<Session>>) -> Result<String, String> {
+    let state = session.current()?;
     Ok(state.bundle_root.to_string_lossy().into_owned())
+}
+
+/// The currently-open Bundle root, or `None` when Sapphire launched with no path
+/// and is showing the launcher. The frontend decides launcher-vs-editor from this.
+#[tauri::command]
+fn current_bundle(session: State<'_, Arc<Session>>) -> Option<String> {
+    session
+        .current_root()
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// The launcher's known-folder list (previously-opened Bundles), most-recent
+/// first. Purely config-derived — no open Bundle required.
+#[tauri::command]
+fn list_known_bundles() -> Vec<KnownBundle> {
+    config::list_known_bundles()
+}
+
+/// Forget a known folder: drop its persisted per-Bundle config so the launcher
+/// list (and the on-disk store) does not grow forever. `path` is the entry's
+/// `path` (its store key).
+#[tauri::command]
+fn forget_bundle(path: String) -> Result<(), String> {
+    config::forget_bundle(&path)
+}
+
+/// Open `path` as the current Bundle (from the launcher): canonicalize it, verify
+/// it is a directory, then swap it in (build index, start watcher, record it,
+/// restore geometry). The frontend reloads the webview afterwards so the whole
+/// app re-initializes against the newly-open Bundle.
+#[tauri::command]
+fn open_bundle(session: State<'_, Arc<Session>>, path: String) -> Result<(), String> {
+    let root = PathBuf::from(&path);
+    let root = root.canonicalize().unwrap_or(root);
+    if !root.is_dir() {
+        return Err(format!("not a folder: {}", root.to_string_lossy()));
+    }
+    session.open(root)
+}
+
+/// Native "open folder" chooser for the launcher's "Open folder…" button. Returns
+/// the chosen absolute path, or `None` if the user cancelled.
+#[tauri::command]
+async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let chosen = app.dialog().file().blocking_pick_folder();
+    Ok(chosen.and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned()))
 }
 
 /// Recursive directory tree of the Bundle.
 #[tauri::command]
-fn list_tree(state: State<'_, Arc<AppState>>) -> Result<TreeNode, String> {
+fn list_tree(session: State<'_, Arc<Session>>) -> Result<TreeNode, String> {
+    let state = session.current()?;
     bundle::list_tree(&state.bundle_root)
 }
 
 /// Raw markdown of a single Concept, by bundle-relative path.
 #[tauri::command]
-fn read_concept(state: State<'_, Arc<AppState>>, path: String) -> Result<String, String> {
+fn read_concept(session: State<'_, Arc<Session>>, path: String) -> Result<String, String> {
+    let state = session.current()?;
     bundle::read_concept(&state.bundle_root, &path)
 }
 
 /// Write a Concept's raw markdown back to disk (autosave). Records the write in
 /// the self-write tracker so the filesystem watcher suppresses its own echo.
 #[tauri::command]
-fn write_concept(state: State<'_, Arc<AppState>>, path: String, content: String) -> Result<(), String> {
+fn write_concept(session: State<'_, Arc<Session>>, path: String, content: String) -> Result<(), String> {
+    let state = session.current()?;
     let resolved = bundle::write_concept(&state.bundle_root, &path, &content)?;
     state.note_self_write(resolved);
     Ok(())
@@ -45,14 +98,16 @@ fn write_concept(state: State<'_, Arc<AppState>>, path: String, content: String)
 /// stub is an empty file; the rich frontmatter scaffold is a later slice. NOT
 /// recorded as a self-write: a structural create SHOULD refresh the tree.
 #[tauri::command]
-fn create_concept(state: State<'_, Arc<AppState>>, path: String) -> Result<(), String> {
+fn create_concept(session: State<'_, Arc<Session>>, path: String) -> Result<(), String> {
+    let state = session.current()?;
     bundle::create_concept(&state.bundle_root, &path)?;
     Ok(())
 }
 
 /// Create a new folder (and any missing parents) at `path` (bundle-relative).
 #[tauri::command]
-fn create_folder(state: State<'_, Arc<AppState>>, path: String) -> Result<(), String> {
+fn create_folder(session: State<'_, Arc<Session>>, path: String) -> Result<(), String> {
+    let state = session.current()?;
     bundle::create_folder(&state.bundle_root, &path)?;
     Ok(())
 }
@@ -65,10 +120,11 @@ fn create_folder(state: State<'_, Arc<AppState>>, path: String) -> Result<(), St
 /// files were rewritten.
 #[tauri::command]
 fn rename_path(
-    state: State<'_, Arc<AppState>>,
+    session: State<'_, Arc<Session>>,
     from: String,
     to: String,
 ) -> Result<RewriteSummary, String> {
+    let state = session.current()?;
     rewrite::rename_and_rewrite(&state, &from, &to)
 }
 
@@ -77,17 +133,19 @@ fn rename_path(
 /// `rename_path`; returns the same rewrite summary.
 #[tauri::command]
 fn move_path(
-    state: State<'_, Arc<AppState>>,
+    session: State<'_, Arc<Session>>,
     from: String,
     to_dir: String,
 ) -> Result<RewriteSummary, String> {
+    let state = session.current()?;
     rewrite::move_into(&state, &from, &to_dir)
 }
 
 /// Delete `path` (a Concept or a folder, recursively). The frontend confirms
 /// before calling this.
 #[tauri::command]
-fn delete_path(state: State<'_, Arc<AppState>>, path: String) -> Result<(), String> {
+fn delete_path(session: State<'_, Arc<Session>>, path: String) -> Result<(), String> {
+    let state = session.current()?;
     bundle::delete_path(&state.bundle_root, &path)
 }
 
@@ -98,58 +156,73 @@ fn delete_path(state: State<'_, Arc<AppState>>, path: String) -> Result<(), Stri
 /// files changed. The target's own same-file anchors are handled in the buffer.
 #[tauri::command]
 fn rewrite_anchors(
-    state: State<'_, Arc<AppState>>,
+    session: State<'_, Arc<Session>>,
     target: String,
     renames: Vec<AnchorRename>,
 ) -> Result<RewriteSummary, String> {
+    let state = session.current()?;
     rewrite::rewrite_anchors(&state, &target, &renames)
 }
 
 /// Every Concept path in the Bundle index. The frontend seeds its synchronous
 /// broken-link existence cache from this (one query instead of per-link calls).
 #[tauri::command]
-fn list_concept_paths(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
-    Ok(state.read_index()?.concept_paths())
+fn list_concept_paths(session: State<'_, Arc<Session>>) -> Result<Vec<String>, String> {
+    let state = session.current()?;
+    let index = state.read_index()?;
+    Ok(index.concept_paths())
 }
 
 /// Whether a Concept exists at `path` (bundle-relative). Convenience companion
 /// to `list_concept_paths`; the broken-link decoration uses the cached set.
 #[tauri::command]
-fn concept_exists(state: State<'_, Arc<AppState>>, path: String) -> Result<bool, String> {
-    Ok(state.read_index()?.concept_exists(&path))
+fn concept_exists(session: State<'_, Arc<Session>>, path: String) -> Result<bool, String> {
+    let state = session.current()?;
+    let index = state.read_index()?;
+    Ok(index.concept_exists(&path))
 }
 
 /// Sources linking TO `path` (backlinks). Used by the backlinks panel (slice 7).
 #[tauri::command]
-fn backlinks(state: State<'_, Arc<AppState>>, path: String) -> Result<Vec<String>, String> {
-    Ok(state.read_index()?.backlinks(&path))
+fn backlinks(session: State<'_, Arc<Session>>, path: String) -> Result<Vec<String>, String> {
+    let state = session.current()?;
+    let index = state.read_index()?;
+    Ok(index.backlinks(&path))
 }
 
 /// All tags across the Bundle with per-tag counts. Used by the tags view (slice 8).
 #[tauri::command]
-fn all_tags(state: State<'_, Arc<AppState>>) -> Result<Vec<TagCount>, String> {
-    Ok(state.read_index()?.all_tags())
+fn all_tags(session: State<'_, Arc<Session>>) -> Result<Vec<TagCount>, String> {
+    let state = session.current()?;
+    let index = state.read_index()?;
+    Ok(index.all_tags())
 }
 
 /// Concept paths carrying `tag`. Used by the tag browser (slice 8) to reveal
 /// the Concepts under a selected tag.
 #[tauri::command]
-fn concepts_by_tag(state: State<'_, Arc<AppState>>, tag: String) -> Result<Vec<String>, String> {
-    Ok(state.read_index()?.concepts_by_tag(&tag))
+fn concepts_by_tag(session: State<'_, Arc<Session>>, tag: String) -> Result<Vec<String>, String> {
+    let state = session.current()?;
+    let index = state.read_index()?;
+    Ok(index.concepts_by_tag(&tag))
 }
 
 /// All distinct frontmatter `type` values. Used by new-concept autocomplete (slice 12).
 #[tauri::command]
-fn all_types(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
-    Ok(state.read_index()?.all_types())
+fn all_types(session: State<'_, Arc<Session>>) -> Result<Vec<String>, String> {
+    let state = session.current()?;
+    let index = state.read_index()?;
+    Ok(index.all_types())
 }
 
 /// All distinct top-level frontmatter keys across the Bundle. Used by the
 /// Properties panel's key-name autocomplete (key-and-tag autocomplete slice);
 /// the OKF recommended keys are merged in client-side.
 #[tauri::command]
-fn all_keys(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
-    Ok(state.read_index()?.all_keys())
+fn all_keys(session: State<'_, Arc<Session>>) -> Result<Vec<String>, String> {
+    let state = session.current()?;
+    let index = state.read_index()?;
+    Ok(index.all_keys())
 }
 
 /// Full-text (body content) search across the Bundle, on demand. Scans every
@@ -157,7 +230,8 @@ fn all_keys(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
 /// returns matches (path + 1-based line + matching line snippet), ordered by
 /// path then line and capped server-side. Case-insensitive literal search.
 #[tauri::command]
-fn search(state: State<'_, Arc<AppState>>, query: String) -> Result<Vec<SearchHit>, String> {
+fn search(session: State<'_, Arc<Session>>, query: String) -> Result<Vec<SearchHit>, String> {
+    let state = session.current()?;
     search::search(&state.bundle_root, &query)
 }
 
@@ -168,7 +242,8 @@ fn search(state: State<'_, Arc<AppState>>, query: String) -> Result<Vec<SearchHi
 /// itself; only a path-escape is a hard error. Paths are bundle-relative,
 /// '/'-separated.
 #[tauri::command]
-fn file_history(state: State<'_, Arc<AppState>>, path: String) -> Result<FileHistory, String> {
+fn file_history(session: State<'_, Arc<Session>>, path: String) -> Result<FileHistory, String> {
+    let state = session.current()?;
     // Reject `..`/absolute escapes the same way the other path commands do; the
     // target need not exist on disk (history can outlive the working tree).
     bundle::resolve_new(&state.bundle_root, &path)?;
@@ -182,10 +257,11 @@ fn file_history(state: State<'_, Arc<AppState>>, path: String) -> Result<FileHis
 /// errors; only a path-escape is a hard error.
 #[tauri::command]
 fn file_at_rev(
-    state: State<'_, Arc<AppState>>,
+    session: State<'_, Arc<Session>>,
     path: String,
     rev: String,
 ) -> Result<FileAtRev, String> {
+    let state = session.current()?;
     bundle::resolve_new(&state.bundle_root, &path)?;
     Ok(git::file_at_rev(&state.bundle_root, &path, &rev))
 }
@@ -196,7 +272,8 @@ fn file_at_rev(
 /// (`sapphire_core::render`); feeds the desktop "Export as PDF" print path. Links
 /// resolve against the in-memory index; the read lock is held only for the call.
 #[tauri::command]
-fn render_concept(state: State<'_, Arc<AppState>>, path: String) -> Result<RenderPayload, String> {
+fn render_concept(session: State<'_, Arc<Session>>, path: String) -> Result<RenderPayload, String> {
+    let state = session.current()?;
     let index = state.read_index()?;
     render::render_concept(&state.bundle_root, &index, &path)
 }
@@ -386,7 +463,8 @@ fn export_webview_pdf(
 /// folders, window geometry) for the open Bundle. Robust to a missing/corrupt
 /// store: returns defaults. See `config.rs` — never written into the Bundle.
 #[tauri::command]
-fn load_bundle_state(state: State<'_, Arc<AppState>>) -> Result<BundleState, String> {
+fn load_bundle_state(session: State<'_, Arc<Session>>) -> Result<BundleState, String> {
+    let state = session.current()?;
     Ok(config::load_bundle_state(&state.bundle_root))
 }
 
@@ -396,7 +474,8 @@ fn load_bundle_state(state: State<'_, Arc<AppState>>) -> Result<BundleState, Str
 /// change. Window geometry is owned by Rust and merged separately, so the
 /// frontend's saved value here carries the window through untouched.
 #[tauri::command]
-fn save_bundle_state(state: State<'_, Arc<AppState>>, bundle_state: BundleState) -> Result<(), String> {
+fn save_bundle_state(session: State<'_, Arc<Session>>, bundle_state: BundleState) -> Result<(), String> {
+    let state = session.current()?;
     config::save_bundle_state(&state.bundle_root, bundle_state)
 }
 
@@ -417,34 +496,23 @@ fn capture_window_state(window: &tauri::WebviewWindow) -> Option<WindowState> {
     })
 }
 
-/// Resolve the Bundle root, then canonicalize it. Resolution order:
-///   1. `SAPPHIRE_BUNDLE` env var, if set,
-///   2. the positional CLI path (already parsed by `cli::parse_args`), if given,
-///   3. the per-build default (see `default_bundle_root`).
-fn resolve_bundle_root(cli_path: Option<String>) -> PathBuf {
+/// Resolve the Bundle to open at startup, or `None` to show the launcher.
+///
+/// A Bundle is opened up front ONLY when one was explicitly named:
+///   1. the `SAPPHIRE_BUNDLE` env var, if set and non-empty, else
+///   2. the positional CLI path (already parsed by `cli::parse_args`).
+///
+/// With neither (`sapphire` with no arguments) we return `None`: the frontend
+/// shows the launcher (pick a known folder or open a new one), which then calls
+/// `open_bundle` to open one in-process. The result is canonicalized so it keys
+/// the config store stably.
+fn resolve_startup_bundle(cli_path: Option<String>) -> Option<PathBuf> {
     let explicit = std::env::var("SAPPHIRE_BUNDLE")
         .ok()
         .filter(|s| !s.is_empty())
-        .or(cli_path);
-    let path = explicit.map(PathBuf::from).unwrap_or_else(default_bundle_root);
-    path.canonicalize().unwrap_or(path)
-}
-
-/// Default Bundle root for a DEV build: the `examples/` vault at the repo root
-/// (one level up from this crate). `tauri dev` runs the binary from `src-tauri/`,
-/// so a bare `.` would open the crate dir; pointing at the bundled example vault
-/// makes `bun tauri dev` land in a real Bundle. Override with `SAPPHIRE_BUNDLE`
-/// or a path argument. `CARGO_MANIFEST_DIR` is the absolute `src-tauri/` path
-/// baked in at compile time.
-#[cfg(debug_assertions)]
-fn default_bundle_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples")
-}
-
-/// Default Bundle root for a RELEASE build: the current working directory.
-#[cfg(not(debug_assertions))]
-fn default_bundle_root() -> PathBuf {
-    PathBuf::from(".")
+        .or(cli_path)?;
+    let path = PathBuf::from(explicit);
+    Some(path.canonicalize().unwrap_or(path))
 }
 
 /// Env marker set on the re-spawned child of a `--detached` launch, so the child
@@ -526,25 +594,20 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            let bundle_root = resolve_bundle_root(cli_path);
+            // The Session is the swappable seam between launcher mode (no Bundle)
+            // and an open Bundle. It owns the current `AppState` + watcher and is
+            // managed in Tauri state; every Bundle command reads through it.
+            let sess = Arc::new(Session::new(app.handle().clone()));
+            app.manage(sess.clone());
 
-            // Restore the saved window geometry for this Bundle (size always;
-            // position only if we have one). Window state lives in Rust so the
-            // frontend never imports window APIs (ARCHITECTURE.md).
-            if let Some(win) = config::load_window_state(&bundle_root) {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_size(LogicalSize::new(win.width, win.height));
-                    if let (Some(x), Some(y)) = (win.x, win.y) {
-                        let _ = window.set_position(LogicalPosition::new(x, y));
-                    }
-                }
-            }
-
-            // Save window geometry on resize / move / close. We persist the
-            // window slice independently of the frontend's session state so the
+            // Save window geometry on resize / move / close, keyed to whichever
+            // Bundle is currently open (via the Session, so a runtime Bundle
+            // switch persists geometry against the NEW root, not the old one).
+            // No-op in launcher mode (no current Bundle to key against). We persist
+            // the window slice independently of the frontend's session state so the
             // two never clobber each other.
             if let Some(window) = app.get_webview_window("main") {
-                let root_for_events = bundle_root.clone();
+                let session_for_events = sess.clone();
                 let window_for_events = window.clone();
                 window.on_window_event(move |event| {
                     if matches!(
@@ -553,33 +616,22 @@ pub fn run() {
                             | WindowEvent::Moved(_)
                             | WindowEvent::CloseRequested { .. }
                     ) {
-                        if let Some(ws) = capture_window_state(&window_for_events) {
-                            let _ = config::save_window_state(&root_for_events, ws);
+                        if let Some(root) = session_for_events.current_root() {
+                            if let Some(ws) = capture_window_state(&window_for_events) {
+                                let _ = config::save_window_state(&root, ws);
+                            }
                         }
                     }
                 });
             }
 
-            // The AppState is shared (behind an `Arc`) between the command layer
-            // (managed in Tauri state) and the filesystem watcher, so both the
-            // index and the self-write tracker observe one source of truth.
-            let state = Arc::new(AppState::new(bundle_root));
-            app.manage(state.clone());
-
-            // Start the filesystem watcher and keep the handle alive for the
-            // app's lifetime by managing it in Tauri state. `sapphire-core`'s
-            // watcher is host-agnostic: it hands us each `FileChange` through a
-            // sink; the desktop sink emits it to the frontend as a Tauri event.
-            let app_handle = app.handle().clone();
-            let watch_root = state.bundle_root.clone();
-            match watcher::start(watch_root, state.clone(), move |change| {
-                let _ = app_handle.emit(FILE_CHANGED_EVENT, change);
-            }) {
-                Ok(w) => {
-                    app.manage(watcher::WatcherHandle::new(w));
-                }
-                Err(e) => {
-                    eprintln!("failed to start filesystem watcher: {e}");
+            // Open the startup Bundle if one was named (env/CLI); otherwise leave
+            // the Session empty so the frontend shows the launcher. `open` builds
+            // the index, starts the watcher, records the folder, and restores the
+            // saved window geometry — the same work a launcher pick triggers.
+            if let Some(root) = resolve_startup_bundle(cli_path) {
+                if let Err(e) = sess.open(root) {
+                    eprintln!("failed to open startup Bundle: {e}");
                 }
             }
 
@@ -587,6 +639,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             bundle_root,
+            current_bundle,
+            list_known_bundles,
+            forget_bundle,
+            open_bundle,
+            pick_folder,
             list_tree,
             read_concept,
             write_concept,

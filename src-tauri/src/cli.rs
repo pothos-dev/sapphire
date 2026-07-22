@@ -85,7 +85,8 @@ Usage:
   {name} [BUNDLE]
 
 Arguments:
-  BUNDLE        Path to the folder to open as a Bundle (default: current directory)
+  BUNDLE        Path to the folder to open as a Bundle. Omit to open the launcher
+                (pick from recently-opened folders, or choose a new one).
 
 Options:
   -d, --detached Run detached from this console (returns the prompt immediately)

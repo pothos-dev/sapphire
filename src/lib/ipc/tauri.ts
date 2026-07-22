@@ -12,6 +12,7 @@ import type {
   FileHistory,
   FileAtRev,
   RenderPayload,
+  KnownBundle,
 } from '$lib/types';
 
 /** Tauri event name emitted by the Rust watcher (matches watcher.rs). */
@@ -24,6 +25,26 @@ const FILE_CHANGED_EVENT = 'file-changed';
 export const tauriBackend: Backend = {
   bundleRoot(): Promise<string> {
     return invoke<string>('bundle_root');
+  },
+
+  currentBundle(): Promise<string | null> {
+    return invoke<string | null>('current_bundle');
+  },
+
+  listKnownBundles(): Promise<KnownBundle[]> {
+    return invoke<KnownBundle[]>('list_known_bundles');
+  },
+
+  forgetBundle(path: string): Promise<void> {
+    return invoke<void>('forget_bundle', { path });
+  },
+
+  openBundle(path: string): Promise<void> {
+    return invoke<void>('open_bundle', { path });
+  },
+
+  pickFolder(): Promise<string | null> {
+    return invoke<string | null>('pick_folder');
   },
 
   listTree(): Promise<TreeNode> {

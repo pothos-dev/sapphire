@@ -9,6 +9,7 @@ import type {
   FileHistory,
   FileAtRev,
   RenderPayload,
+  KnownBundle,
 } from '$lib/types';
 
 /**
@@ -76,6 +77,25 @@ export function parseFileChange(data: string): FileChange | null {
 export const httpBackend: Backend = {
   bundleRoot(): Promise<string> {
     return getJson<string>('/api/bundle-root');
+  },
+
+  // Launcher seam: the web build always serves a single, fixed Bundle and has no
+  // launcher UI, so `currentBundle` reports that Bundle as open and the rest are
+  // inert (never reached by the web viewer).
+  currentBundle(): Promise<string | null> {
+    return getJson<string>('/api/bundle-root');
+  },
+  listKnownBundles(): Promise<KnownBundle[]> {
+    return Promise.resolve([]);
+  },
+  forgetBundle(): Promise<void> {
+    return Promise.reject(new Error(READ_ONLY));
+  },
+  openBundle(): Promise<void> {
+    return Promise.reject(new Error(READ_ONLY));
+  },
+  pickFolder(): Promise<string | null> {
+    return Promise.resolve(null);
   },
 
   listTree(): Promise<TreeNode> {

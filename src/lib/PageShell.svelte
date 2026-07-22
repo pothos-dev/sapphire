@@ -1,5 +1,5 @@
 <script lang="ts">
-  import App from '$lib/App.svelte';
+  import DesktopShell from '$lib/DesktopShell.svelte';
   import WebViewer from '$lib/web/WebViewer.svelte';
   import PrintView from '$lib/print/PrintView.svelte';
   import type { WebPageData } from '$lib/web/loadConcept';
@@ -7,7 +7,9 @@
   // Two shells share the page routes:
   //  - the WEB build (`data.web === true`, from the route `load`) renders the
   //    read-only, SSR'd `WebViewer` over the HTTP backend;
-  //  - the DEFAULT desktop/Tauri build renders the full `<App/>` shell.
+  //  - the DEFAULT desktop/Tauri build renders the `<DesktopShell/>`, which picks
+  //    the launcher or the full `<App/>` shell depending on whether a Bundle is
+  //    open (see `DesktopShell`).
   // A third case cross-cuts both: the print/PDF preview (`?print=<path>`, either
   // build) renders the chrome-free `<PrintView/>` in its own window/tab.
   // In the web build `$lib/App.svelte` is aliased to an empty stub (see
@@ -30,5 +32,5 @@
     }}
   />
 {:else}
-  <App />
+  <DesktopShell />
 {/if}

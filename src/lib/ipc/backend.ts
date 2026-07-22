@@ -9,6 +9,7 @@ import type {
   FileHistory,
   FileAtRev,
   RenderPayload,
+  KnownBundle,
 } from '$lib/types';
 
 /**
@@ -27,6 +28,45 @@ import type {
 export interface Backend {
   /** Absolute path of the Bundle root opened via the CLI. */
   bundleRoot(): Promise<string>;
+
+  // --- Launcher: known folders + runtime Bundle switch (slice: launcher) -----
+  // When Sapphire starts with NO path (`sapphire` alone), no Bundle is open and
+  // the frontend shows the launcher: a most-recent-first list of previously-
+  // opened folders (each removable), plus an "Open folder…" native picker.
+  // Picking a folder opens it IN-PROCESS via `openBundle`, after which the
+  // frontend reloads so the whole app re-initializes against the new Bundle.
+
+  /**
+   * The currently-open Bundle root, or `null` when Sapphire launched with no
+   * path and is showing the launcher. The frontend decides launcher-vs-editor
+   * from this on startup.
+   */
+  currentBundle(): Promise<string | null>;
+
+  /**
+   * The launcher's known-folder list — previously-opened Bundles derived from
+   * the persisted per-Bundle config — ordered most-recently-opened first.
+   */
+  listKnownBundles(): Promise<KnownBundle[]>;
+
+  /**
+   * Forget a known folder: drop its persisted per-Bundle config entirely (so the
+   * store does not grow forever). `path` is a `KnownBundle.path`. Idempotent.
+   */
+  forgetBundle(path: string): Promise<void>;
+
+  /**
+   * Open `path` as the current Bundle in-process (build index, start watcher,
+   * record it, restore its window geometry). Rejects if the folder is missing.
+   * The caller reloads the webview afterwards so the app re-initializes.
+   */
+  openBundle(path: string): Promise<void>;
+
+  /**
+   * Native "open folder" chooser for the launcher's "Open folder…" button.
+   * Resolves to the chosen absolute path, or `null` if the user cancelled.
+   */
+  pickFolder(): Promise<string | null>;
 
   /** Recursive directory tree of the Bundle (root node has path ''). */
   listTree(): Promise<TreeNode>;

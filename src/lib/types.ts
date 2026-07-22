@@ -53,6 +53,23 @@ export type TagCount = {
 };
 
 /**
+ * One entry in the launcher's "known folders" list — a previously-opened Bundle,
+ * derived from the persisted per-Bundle config. Matches the Rust `KnownBundle`
+ * (`serde rename_all = "camelCase"`). Returned by `Backend.listKnownBundles()`,
+ * ordered most-recently-opened first.
+ */
+export type KnownBundle = {
+  /** absolute path of the Bundle root; also the store key used by forgetBundle/openBundle */
+  path: string;
+  /** display basename of the folder */
+  name: string;
+  /** Unix milliseconds the Bundle was last opened, or null if never stamped */
+  lastOpened: number | null;
+  /** whether the folder still exists on disk (a moved/deleted folder is flagged, not dropped) */
+  exists: boolean;
+};
+
+/**
  * Per-Bundle session state persisted in the OS config folder (NEVER in the
  * Bundle). Matches the Rust `BundleState` (`serde rename_all = "camelCase"`).
  *

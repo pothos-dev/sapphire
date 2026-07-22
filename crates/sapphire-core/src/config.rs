@@ -84,6 +84,11 @@ pub struct BundleState {
     /// the tiled workspace survives a relaunch. Optional/`None` on older files and
     /// on a fresh Bundle (the frontend migrates from `last_open_concept` then).
     pub layout: Option<serde_json::Value>,
+    /// Wall-clock instant (Unix milliseconds) this Bundle was last opened. Set by
+    /// `touch_bundle` when a Bundle is opened; drives the launcher's "known
+    /// folders, most-recent first" ordering. `None` for entries that predate this
+    /// field (they sort last).
+    pub last_opened: Option<i64>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets
@@ -201,6 +206,92 @@ pub fn save_window_state(bundle_root: &Path, window: WindowState) -> Result<(), 
     save_store(&store)
 }
 
+/// One entry in the launcher's "known folders" list: a previously-opened Bundle,
+/// as derived from the per-Bundle store. `path` is the store key (the Bundle's
+/// absolute path); `name` is its display basename; `last_opened` drives the
+/// most-recent-first ordering; `exists` is whether the folder is still present on
+/// disk (the launcher can flag a moved/deleted folder without dropping it).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownBundle {
+    pub path: String,
+    pub name: String,
+    pub last_opened: Option<i64>,
+    pub exists: bool,
+}
+
+/// Milliseconds since the Unix epoch, or `0` if the clock is before it (never in
+/// practice). Kept tiny so `touch_bundle` has no extra dependency.
+fn now_millis() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Display basename for a Bundle path key: the final path component, or the whole
+/// string when there is none (e.g. a filesystem root like `/`).
+fn display_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| path.to_string())
+}
+
+/// Record that `bundle_root` was just opened: stamp its `last_opened` with the
+/// current instant (creating the store entry if this Bundle is new). This is what
+/// makes a folder "known" to the launcher the moment it is first opened, before
+/// any session state is saved.
+pub fn touch_bundle(bundle_root: &Path) -> Result<(), String> {
+    let mut store = load_store();
+    let entry = store.bundles.entry(bundle_key(bundle_root)).or_default();
+    entry.last_opened = Some(now_millis());
+    save_store(&store)
+}
+
+/// Sort known-folder entries newest-first: by `last_opened` descending, with
+/// never-stamped (`None`) entries last, then by name for a stable tie-break. Pure
+/// so it can be unit-tested without touching the on-disk store.
+fn sort_known(list: &mut [KnownBundle]) {
+    list.sort_by(|a, b| {
+        b.last_opened
+            .cmp(&a.last_opened)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+}
+
+/// The launcher's known-folder list, most-recent-first. Derived from every entry
+/// in the per-Bundle store; `exists` is checked against the live filesystem so a
+/// moved/deleted folder is flagged rather than silently opened.
+pub fn list_known_bundles() -> Vec<KnownBundle> {
+    let store = load_store();
+    let mut list: Vec<KnownBundle> = store
+        .bundles
+        .iter()
+        .map(|(path, state)| KnownBundle {
+            name: display_name(path),
+            last_opened: state.last_opened,
+            exists: Path::new(path).is_dir(),
+            path: path.clone(),
+        })
+        .collect();
+    sort_known(&mut list);
+    list
+}
+
+/// Forget a known folder: drop its per-Bundle entry from the store entirely, so
+/// its persisted config does not grow forever. `path` is the store key (an entry's
+/// `KnownBundle.path`). A no-op if the key is absent.
+pub fn forget_bundle(path: &str) -> Result<(), String> {
+    let mut store = load_store();
+    if store.bundles.remove(path).is_some() {
+        save_store(&store)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +374,35 @@ mod tests {
         let st: BundleState = serde_json::from_str(json).unwrap();
         assert!(st.layout.is_none());
         assert!(st.properties_shown.is_none());
+    }
+
+    #[test]
+    fn sort_known_orders_newest_first_then_by_name() {
+        let mk = |name: &str, last: Option<i64>| KnownBundle {
+            path: format!("/abs/{name}"),
+            name: name.to_string(),
+            last_opened: last,
+            exists: true,
+        };
+        let mut list = vec![
+            mk("older", Some(100)),
+            mk("newest", Some(300)),
+            mk("never-b", None),
+            mk("middle", Some(200)),
+            mk("never-a", None),
+        ];
+        sort_known(&mut list);
+        let order: Vec<&str> = list.iter().map(|k| k.name.as_str()).collect();
+        // Stamped entries descend by instant; unstamped (None) sort last, tie-broken by name.
+        assert_eq!(order, vec!["newest", "middle", "older", "never-a", "never-b"]);
+    }
+
+    #[test]
+    fn display_name_is_the_basename() {
+        assert_eq!(display_name("/home/me/docs"), "docs");
+        assert_eq!(display_name("/home/me/docs/"), "docs");
+        // A bare root has no basename: fall back to the whole string.
+        assert_eq!(display_name("/"), "/");
     }
 
     #[test]
