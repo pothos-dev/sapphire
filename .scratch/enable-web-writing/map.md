@@ -112,16 +112,27 @@ can implement web writing without further design choices.
   `beforeunload` guard; ticket 06 toggle = **Done when clean / Save when dirty**.
   Structural-op-while-dirty (rename/move/delete) → **three-way Save & continue / Discard
   & continue / Cancel** (adds Discard to ticket 05); **create exempt** from the gate.
+- [Web write test strategy](issues/09-web-write-test-strategy.md) — test by the **seam**.
+  **Fake models no commits** (invisible at the seam; web writes just mutate + fire
+  `FileChange`). Split: **`cargo test`** owns commits (`git::commit` + amend-else-fresh vs a
+  temp repo, orchestration, global lock, error classifier, `AuthedUser` JWT extractor);
+  **`bun test src/lib`** owns pure client logic (ticket 08 path-match routing, clean/dirty +
+  three-way branching, `clientId` echo filter; http write shaping); the **real web e2e
+  runner** (`playwright.web.config.ts`, extended — fixture Bundle becomes a **real git repo**)
+  owns the rendered end-to-end write + a **real commit landing** + multi-client concurrency
+  modals over real SSE. Auth: **Rust mints JWTs directly** with the test secret; e2e uses a
+  **test-only env-gated Auth.js Credentials provider** (real session→hook→JWT→axum chain;
+  unauthed = don't log in). Desktop↔web asymmetry is **below the seam** → no explicit guard,
+  just the disjoint runner split + **`web-*.spec.ts`** file convention. **OIDC/Dex wiring
+  stays deployment fog.**
 
 ## Not yet specified
 
 <!-- in-scope fog; graduates into tickets as the foundational decisions resolve -->
 
-One decision ticket remains open (its sibling, *Web write concurrency UX* (08), resolved):
-
-- **[09 — Web write test strategy](issues/09-web-write-test-strategy.md)** (open, blocked
-  by 07) — what `fake.ts` must model (commits?), which gate proves which behaviour, auth
-  in tests, and guarding the desktop↔web commit asymmetry in shared specs.
+**No open decision tickets remain — the map's decision route is complete.** Every
+locked-scope decision (tickets 01–09) is pinned; what is left is implementation
+(the "build/handoff" items below) plus genuinely operator-dependent deployment fog.
 
 Still genuinely foggy (operator-dependent, not yet sharp enough to ticket):
 
@@ -147,6 +158,12 @@ implementation work spec'd by tickets 07 + 04 + 05):
   the clean-silent-reload / dirty-conflict-modal, the leave-dirty three-way modal +
   `beforeunload` guard, and the structural-op-while-dirty three-way modal, all in ticket
   06's single-Tile island.
+- **Test suites** (ticket 09) — `cargo test` for `git::commit`/amend + orchestration + lock
+  + error classifier + `AuthedUser` (mint JWTs directly); `bun test src/lib` for the extracted
+  concurrency-UX decision logic + `clientId` echo filter + http write shaping; extend
+  `playwright.web.config.ts` (fixture Bundle → real git repo; `testMatch` → `web-*.spec.ts`)
+  with `web-write` / `web-concurrency` specs gated by the env-only Auth.js Credentials provider.
+  Docs: `docs/testing.md` (how to run each gate), referenced from `CLAUDE.md`.
 
 ## Out of scope
 

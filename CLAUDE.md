@@ -10,28 +10,22 @@ then read the deeper docs:
 
 ## Verifying changes
 
-Every change must keep these green:
+Every change must keep these four gates green:
 
 | Command | Scope |
 |---------|-------|
 | `bun test src/lib` | Frontend unit tests over the pure `src/lib/**/*.test.ts` modules |
 | `bun run check` | Frontend typecheck (`svelte-check`) |
-| `cd src-tauri && cargo test` | Rust unit tests (`#[cfg(test)]` in each module) |
-| `cd src-tauri && cargo check` | Rust typecheck |
+| `cargo test` | Rust unit tests across the workspace (`#[cfg(test)]` in each module) |
+| `cargo check` | Rust typecheck |
 
-Playwright specs in `tests/` drive the UI over a `vite build` + `vite preview`
-static SPA on port 1420 with the fake backend, and are the primary behavioural
-test for components.
+Playwright is the primary behavioural test for components, split across **two**
+suites: a desktop suite (static SPA + fake backend) and a web e2e suite (real
+`sunstone-server` + SSR build).
 
-### Running Playwright
-
-This sandbox has a system Chromium at `/tmp/chromium` (no ms-playwright cache),
-so use the committed override config, which defaults to it:
-
-```bash
-bunx playwright test -c playwright.local.config.ts             # all specs
-bunx playwright test -c playwright.local.config.ts tree-crud   # a subset (by spec name)
-```
+**See [`docs/testing.md`](docs/testing.md)** for how to run each gate, both
+Playwright suites (including the `/tmp/chromium` sandbox override and CDP mode),
+and the web write test strategy.
 
 ## Conventions that bite
 
