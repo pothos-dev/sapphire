@@ -80,26 +80,22 @@ heading level. Selecting a heading scrolls the Editor pane to it. Derived live f
 Concept's body (frontmatter and fenced code blocks excluded).
 
 **Editor pane**:
-The central Pane. It hosts a grid of **Tiles** arranged in **Columns** — a
-horizontal row of Columns, each a vertical stack of Tiles. (Before tiling it
-showed a single open Concept; that is now the one-Tile case.)
+The central Pane — a grid of **Tiles** arranged in **Columns**. See
+[Editor layout](/editor-layout.md).
 
 **Column**:
 A vertical stack of **Tiles** inside the Editor pane; the Editor pane is a row of
-Columns. Columns (and the Tiles within them) are independently resizable via
-draggable dividers, and rows need not align across Columns.
+Columns. See [Editor layout](/editor-layout.md).
 _Avoid_: "split" for the noun (a Column is the unit; "Split Right/Down" name the
 actions that create one).
 
 **Tile**:
 One editor cell within the Editor pane, showing a single open **Concept** with its
-own view-mode, scroll position and navigation history. The same Concept may be
-open in multiple Tiles at once, sharing one underlying buffer (edits/autosave in
-one are reflected in the others). Exactly one Tile is the **active Tile** (the
-focused editor cell); the **Outline**, **Backlinks** and **Properties** describe
-it.
+own view-mode, scroll and history. Exactly one is the **active Tile**. See
+[Editor layout](/editor-layout.md).
 _Avoid_: "tab" (Tiles are always visible, never behind a tab bar), "split" (a
-Tile is the cell; Split is the action), "editor group" (VSCode's tabbed term).
+Tile is the cell; Split is the action), "editor group" (VSCode's tabbed term),
+"pane" (the code's internal `Pane` type is a Tile — see Flagged ambiguities).
 
 **Accordion**:
 The height-sharing behaviour of a Sidebar's stacked Sections (they share the viewport, each
@@ -107,18 +103,14 @@ body capped). Names the behaviour, not a single item — one item is a **Section
 
 **Region**:
 An interactive surface that can hold keyboard focus and defines its own keyboard semantics.
-Orthogonal to Pane/Section: a Region may *be* a Pane (the **Editor**), live *as* a Section
-(**Explorer**, **Tags**, **Outline**, **Backlinks**), or be neither (**Properties**, which is
-chrome inside the Editor pane). Exactly one Region is focused at a time, mirrored from
-`document.activeElement`.
+Orthogonal to Pane/Section; the six Regions form a fixed 3×2 grid and exactly one is active
+at a time. See [Focus model](/focus-model.md).
 _Avoid_: "pane focus", "panel focus" (use "the active Region").
 
 **Focused item**:
 The single navigable item that currently holds focus *within* a Region (the roving-tabindex
-element) — arrow keys move it, Enter activates it. In the **Explorer** the Focused item is a
-tree row and is **distinct from the open Concept**: arrowing moves the Focused item without
-opening anything; Enter opens the Focused Concept into the Editor. The open Concept keeps its
-own marker; the Focused item shows a separate focus ring.
+element) — arrow keys move it, Enter activates it. In the **Explorer** it is **distinct from
+the open Concept**. See [Focus model](/focus-model.md).
 _Avoid_: "cursor" (reserved for the CodeMirror text caret), "selection" (ambiguous).
 
 **Search**:
@@ -168,3 +160,7 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
 - "pane" was used loosely for "the thing keyboard focus moves between" — but focus targets
   (Editor, Explorer, Properties, ...) don't map to Panes (Properties is neither Pane nor
   Section). Resolved: the focus unit is a **Region**, orthogonal to Pane/Section.
+- The code's workspace layer names each editor cell a **`Pane`** ("a row of Columns of
+  Panes"), colliding with the domain **Pane** (a top-level app-shell region). The cell is a
+  **Tile** in domain language; the code's `Pane` type is a legacy internal name. See
+  [Editor layout](/editor-layout.md#naming-caveat--pane-in-the-code).
