@@ -3,15 +3,16 @@
   // carrying everything that is logically PER-PANE for the active Concept:
   //   - the Concept title + a close affordance (clears the Pane to empty state),
   //   - Split Right (new Column) / Split Down (new Tile in this Column) affordances,
-  //   - the tri-state view-mode toggle (Source / Live / Reading),
   //   - undo / redo over the active Pane's Document history,
   //   - the review-diff toggle (working-tree ↔ HEAD),
   //   - Export as PDF.
   //
-  // Presentational and thin: it owns no state. All logic (mode switching, undo/
-  // redo, review, export, close, split) lives in App.svelte and is passed in as
-  // callbacks + reactive flags, mirroring how the NavBar (global chrome) works.
-  import type { EditorMode } from '$lib/editor/cm';
+  // The tri-state view-mode toggle (Source / Live / Reading) is GLOBAL — it lives
+  // in the NavBar (app chrome), not here — since it applies to every tile at once.
+  //
+  // Presentational and thin: it owns no state. All logic (undo/redo, review,
+  // export, close, split) lives in App.svelte and is passed in as callbacks +
+  // reactive flags, mirroring how the NavBar (global chrome) works.
 
   interface Props {
     /** The active Concept's derived header label ('' when the Pane is empty). */
@@ -23,8 +24,6 @@
     canGoForward: boolean;
     onBack: () => void;
     onForward: () => void;
-    /** The Pane's current view mode (Source / Live / Reading). */
-    editorMode: EditorMode;
     /** Undo/redo availability over the Pane's Document (body+frontmatter) history. */
     canUndo: boolean;
     canRedo: boolean;
@@ -40,7 +39,6 @@
     onSplitRight: () => void;
     /** Open this Pane's Concept in a new Tile below, in this Column. */
     onSplitDown: () => void;
-    onSetMode: (mode: EditorMode) => void;
     onUndo: () => void;
     onRedo: () => void;
     onToggleReview: () => void;
@@ -54,7 +52,6 @@
     canGoForward,
     onBack,
     onForward,
-    editorMode,
     canUndo,
     canRedo,
     reviewActive,
@@ -63,20 +60,11 @@
     onClose,
     onSplitRight,
     onSplitDown,
-    onSetMode,
     onUndo,
     onRedo,
     onToggleReview,
     onExportPdf,
   }: Props = $props();
-
-  // Display-only data for the mode toggle; the mode state + switch logic live in
-  // App.svelte (moved here from the NavBar — it is a per-Pane control).
-  const EDITOR_MODES: { mode: EditorMode; label: string; title: string }[] = [
-    { mode: 'edit', label: 'Source', title: 'Source — raw markdown' },
-    { mode: 'hybrid', label: 'Live', title: 'Live preview — render with the cursor line shown raw' },
-    { mode: 'view', label: 'Read', title: 'Reading view — fully rendered, read-only' },
-  ];
 </script>
 
 <header class="pane-header" data-testid="pane-header" aria-label="Concept header">
@@ -115,28 +103,6 @@
   </div>
 
   <div class="pane-controls">
-    <!-- Tri-state view mode (moved from the NavBar): Source / Live / Reading. -->
-    <div
-      class="mode-toggle"
-      role="group"
-      aria-label="Editor mode"
-      data-testid="editor-mode-toggle"
-    >
-      {#each EDITOR_MODES as m (m.mode)}
-        <button
-          type="button"
-          class="mode-btn"
-          class:active={editorMode === m.mode}
-          data-testid={`editor-mode-${m.mode}`}
-          title={m.title}
-          aria-label={m.title}
-          aria-pressed={editorMode === m.mode}
-          disabled={!hasOpenConcept}
-          onclick={() => onSetMode(m.mode)}>{m.label}</button
-        >
-      {/each}
-    </div>
-
     <!-- Undo / redo over the Pane's single body+frontmatter history. Decoupled
          from the Properties panel (they rode there by historical accident). The
          mousedown-prevent keeps clicking a button from blurring/committing an
@@ -294,46 +260,6 @@
   .btn-group {
     display: inline-flex;
     gap: 0.2rem;
-  }
-
-  /* Tri-state mode toggle: a connected segmented control (Source / Live / Read). */
-  .mode-toggle {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-
-  .mode-btn {
-    padding: 0 0.55rem;
-    height: 1.7rem;
-    border: none;
-    border-left: 1px solid var(--border);
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-size: 0.76rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.12s ease;
-  }
-
-  .mode-btn:first-child {
-    border-left: none;
-  }
-
-  .mode-btn:hover:not(:disabled):not(.active) {
-    background: var(--hover);
-  }
-
-  .mode-btn.active {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  .mode-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 
   .icon-btn {

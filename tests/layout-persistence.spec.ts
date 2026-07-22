@@ -7,9 +7,9 @@ import { test, expect, type Page } from './fixtures';
  * (localStorage-backed, so a page RELOAD restores state exactly as the real
  * backend restores from the OS config file):
  *  - arrange a 2-column layout (column 1 stacks two tiles) on THREE different
- *    Concepts, each in a different view-mode, with a chosen active tile; reload
- *    and assert the columns/tiles, per-tile Concept + mode, and active tile all
- *    come back;
+ *    Concepts, with a chosen active tile and the GLOBAL view-mode set; reload and
+ *    assert the columns/tiles, per-tile Concept, the global mode (shared by every
+ *    tile), and the active tile all come back;
  *  - an OLD single-Concept session (`lastOpenConcept` + one `editorMode`, no
  *    `layout`) migrates cleanly to a single tile in that mode.
  */
@@ -36,35 +36,40 @@ async function bootFresh(page: Page) {
   await expect(page.getByTestId('tree')).toBeVisible();
 }
 
-test('layout persistence: a 2-column stacked layout + per-tile modes + active tile survive a reload', async ({
+test('layout persistence: a 2-column stacked layout + global mode + active tile survive a reload', async ({
   page,
 }) => {
   await bootFresh(page);
   const tree = page.getByTestId('tree');
 
-  // Tile 0 (column 0): codemirror.md in Reading (view) mode.
+  // Tile 0 (column 0): codemirror.md.
   await tree.locator(`[data-path="${CM}"]`).click();
   await expect(page.getByTestId('editor').first()).toContainText(CM_NEEDLE);
-  await page.getByTestId('pane').nth(0).getByTestId('editor-mode-view').click();
 
-  // Split Right → column 1, tile 1 (inherits codemirror + Reading). Open
-  // bundle.md there and switch it to Source (edit) mode.
+  // Split Right → column 1, tile 1 (inherits codemirror). Open bundle.md there.
   await page.getByTestId('split-right').first().click();
   await expect(page.getByTestId('editor')).toHaveCount(2);
   await page.getByTestId('pane').nth(1).locator('.cm-content').click();
   await tree.locator(`[data-path="${BUNDLE}"]`).click();
   await expect(page.getByTestId('pane').nth(1).getByTestId('editor')).toContainText(BUNDLE_NEEDLE);
-  await page.getByTestId('pane').nth(1).getByTestId('editor-mode-edit').click();
 
-  // Split Down (in column 1) → tile 2 below bundle (inherits Source from its
-  // source tile). Open live-preview.md there and switch it to Live (hybrid), so
-  // all three tiles hold DISTINCT modes.
+  // Split Down (in column 1) → tile 2 below bundle. Open live-preview.md there.
   await page.getByTestId('pane').nth(1).getByTestId('split-down').click();
   await expect(page.getByTestId('editor')).toHaveCount(3);
   await page.getByTestId('pane').nth(2).locator('.cm-content').click();
   await tree.locator(`[data-path="${LIVE}"]`).click();
   await expect(page.getByTestId('pane').nth(2).getByTestId('editor')).toContainText(LIVE_NEEDLE);
-  await page.getByTestId('pane').nth(2).getByTestId('editor-mode-hybrid').click();
+
+  // The view-mode is GLOBAL: set Reading (view) once in the NavBar; it applies to
+  // EVERY tile at once (all three go read-only).
+  await page.getByTestId('editor-mode-view').click();
+  await expect(page.getByTestId('editor-mode-view')).toHaveAttribute('aria-pressed', 'true');
+  for (const i of [0, 1, 2]) {
+    await expect(page.getByTestId('pane').nth(i).locator('.cm-content')).toHaveAttribute(
+      'contenteditable',
+      'false',
+    );
+  }
 
   // Make the MIDDLE tile (bundle, column 1 top) the active one — a non-trivial
   // choice (not the last-split tile) whose restoration proves the active tile is
@@ -111,23 +116,15 @@ test('layout persistence: a 2-column stacked layout + per-tile modes + active ti
   await expect(page.getByTestId('pane').nth(1).getByTestId('editor')).toContainText(BUNDLE_NEEDLE);
   await expect(page.getByTestId('pane').nth(2).getByTestId('editor')).toContainText(LIVE_NEEDLE);
 
-  // Per-tile modes are restored.
-  await expect(page.getByTestId('pane').nth(0).getByTestId('editor-mode-view')).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await expect(page.getByTestId('pane').nth(0).locator('.cm-content')).toHaveAttribute(
-    'contenteditable',
-    'false',
-  );
-  await expect(page.getByTestId('pane').nth(1).getByTestId('editor-mode-edit')).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await expect(page.getByTestId('pane').nth(2).getByTestId('editor-mode-hybrid')).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  // The global mode (Reading) is restored and applies to every tile: the NavBar
+  // toggle shows it, and all three tiles come back read-only.
+  await expect(page.getByTestId('editor-mode-view')).toHaveAttribute('aria-pressed', 'true');
+  for (const i of [0, 1, 2]) {
+    await expect(page.getByTestId('pane').nth(i).locator('.cm-content')).toHaveAttribute(
+      'contenteditable',
+      'false',
+    );
+  }
 
   // The active tile (middle = bundle) is restored as the active Pane.
   await expect(page.locator('[data-testid="pane"].pane-active')).toHaveCount(1);
