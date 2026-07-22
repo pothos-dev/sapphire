@@ -14,7 +14,7 @@ import { printPageData } from '$lib/print/printData';
  * Otherwise, in the WEB build this resolves to the Bundle's root `index.md` (the
  * wiki home) — pretty URLs address a Concept by its path, so the root is the
  * empty path. Nested Concepts are served by the `[...concept]` route; both share
- * `loadConcept`. In the DEFAULT (desktop/Tauri) build `__SAPPHIRE_WEB__` is a
+ * `loadConcept`. In the DEFAULT (desktop/Tauri) build `__SUNSTONE_WEB__` is a
  * compile-time `false`, so the body is dead-code-eliminated and the static SPA
  * is untouched (never hits `/api`).
  */
@@ -23,7 +23,7 @@ export const load: PageLoad = async ({ fetch, url }) => {
   if (print) {
     return print;
   }
-  if (!__SAPPHIRE_WEB__) {
+  if (!__SUNSTONE_WEB__) {
     return { web: false as const };
   }
   return loadConcept(fetch, '');

@@ -21,7 +21,7 @@ import { test, expect } from './fixtures';
  */
 
 type FakeWindow = Window & {
-  __sapphireFake: {
+  __sunstoneFake: {
     simulateExternalChange: (kind: string, path: string, content?: string) => void;
     files: Record<string, string>;
   };
@@ -87,7 +87,7 @@ test('enabling review shows working-tree ↔ HEAD changes as red/green marks; ex
 
 test('Esc exits the review view and returns to normal editing', async ({ page }) => {
   const editor = await openFixture(page, 'concepts/bundle.md');
-  await expect(editor).toContainText('is the root folder opened by Sapphire');
+  await expect(editor).toContainText('is the root folder opened by Sunstone');
 
   // Edit so the review diff is non-empty, then enable review.
   const content = editor.locator('.cm-content');
@@ -146,9 +146,9 @@ test('the toggle is disabled with a tooltip for a Concept with no reviewable his
 
   // Create a NEW Concept at runtime: it exists in the working tree but not in
   // the committed snapshot, so the fake git seam reports it `untracked`.
-  await page.waitForFunction(() => '__sapphireFake' in window);
+  await page.waitForFunction(() => '__sunstoneFake' in window);
   await page.evaluate(() => {
-    (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange(
+    (window as unknown as FakeWindow).__sunstoneFake.simulateExternalChange(
       'created',
       'untracked-note.md',
       '---\ntype: concept\ntitle: Untracked\n---\n\n# Untracked\n\nBrand new.\n',

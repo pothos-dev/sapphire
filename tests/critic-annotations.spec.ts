@@ -32,7 +32,7 @@ import { mkdirSync } from 'node:fs';
 const ASSET_DIR = 'docs/assets';
 
 type FakeWindow = Window & {
-  __sapphireFake: {
+  __sunstoneFake: {
     simulateExternalChange: (kind: string, path: string, content?: string) => void;
     files: Record<string, string>;
   };
@@ -42,12 +42,12 @@ const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 
 /** Create a Concept at a bundle-relative path via the fake watcher hook. */
 async function createConcept(page: Page, path: string, body: string): Promise<void> {
-  // The fake backend installs `__sapphireFake` during app boot; wait for it so a
+  // The fake backend installs `__sunstoneFake` during app boot; wait for it so a
   // create issued right after navigation doesn't race initialization.
-  await page.waitForFunction(() => '__sapphireFake' in window);
+  await page.waitForFunction(() => '__sunstoneFake' in window);
   await page.evaluate(
     ([p, b]) => {
-      (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange('created', p, b);
+      (window as unknown as FakeWindow).__sunstoneFake.simulateExternalChange('created', p, b);
     },
     [path, body] as const,
   );
@@ -117,7 +117,7 @@ test('authoring: Ctrl+Alt+m wraps a selection into a collapsed highlight+comment
   // markup is real, just not rendered) — proves the authoring command wrote it.
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-author.md']),
+      page.evaluate(() => (window as unknown as FakeWindow).__sunstoneFake.files['critic-author.md']),
     )
     .toContain('{==Highlightme==}{>>Needs a citation to the style guide<<}');
 });
@@ -172,7 +172,7 @@ test('right-click menu: "Add comment" opens the popup; saving wraps the annotati
   await expect(editor.locator('.cm-critic-highlight').first()).toHaveText('Highlightme');
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-menu.md']),
+      page.evaluate(() => (window as unknown as FakeWindow).__sunstoneFake.files['critic-menu.md']),
     )
     .toContain('{==Highlightme==}{>>Clarify the wording here<<}');
 });
@@ -208,7 +208,7 @@ test('comment gutter icon: clicking it opens the popup to edit the note', async 
 
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-edit.md']),
+      page.evaluate(() => (window as unknown as FakeWindow).__sunstoneFake.files['critic-edit.md']),
     )
     .toContain('{==quick==}{>>revised note<<}');
 });
@@ -265,7 +265,7 @@ test('reading mode: selecting text and annotating writes the note (preferred flo
 
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['critic-read.md']),
+      page.evaluate(() => (window as unknown as FakeWindow).__sunstoneFake.files['critic-read.md']),
     )
     .toContain('{==Highlightme==}{>>Reviewed in reading mode<<}');
 });
@@ -342,7 +342,7 @@ test('multi-line note: markup stays hidden and the save popup closes', async ({ 
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as unknown as FakeWindow).__sapphireFake.files['critic-multiline.md'],
+        () => (window as unknown as FakeWindow).__sunstoneFake.files['critic-multiline.md'],
       ),
     )
     .toContain('{>>note across\ntwo lines<<}');

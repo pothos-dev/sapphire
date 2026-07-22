@@ -29,7 +29,7 @@ async function twoTiles(page: Page) {
   await expect(tree).toBeVisible();
   await page.evaluate(() =>
     window.localStorage.setItem(
-      'sapphire:bundleState:/fake/bundle',
+      'sunstone:bundleState:/fake/bundle',
       JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] }),
     ),
   );
@@ -89,8 +89,8 @@ test('two tiles: the global Properties toggle shows/hides EVERY tile\'s own fron
     .poll(() =>
       page.evaluate(
         () =>
-          (window as unknown as { __sapphireFake: { files: Record<string, string> } })
-            .__sapphireFake.files['concepts/bundle.md'],
+          (window as unknown as { __sunstoneFake: { files: Record<string, string> } })
+            .__sunstoneFake.files['concepts/bundle.md'],
       ),
     )
     .toContain('title: Bundle Renamed');

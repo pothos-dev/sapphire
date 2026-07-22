@@ -9,7 +9,7 @@
 //!
 //! Self-write suppression lives here: before a change reaches the sink, each
 //! changed path is checked against `AppState`'s self-write tracker. Paths
-//! Sapphire just wrote (autosave) are swallowed, so our own writes never cause
+//! Sunstone just wrote (autosave) are swallowed, so our own writes never cause
 //! a reload loop or cursor jump. Genuine external edits still flow through.
 //!
 //! Pure-ish module logic — the host just calls `start` in setup.
@@ -85,7 +85,7 @@ where
             continue;
         };
 
-        // Keep the index current for EVERY change, including Sapphire's own
+        // Keep the index current for EVERY change, including Sunstone's own
         // autosave writes — the index must reflect on-disk truth regardless of
         // who wrote it. (Only the *frontend event* is suppressed for self
         // writes, below, to avoid reload loops / cursor jumps.)
@@ -93,7 +93,7 @@ where
             update_index(state, &rel, abs, kind);
         }
 
-        // Suppress Sapphire's own writes for the frontend echo.
+        // Suppress Sunstone's own writes for the frontend echo.
         if state.is_recent_self_write(abs) {
             continue;
         }

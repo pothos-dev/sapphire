@@ -22,8 +22,8 @@ import { test, expect } from '@playwright/test';
 async function fileContent(page: import('@playwright/test').Page, path: string) {
   return page.evaluate(
     (p) =>
-      (window as unknown as { __sapphireFake: { files: Record<string, string> } })
-        .__sapphireFake.files[p],
+      (window as unknown as { __sunstoneFake: { files: Record<string, string> } })
+        .__sunstoneFake.files[p],
     path,
   );
 }
@@ -113,50 +113,50 @@ test('Replace (single) and Replace-all edit the body and persist via autosave', 
   const editor = page.getByTestId('editor');
   await expect(editor).toContainText('CodeMirror 6 is the editor core');
 
-  // --- Replace single: the body says "Sapphire layers OKF-aware extensions";
-  // replace that single body occurrence of "Sapphire" with "Sapphire". ---
+  // --- Replace single: the body says "Sunstone layers OKF-aware extensions";
+  // replace that single body occurrence of "Sunstone" with "Sunstone". ---
   await page.keyboard.press('Control+f');
   await expect(page.getByTestId('find-panel')).toBeVisible();
-  await page.getByTestId('find-input').pressSequentially('Sapphire');
+  await page.getByTestId('find-input').pressSequentially('Sunstone');
   await expect(editor.locator('.cm-searchMatch').first()).toBeVisible();
-  await page.getByTestId('replace-input').pressSequentially('Sapphire');
+  await page.getByTestId('replace-input').pressSequentially('Sunstone');
   // Select the current match first (Enter = find next), then replace it.
   await page.getByTestId('find-input').press('Enter');
   await page.getByTestId('find-replace').click();
   await expect
-    .poll(async () => (await fileContent(page, 'concepts/codemirror.md')).includes('Sapphire layers'))
+    .poll(async () => (await fileContent(page, 'concepts/codemirror.md')).includes('Sunstone layers'))
     .toBe(true);
 
   // --- Replace all: "CodeMirror" appears twice in the BODY (the heading and
-  // the first sentence); replace every body occurrence with "Sapphire". ---
+  // the first sentence); replace every body occurrence with "Sunstone". ---
   await page.getByTestId('find-input').fill('');
   await page.getByTestId('find-input').pressSequentially('CodeMirror');
   await expect(editor.locator('.cm-searchMatch').first()).toBeVisible();
   await page.getByTestId('replace-input').fill('');
-  await page.getByTestId('replace-input').pressSequentially('Sapphire');
+  await page.getByTestId('replace-input').pressSequentially('Sunstone');
   await page.getByTestId('find-replace-all').click();
 
   const after = await (async () => {
     await expect
-      .poll(async () => (await fileContent(page, 'concepts/codemirror.md')).includes('# Sapphire'))
+      .poll(async () => (await fileContent(page, 'concepts/codemirror.md')).includes('# Sunstone'))
       .toBe(true);
     return fileContent(page, 'concepts/codemirror.md');
   })();
   // Both body occurrences replaced (heading + first sentence).
-  expect(after).toContain('# Sapphire');
-  expect(after).toContain('Sapphire 6 is the editor core');
+  expect(after).toContain('# Sunstone');
+  expect(after).toContain('Sunstone 6 is the editor core');
 
   // --- Frontmatter is untouched: the YAML block (incl. `title: CodeMirror`
-  // and the `description: ... used by Sapphire.`) survives intact (ADR 0003). ---
+  // and the `description: ... used by Sunstone.`) survives intact (ADR 0003). ---
   expect(after).toContain('title: CodeMirror');
-  expect(after).toContain('used by Sapphire.');
+  expect(after).toContain('used by Sunstone.');
   expect(after.startsWith('---\n')).toBe(true);
 
   // Persists across navigation (reopen shows the replaced body).
   await tree.locator('[data-path="concepts/bundle.md"]').click();
   await expect(editor).toContainText('A Bundle is the root folder');
   await tree.locator('[data-path="concepts/codemirror.md"]').click();
-  await expect(editor).toContainText('Sapphire layers OKF-aware extensions');
+  await expect(editor).toContainText('Sunstone layers OKF-aware extensions');
 });
 
 test('a replace is undoable through CM history', async ({ page }) => {
@@ -170,12 +170,12 @@ test('a replace is undoable through CM history', async ({ page }) => {
   await expect(page.getByTestId('find-panel')).toBeVisible();
   await page.getByTestId('find-input').pressSequentially('CodeMirror');
   await expect(editor.locator('.cm-searchMatch').first()).toBeVisible();
-  await page.getByTestId('replace-input').pressSequentially('Sapphire');
+  await page.getByTestId('replace-input').pressSequentially('Sunstone');
   await page.getByTestId('find-replace-all').click();
 
-  // Body heading "# CodeMirror" becomes "# Sapphire" (frontmatter unchanged).
+  // Body heading "# CodeMirror" becomes "# Sunstone" (frontmatter unchanged).
   await expect
-    .poll(async () => (await fileContent(page, 'concepts/codemirror.md')).includes('# Sapphire'))
+    .poll(async () => (await fileContent(page, 'concepts/codemirror.md')).includes('# Sunstone'))
     .toBe(true);
 
   // Undo through CM history (focus the editor first so the keymap handles it).
@@ -186,5 +186,5 @@ test('a replace is undoable through CM history', async ({ page }) => {
   await expect
     .poll(async () => (await fileContent(page, 'concepts/codemirror.md')).includes('# CodeMirror'))
     .toBe(true);
-  expect(await fileContent(page, 'concepts/codemirror.md')).not.toContain('# Sapphire');
+  expect(await fileContent(page, 'concepts/codemirror.md')).not.toContain('# Sunstone');
 });

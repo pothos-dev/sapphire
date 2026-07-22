@@ -266,7 +266,7 @@ export function criticMarkupAnnotations(reading: boolean, onCommentEdit?: OnComm
 }
 
 /**
- * Styling for the CriticMarkup annotations, referencing Sapphire's design
+ * Styling for the CriticMarkup annotations, referencing Sunstone's design
  * tokens (app.css) so it tracks light/dark for free. The highlighter background
  * is a warm translucent amber (not a token — annotation-specific), scoped per
  * theme so it stays legible on both papers; everything else maps to existing

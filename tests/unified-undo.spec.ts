@@ -20,8 +20,8 @@ import { test, expect, type Page } from '@playwright/test';
 function persisted(page: Page, path: string): Promise<string> {
   return page.evaluate(
     (p) =>
-      (window as unknown as { __sapphireFake: { files: Record<string, string> } })
-        .__sapphireFake.files[p],
+      (window as unknown as { __sunstoneFake: { files: Record<string, string> } })
+        .__sunstoneFake.files[p],
     path,
   );
 }

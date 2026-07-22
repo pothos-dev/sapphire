@@ -2,9 +2,9 @@
 
 Bundle-wide full-text **Search** in the web viewer: the centered modal
 (`Ctrl+Shift+F`) that scans every Concept body and lists path/line/snippet hits,
-backed by the existing `sapphire-core` ripgrep search.
+backed by the existing `sunstone-core` ripgrep search.
 
-- Expose `search` in `sapphire-server` (case-insensitive literal query, results
+- Expose `search` in `sunstone-server` (case-insensitive literal query, results
   ordered by path then line, capped server-side as today). `http.ts` implements it.
 - Reuse the existing Search modal as a hydrated interactive island: type a query,
   see matching Concepts with line + snippet, select a hit to open that Concept in

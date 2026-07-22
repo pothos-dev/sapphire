@@ -1,11 +1,11 @@
 ---
 name: deploy
-description: Cut a new release of Sapphire. Bumps the version across all manifests, updates CHANGELOG.md, commits, tags, and pushes — the pushed tag triggers the GitHub Actions release workflow that builds installers for Linux, macOS, and Windows. Use when the user runs /deploy or asks to release/ship/cut a new version.
+description: Cut a new release of Sunstone. Bumps the version across all manifests, updates CHANGELOG.md, commits, tags, and pushes — the pushed tag triggers the GitHub Actions release workflow that builds installers for Linux, macOS, and Windows. Use when the user runs /deploy or asks to release/ship/cut a new version.
 ---
 
 # /deploy
 
-Cuts a new Sapphire release. The release artifacts (Linux `.deb`/`.AppImage`, macOS `.dmg`, Windows `.msi`/`.exe`) are built by `.github/workflows/release.yml`, which runs on every pushed `v*` tag via `tauri-action`. This skill's job is to bump the version, write the changelog, and push the tag that triggers that build.
+Cuts a new Sunstone release. The release artifacts (Linux `.deb`/`.AppImage`, macOS `.dmg`, Windows `.msi`/`.exe`) are built by `.github/workflows/release.yml`, which runs on every pushed `v*` tag via `tauri-action`. This skill's job is to bump the version, write the changelog, and push the tag that triggers that build.
 
 ## When to invoke
 
@@ -62,7 +62,7 @@ After the CHANGELOG is approved, set the new version in **all four** places (use
 1. `package.json` — `.version`
 2. `src-tauri/tauri.conf.json` — `.version`
 3. `src-tauri/Cargo.toml` — `[package] version`
-4. `src-tauri/Cargo.lock` — the `version` under `[[package]] name = "sapphire"`
+4. `src-tauri/Cargo.lock` — the `version` under `[[package]] name = "sunstone"`
 
 Keep all four in lockstep — a mismatch makes `tauri-action` produce wrongly-named artifacts. Do not run `bun install` (the lockfile doesn't change for a self-version bump).
 
@@ -89,9 +89,9 @@ Print this to the user, verbatim, with the version and repo filled in:
 
 > Release **vX.Y.Z** pushed. GitHub Actions is now building installers for Linux, macOS (Intel + Apple Silicon), and Windows.
 >
-> Watch the run: https://github.com/pothos-dev/sapphire/actions
+> Watch the run: https://github.com/pothos-dev/sunstone/actions
 >
-> The workflow builds all platforms, uploads them to a draft, then **auto-publishes** the release once every build succeeds — with the CHANGELOG section for this version as the release notes. It'll appear at https://github.com/pothos-dev/sapphire/releases when the run finishes. If any platform build fails, it stays a draft.
+> The workflow builds all platforms, uploads them to a draft, then **auto-publishes** the release once every build succeeds — with the CHANGELOG section for this version as the release notes. It'll appear at https://github.com/pothos-dev/sunstone/releases when the run finishes. If any platform build fails, it stays a draft.
 
 The workflow (`.github/workflows/release.yml`) runs three jobs: `create-release` opens a draft whose body is this version's `CHANGELOG.md` section, `build-tauri` uploads each platform's installers to that draft, and `publish-release` flips it to published once all builds pass. Assets land on the draft first, so a failed platform never leaves a partially-populated public release. No manual publish step is needed — but this is also why the CHANGELOG section (Phase 2) must be correct before tagging: it becomes the public release notes verbatim.
 

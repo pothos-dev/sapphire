@@ -1,13 +1,13 @@
-# Sapphire
+# Sunstone
 
 A lightweight, CLI-launched Tauri + Svelte markdown editor/viewer with Obsidian-style
-live editing and first-class support for the Open Knowledge Format (OKF). `sapphire ./docs`
+live editing and first-class support for the Open Knowledge Format (OKF). `sunstone ./docs`
 opens a folder as an editable knowledge base.
 
 ## Language
 
 **Bundle**:
-The root folder opened by Sapphire — a directory tree of markdown files, per the OKF spec.
+The root folder opened by Sunstone — a directory tree of markdown files, per the OKF spec.
 _Avoid_: vault, workspace, project (these are other tools' terms).
 
 **Concept**:
@@ -21,7 +21,7 @@ to — never replacing — standard markdown links, which remain the primary/can
 `name` is matched by **filename** (without `.md`), case-insensitive, bundle-wide; it never
 matches the frontmatter `title`. Duplicate filenames resolve to the shortest bundle path, then
 alphabetically (silent — ambiguity is not flagged broken), matching Obsidian. Partial paths
-(`[[folder/name]]`) match by path **suffix**. Wikilinks are a Sapphire compatibility affordance
+(`[[folder/name]]`) match by path **suffix**. Wikilinks are a Sunstone compatibility affordance
 for content authored in Obsidian; OKF itself does not use them.
 _Avoid_: "internal link" (ambiguous — could mean any in-Bundle link; say **Wikilink** or
 **markdown link** specifically).

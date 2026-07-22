@@ -4,11 +4,11 @@ import { fileURLToPath } from "node:url";
 
 const host = process.env.TAURI_DEV_HOST;
 
-// Build target: `SAPPHIRE_TARGET=web` selects the browser/SSR "Sapphire Web"
+// Build target: `SUNSTONE_TARGET=web` selects the browser/SSR "Sunstone Web"
 // build; anything else is the default desktop/Tauri build. Exposed to the app
-// as the compile-time constant `__SAPPHIRE_WEB__` via `define`, so the IPC seam,
+// as the compile-time constant `__SUNSTONE_WEB__` via `define`, so the IPC seam,
 // adapter, and SSR flag can branch on it with the unused branch eliminated.
-const isWeb = process.env.SAPPHIRE_TARGET === "web";
+const isWeb = process.env.SUNSTONE_TARGET === "web";
 
 const tauriStub = fileURLToPath(new URL("./src/lib/web/tauri-stub.ts", import.meta.url));
 const appStub = fileURLToPath(new URL("./src/lib/web/AppStub.svelte", import.meta.url));
@@ -21,9 +21,9 @@ const appStub = fileURLToPath(new URL("./src/lib/web/AppStub.svelte", import.met
  *
  * @returns {import('vite').Plugin}
  */
-function sapphireWebStubs() {
+function sunstoneWebStubs() {
   return {
-    name: "sapphire-web-stubs",
+    name: "sunstone-web-stubs",
     enforce: "pre",
     resolveId(id, importer) {
       if (!isWeb) return null;
@@ -43,10 +43,10 @@ function sapphireWebStubs() {
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [sapphireWebStubs(), sveltekit()],
+  plugins: [sunstoneWebStubs(), sveltekit()],
 
   define: {
-    __SAPPHIRE_WEB__: JSON.stringify(isWeb),
+    __SUNSTONE_WEB__: JSON.stringify(isWeb),
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

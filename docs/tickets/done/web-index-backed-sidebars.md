@@ -2,9 +2,9 @@
 
 The index-driven Sidebar sections, read-only over HTTP: **Backlinks**, **Tags**,
 and **Outline** work in the web viewer the same way they do on desktop, served by
-the existing `sapphire-core` index.
+the existing `sunstone-core` index.
 
-- Expose the read-only index queries in `sapphire-server`: `backlinks`,
+- Expose the read-only index queries in `sunstone-server`: `backlinks`,
   `allTags`, `conceptsByTag`, `listConceptPaths`, `conceptExists` (and
   `allTypes`/`allKeys` if a consumer needs them). `http.ts` implements each.
 - Reuse the existing `Backlinks`, `Tags`, and `Outline` components read-only:

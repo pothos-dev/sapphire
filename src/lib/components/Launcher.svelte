@@ -5,7 +5,7 @@
   import { errMessage } from '$lib/errors';
   import type { KnownBundle } from '$lib/types';
 
-  // The launcher: shown when Sapphire starts with no Bundle (`sapphire` alone).
+  // The launcher: shown when Sunstone starts with no Bundle (`sunstone` alone).
   // Lists previously-opened folders (most-recent first, each removable) and an
   // "Open folder…" native picker. Picking a folder opens it in-process, then we
   // reload so `DesktopShell` re-decides and lands on the editor `<App/>`.

@@ -7,7 +7,7 @@
   // The desktop (Tauri/fake) entry decides, on startup, between two shells:
   //  - a Bundle is open (launched with a path, or picked in the launcher) → the
   //    full editor `<App/>`;
-  //  - no Bundle open (`sapphire` with no path) → the `<Launcher/>`, a list of
+  //  - no Bundle open (`sunstone` with no path) → the `<Launcher/>`, a list of
   //    known folders to pick from.
   // `backend.currentBundle()` is the single source of truth; picking a folder in
   // the launcher opens it in-process then reloads, so this decision re-runs and

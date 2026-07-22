@@ -5,8 +5,8 @@ import type { Handle } from '@sveltejs/kit';
  *
  * The browser-side `http.ts` Backend and SSR `load` both fetch relative
  * `/api/...` so there is ONE public origin (the SvelteKit server) and no CORS.
- * This hook forwards those requests to the Rust `sapphire-server` at an
- * internal base URL (`SAPPHIRE_API_INTERNAL`, default `http://localhost:8787`).
+ * This hook forwards those requests to the Rust `sunstone-server` at an
+ * internal base URL (`SUNSTONE_API_INTERNAL`, default `http://localhost:8787`).
  *
  * The upstream response BODY is streamed straight through (not buffered), so
  * the SSE `/api/events` stream reaches the browser incrementally — awaiting the
@@ -18,7 +18,7 @@ import type { Handle } from '@sveltejs/kit';
  * runtime, so this hook is never invoked — the static build is unaffected.
  * Everything except `/api/*` passes straight through to SvelteKit.
  */
-const API_INTERNAL = process.env.SAPPHIRE_API_INTERNAL ?? 'http://localhost:8787';
+const API_INTERNAL = process.env.SUNSTONE_API_INTERNAL ?? 'http://localhost:8787';
 
 export const handle: Handle = async ({ event, resolve }) => {
   const { pathname, search } = event.url;

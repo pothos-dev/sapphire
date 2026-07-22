@@ -91,9 +91,9 @@ export { openSearch } from './find';
  * `ATOMIC_CODE_LANGUAGES` import note).
  *
  * Wikilinks (`[[name]]`) are supported as an OPTIONAL, name-based SECONDARY
- * link format alongside primary markdown links (ADR-0004) — Sapphire bundles
+ * link format alongside primary markdown links (ADR-0004) — Sunstone bundles
  * often originate as Obsidian vaults. We enable atomic-editor's `wikiLinks`
- * extension (wrapped in a `Compartment` for cache invalidation) with a Sapphire
+ * extension (wrapped in a `Compartment` for cache invalidation) with a Sunstone
  * resolve/onOpen adapter; see `wiki-links.ts`. (ADR-0001's "we do not use
  * wikiLinks" is scoped to OKF's own format — this is the deliberate exception.)
  *

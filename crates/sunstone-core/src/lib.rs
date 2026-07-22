@@ -1,4 +1,4 @@
-//! Sapphire's reusable domain logic: bundle tree/IO, the in-memory index,
+//! Sunstone's reusable domain logic: bundle tree/IO, the in-memory index,
 //! link-rewrite orchestration, full-text search, the filesystem watcher, and
 //! per-Bundle config/session state. Host-agnostic — the Tauri desktop shell
 //! (`src-tauri`) and a future web server both depend on this crate.

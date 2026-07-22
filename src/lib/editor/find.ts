@@ -19,11 +19,11 @@ import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
 // keymap here still provides in-panel bindings (Enter = next, Esc = close, etc.)
 // and the other find affordances. App calls `openSearch(view)` to open + focus.
 //
-// The panel is themed below with Sapphire's design tokens so it reads as editor
+// The panel is themed below with Sunstone's design tokens so it reads as editor
 // chrome (matching the nav bar / inputs) rather than CM's default grey panel.
 // ---------------------------------------------------------------------------
 
-/** Theme the built-in search panel with Sapphire's design tokens. */
+/** Theme the built-in search panel with Sunstone's design tokens. */
 export const findPanelTheme = EditorView.theme({
   '.cm-panel.cm-search': {
     padding: '0.4rem 0.6rem',

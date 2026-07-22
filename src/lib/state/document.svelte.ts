@@ -19,7 +19,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 300;
  *
  * External changes: `reloadExternal()` refreshes the buffer from disk when the
  * file changed on disk by another tool — but never clobbers unsaved local
- * edits. Sapphire's own writes are suppressed by the backend, so they never
+ * edits. Sunstone's own writes are suppressed by the backend, so they never
  * arrive here (no reload loop or cursor jump). The removed-file case is a Pane
  * concern (it clears the view), so it lives in the workspace layer.
  */

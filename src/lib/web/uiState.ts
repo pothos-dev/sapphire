@@ -28,7 +28,7 @@ export interface WebUiState {
   propertiesOpen: boolean;
 }
 
-const KEY = 'sapphire:webUI';
+const KEY = 'sunstone:webUI';
 
 /**
  * Load the persisted UI state as a partial (only the keys actually stored).

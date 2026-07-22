@@ -4,10 +4,10 @@ Server-side Concept rendering: replace the raw-markdown pane with a properly
 **rendered read-only view**, produced by the server so all knowledge semantics stay
 in one place (Rust owns them). The editor pane / CodeMirror is not used on the web.
 
-- New `/api/render` route in `sapphire-server`: given a bundle-relative Concept
+- New `/api/render` route in `sunstone-server`: given a bundle-relative Concept
   path, render its markdown body to HTML (comrak) and return the HTML plus the
   parsed frontmatter and the document outline (headings in order).
-- Link resolution reuses the existing `sapphire-core` index and wikilink logic:
+- Link resolution reuses the existing `sunstone-core` index and wikilink logic:
   standard markdown links and `[[name]]` wikilinks resolve by the same rules as the
   desktop app (filename match, shortest-path/alphabetical tie-break, suffix match).
   Links to missing targets render visually distinct (broken-link styling) but remain

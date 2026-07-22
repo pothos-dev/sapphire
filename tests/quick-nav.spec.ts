@@ -19,7 +19,7 @@ test('quick-nav: fuzzy match, recent files, persistence', async ({ page }) => {
   await expect(tree).toBeVisible();
 
   // Clean slate so recent files start empty and deterministic.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -46,7 +46,7 @@ test('quick-nav: fuzzy match, recent files, persistence', async ({ page }) => {
   const bundleItem = palette.locator('[data-path="concepts/bundle.md"]');
   await expect(bundleItem).toBeVisible();
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('editor')).toContainText('is the root folder opened by Sapphire');
+  await expect(page.getByTestId('editor')).toContainText('is the root folder opened by Sunstone');
 
   // --- Empty input shows recent files, most-recent first ---
   await page.keyboard.press('Control+k');
@@ -71,7 +71,7 @@ test('quick-nav: fuzzy match, recent files, persistence', async ({ page }) => {
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         return raw ? (JSON.parse(raw) as { recentFiles?: string[] }).recentFiles ?? null : null;
       }),
     )

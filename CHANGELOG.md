@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Sapphire are documented in this file. The format is based on
+All notable changes to Sunstone are documented in this file. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -23,7 +23,7 @@ All notable changes to Sapphire are documented in this file. The format is based
 - **External links** (`http(s)`/`mailto`/`tel`) now open in the OS default
   browser instead of being swallowed by the desktop webview.
 - Global Properties (frontmatter) toggle, applied per-tile.
-- The launcher opens a chosen known folder when Sapphire is started with no path.
+- The launcher opens a chosen known folder when Sunstone is started with no path.
 - Tag path disambiguation plus quick-nav tag search and drill-down.
 
 ### Changed
@@ -44,14 +44,14 @@ All notable changes to Sapphire are documented in this file. The format is based
 
 ### Fixed
 
-- Sapphire Web: the browser tab title now shows the open Concept's name — a
+- Sunstone Web: the browser tab title now shows the open Concept's name — a
   stray static `<title>` in the page template was overriding it.
 
 ## [0.15.1] - 2026-07-16
 
 ### Changed
 
-- Sapphire Web now addresses a Concept by its path in the URL
+- Sunstone Web now addresses a Concept by its path in the URL
   (`/research/providers/mistral-ai`) instead of a `?path=` query, dropping the
   `.md` extension and a trailing `/index` (the Bundle root is `/`). In-Bundle
   links use these paths too.
@@ -62,8 +62,8 @@ All notable changes to Sapphire are documented in this file. The format is based
 
 ### Added
 
-- **Sapphire Web** — a server-rendered, read-only web viewer for a Bundle,
-  shipped as a Docker image. A Rust HTTP server (`sapphire-server`) runs over the
+- **Sunstone Web** — a server-rendered, read-only web viewer for a Bundle,
+  shipped as a Docker image. A Rust HTTP server (`sunstone-server`) runs over the
   same core as the desktop app behind a SvelteKit SSR frontend, so a Bundle can be
   browsed in any browser:
   - Server-side Concept rendering with resolved markdown + wikilinks, broken-link
@@ -186,7 +186,7 @@ All notable changes to Sapphire are documented in this file. The format is based
 
 ### Fixed
 
-- Bundle identifier no longer ends in `.app` (renamed to `md.sapphire.editor`),
+- Bundle identifier no longer ends in `.app` (renamed to `md.sunstone.editor`),
   resolving the macOS application-bundle extension collision warning.
 
 ## [0.10.0] - 2026-06-23
@@ -212,7 +212,7 @@ All notable changes to Sapphire are documented in this file. The format is based
 
 ## [0.9.0] - 2026-06-18
 
-First public release. Sapphire is a Tauri-based markdown knowledge editor.
+First public release. Sunstone is a Tauri-based markdown knowledge editor.
 
 ### Added
 

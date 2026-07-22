@@ -1,13 +1,13 @@
 ## What to build
 
-The walking skeleton for **Sapphire Web**: a browser can open the app, see the
+The walking skeleton for **Sunstone Web**: a browser can open the app, see the
 Bundle's Explorer tree, click a Concept, and read its raw markdown — served by a
-new HTTP server over the same `sapphire-core` logic the desktop app uses. This is
+new HTTP server over the same `sunstone-core` logic the desktop app uses. This is
 the fat tracer bullet: it stands up the server, the client seam, the web build
 target, and SSR all at once, so later slices are thin additions.
 
-- New **`sapphire-server`** axum binary depending on `sapphire-core`. It resolves
-  the Bundle root from `SAPPHIRE_BUNDLE` (as the desktop already supports) and
+- New **`sunstone-server`** axum binary depending on `sunstone-core`. It resolves
+  the Bundle root from `SUNSTONE_BUNDLE` (as the desktop already supports) and
   exposes read-only routes for `bundleRoot`, `listTree`, and `readConcept`. Paths
   crossing the seam stay bundle-relative, forward-slash; the existing Rust
   traversal/escape validation guards them — now as a genuine network boundary.
@@ -26,7 +26,7 @@ Type: **AFK**.
 
 ## Acceptance criteria
 
-- [ ] `sapphire-server` serves `bundleRoot`, `listTree`, and `readConcept` over HTTP against a `SAPPHIRE_BUNDLE` bundle
+- [ ] `sunstone-server` serves `bundleRoot`, `listTree`, and `readConcept` over HTTP against a `SUNSTONE_BUNDLE` bundle
 - [ ] Path-escape attempts (`..` outside the bundle) are rejected over HTTP
 - [ ] `http.ts` satisfies the read-only `Backend` subset via `fetch`; no `@tauri-apps/api` in the web build
 - [ ] The web build serves an SSR'd shell: Explorer tree renders server-side and hydrates
@@ -36,4 +36,4 @@ Type: **AFK**.
 
 ## Blocked by
 
-- web-extract-sapphire-core.md
+- web-extract-sunstone-core.md

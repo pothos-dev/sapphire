@@ -10,7 +10,7 @@ const LIVE_NOTE = resolve('tests/fixtures/web-bundle/live-note.md');
  * (slices: web-readonly-api-walking-skeleton + web-server-side-render).
  *
  * Drives the SSR'd web shell (adapter-node) against the read-only HTTP backend
- * (`sapphire-server` over the `tests/fixtures/web-bundle` fixture, proxied
+ * (`sunstone-server` over the `tests/fixtures/web-bundle` fixture, proxied
  * through `/api`). Asserts:
  *   - the Explorer tree is server-rendered and present,
  *   - opening a Concept shows RENDERED HTML (headings/paragraphs) + a read-only

@@ -19,7 +19,7 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 type FakeWindow = Window & {
-  __sapphireFake: {
+  __sunstoneFake: {
     simulateExternalChange: (kind: string, path: string, content?: string) => void;
     files: Record<string, string>;
   };
@@ -30,7 +30,7 @@ const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 async function createConcept(page: Page, path: string, body: string): Promise<void> {
   await page.evaluate(
     ([p, b]) => {
-      (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange('created', p, b);
+      (window as unknown as FakeWindow).__sunstoneFake.simulateExternalChange('created', p, b);
     },
     [path, body] as const,
   );
@@ -38,7 +38,7 @@ async function createConcept(page: Page, path: string, body: string): Promise<vo
 
 function fileContent(page: Page, path: string): Promise<string> {
   return page.evaluate(
-    (p) => (window as unknown as FakeWindow).__sapphireFake.files[p],
+    (p) => (window as unknown as FakeWindow).__sunstoneFake.files[p],
     path,
   );
 }

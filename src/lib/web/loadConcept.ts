@@ -19,7 +19,7 @@ export interface WebPageData {
  * RENDERED Concept without waiting on hydration.
  *
  * `fetch` is relative (`/api/...`), routed through the SvelteKit server (SSR) or
- * the browser origin (client nav), both proxied to `sapphire-server` (see
+ * the browser origin (client nav), both proxied to `sunstone-server` (see
  * `src/hooks.server.ts`). The pretty path is resolved to a real Concept path
  * against the tree's file set (`urlToConcept`); an unknown path renders empty.
  */

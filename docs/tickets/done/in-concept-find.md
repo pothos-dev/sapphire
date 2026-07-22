@@ -5,7 +5,7 @@ In-Concept **Find**: an editor-local find panel docked above the Editor pane, di
 Wire the already-present `@codemirror/search` package into the editor:
 
 - `Ctrl/Cmd+F` is intercepted in App.svelte so it grabs focus from anywhere and opens the find panel (the editor component exposes a method App can call, e.g. `openSearch()`, which calls `openSearchPanel(view)` and focuses it). It is a **no-op when no Concept is open**.
-- The panel mounts **above** the editor (`top: true`) and is themed with Sapphire's CSS variables so it reads as editor chrome (not the centered modal).
+- The panel mounts **above** the editor (`top: true`) and is themed with Sunstone's CSS variables so it reads as editor chrome (not the centered modal).
 - The find field seeds from the current selection on open.
 - All matches highlight; the current match scrolls into view; next/prev navigation works; Esc closes the panel and returns focus to the editor.
 - Default semantics are **case-insensitive literal**. The case / whole-word / **regex** toggles are present (kept available at single-Concept scope — blast radius is one undoable file, unlike the literal-only cross-Bundle Search).
@@ -23,7 +23,7 @@ Type: **AFK**.
 - [ ] Opening with an active selection seeds the find field with it.
 - [ ] Matches highlight; current match scrolls into view; next/prev navigate; Esc closes and refocuses the editor.
 - [ ] Default search is case-insensitive literal; case / whole-word / regex toggles are present and functional.
-- [ ] The panel is styled with Sapphire's design tokens, consistent with editor chrome.
+- [ ] The panel is styled with Sunstone's design tokens, consistent with editor chrome.
 - [ ] Find is scoped to the body; frontmatter is not matched.
 
 ## Blocked by

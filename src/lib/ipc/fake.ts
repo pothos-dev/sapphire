@@ -65,9 +65,9 @@ const fileChangeSubscribers = new Set<(change: FileChange) => void>();
  * the bundle), updating the in-memory fixture and notifying subscribers. This
  * is the fake's stand-in for the Rust `notify` watcher — it lets Playwright
  * exercise the tree-refresh / reload-open-Concept path. Unlike `writeConcept`
- * (Sapphire's own autosave), these changes ARE delivered to subscribers.
+ * (Sunstone's own autosave), these changes ARE delivered to subscribers.
  *
- * Exposed on `window.__sapphireFake` so tests can drive it from the browser.
+ * Exposed on `window.__sunstoneFake` so tests can drive it from the browser.
  */
 function simulateExternalChange(
   kind: FileChange['kind'],
@@ -133,7 +133,7 @@ function clearAllTags(): void {
 }
 
 if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).__sapphireFake = {
+  (window as unknown as Record<string, unknown>).__sunstoneFake = {
     simulateExternalChange,
     clearAllTags,
     files: FILES,
@@ -202,7 +202,7 @@ export const fakeBackend: Backend = {
     if (!isSafePath(path)) {
       throw new Error(`path escapes the bundle: ${path}`);
     }
-    // Sapphire's own write: update the in-memory bundle but do NOT notify
+    // Sunstone's own write: update the in-memory bundle but do NOT notify
     // subscribers — the real backend suppresses the watcher echo for self
     // writes, and the fake must be behaviourally faithful (no reload loop).
     FILES[path] = content;
@@ -217,7 +217,7 @@ export const fakeBackend: Backend = {
 
   // --- Tree CRUD (slice: tree-crud) ---
   // Mutate the in-memory fixture, then notify subscribers — structural changes
-  // SHOULD refresh the tree + index (unlike `writeConcept`, which is Sapphire's
+  // SHOULD refresh the tree + index (unlike `writeConcept`, which is Sunstone's
   // own autosave and is suppressed). This mirrors the real backend, where these
   // ops are NOT recorded as self-writes so the watcher's `file-changed` fires.
 
@@ -526,9 +526,9 @@ function committedContentAt(path: string, rev: string): string | null {
 // ---------------------------------------------------------------------------
 
 /** localStorage key for the fake launcher's known-folder list. */
-const KNOWN_BUNDLES_KEY = 'sapphire:knownBundles';
+const KNOWN_BUNDLES_KEY = 'sunstone:knownBundles';
 /** sessionStorage key marking which Bundle the launcher opened this session. */
-const FAKE_OPEN_KEY = 'sapphire:fakeOpenBundle';
+const FAKE_OPEN_KEY = 'sunstone:fakeOpenBundle';
 
 /** True when the URL forces launcher mode (`?launcher=1`/`?launcher`). */
 function isLauncherForced(): boolean {
@@ -612,7 +612,7 @@ function touchKnownBundle(path: string): void {
 const MAX_SEARCH_RESULTS = 500;
 
 /** localStorage key for the fake Bundle's session state. */
-const BUNDLE_STATE_KEY = `sapphire:bundleState:${FAKE_BUNDLE_ROOT}`;
+const BUNDLE_STATE_KEY = `sunstone:bundleState:${FAKE_BUNDLE_ROOT}`;
 
 /** Default per-Bundle state (mirrors the Rust `BundleState::default`). */
 function defaultBundleState(): BundleState {

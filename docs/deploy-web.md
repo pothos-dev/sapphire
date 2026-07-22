@@ -1,9 +1,9 @@
-# Deploying Sapphire Web
+# Deploying Sunstone Web
 
-Sapphire Web is the server-rendered, read-only viewer for an OKF Bundle. It ships
+Sunstone Web is the server-rendered, read-only viewer for an OKF Bundle. It ships
 as a **single Docker image** that runs two processes side by side:
 
-- **`sapphire-server`** — the read-only Rust API (axum over `sapphire-core`),
+- **`sunstone-server`** — the read-only Rust API (axum over `sunstone-core`),
   serving `/api/*` (tree, concept, render, search, backlinks, tags, SSE events)
   over the mounted Bundle. It **only reads** the Bundle; there is no write path.
 - **`node build`** — the SvelteKit **adapter-node** SSR server. It renders pages,
@@ -33,7 +33,7 @@ From the repo root:
 
 ```bash
 # Serve the Bundle at /srv/okf/my-bundle on host port 8080:
-SAPPHIRE_BUNDLE_HOST=/srv/okf/my-bundle SAPPHIRE_WEB_PORT=8080 \
+SUNSTONE_BUNDLE_HOST=/srv/okf/my-bundle SUNSTONE_WEB_PORT=8080 \
   docker compose up --build -d
 
 # Then open http://<internal-host>:8080/
@@ -43,11 +43,11 @@ Two knobs, both with sane defaults:
 
 | Variable               | Default      | Meaning                                        |
 | ---------------------- | ------------ | ---------------------------------------------- |
-| `SAPPHIRE_BUNDLE_HOST` | `./examples` | Host path of the Bundle directory to serve.    |
-| `SAPPHIRE_WEB_PORT`    | `3000`       | Host port the web viewer is published on.      |
+| `SUNSTONE_BUNDLE_HOST` | `./examples` | Host path of the Bundle directory to serve.    |
+| `SUNSTONE_WEB_PORT`    | `3000`       | Host port the web viewer is published on.      |
 
 The Bundle is bind-mounted **read-only** (`:ro`) into the container at `/bundle`,
-and `SAPPHIRE_BUNDLE=/bundle` points the server at it. The container cannot write
+and `SUNSTONE_BUNDLE=/bundle` points the server at it. The container cannot write
 to your Bundle even if it tried.
 
 Stop it with `docker compose down`.
@@ -57,10 +57,10 @@ Stop it with `docker compose down`.
 | Process           | Port (in container) | Env                                                       |
 | ----------------- | ------------------- | --------------------------------------------------------- |
 | SSR web (node)    | `3000` (published)  | `HOST=0.0.0.0`, `PORT=3000`                               |
-| Rust API (axum)   | `8787` (internal)   | `SAPPHIRE_BUNDLE=/bundle`, `SAPPHIRE_API_PORT=8787`       |
+| Rust API (axum)   | `8787` (internal)   | `SUNSTONE_BUNDLE=/bundle`, `SUNSTONE_API_PORT=8787`       |
 
 The web process reaches the API over container loopback via
-`SAPPHIRE_API_INTERNAL=http://localhost:8787`. Only the web port is published;
+`SUNSTONE_API_INTERNAL=http://localhost:8787`. Only the web port is published;
 the API port stays private to the container.
 
 `docker/entrypoint.sh` is PID 1: it starts the API in the background, starts the
@@ -87,7 +87,7 @@ patterns and the tested per-approach verdict.
 ## Serving a git-backed wiki
 
 To back the served Bundle with a git repo (a sidecar or host-side hook keeps the
-mounted folder in sync while Sapphire serves it read-only), see
+mounted folder in sync while Sunstone serves it read-only), see
 **[`../docker/README.md`](../docker/README.md)**. It covers three sync approaches
 — a `post-receive` hook and a git-checkout sidecar (both live-reload), and a
 git-sync sidecar (does not) — with copy-paste compose files.
@@ -95,16 +95,16 @@ git-sync sidecar (does not) — with copy-paste compose files.
 ## Building the image directly (without compose)
 
 ```bash
-docker build -t sapphire-web:latest .
+docker build -t sunstone-web:latest .
 docker run --rm -p 3000:3000 \
   -v /srv/okf/my-bundle:/bundle:ro \
-  -e SAPPHIRE_BUNDLE=/bundle \
-  sapphire-web:latest
+  -e SUNSTONE_BUNDLE=/bundle \
+  sunstone-web:latest
 ```
 
 ## Publishing & installing from Docker Hub
 
-To run Sapphire Web on a remote host **without a repo checkout or build context**,
+To run Sunstone Web on a remote host **without a repo checkout or build context**,
 publish the image to Docker Hub (a release tag pushes it automatically, or push
 by hand) and pull it on the remote with
 [`../docker-compose.remote.yml`](../docker-compose.remote.yml). The full setup —
@@ -114,12 +114,12 @@ the remote `pull` + `up` flow — lives in
 
 ## Image layout (multi-stage build)
 
-1. **`rust-build`** (`rust:1-bookworm`) — `cargo build --release -p sapphire-server`.
+1. **`rust-build`** (`rust:1-bookworm`) — `cargo build --release -p sunstone-server`.
    `src-tauri` is a workspace member, so its manifest is present, but it is
    stubbed and never compiled (no Tauri deps are pulled).
 2. **`web-build`** (`oven/bun:1`) — `bun install` then
-   `SAPPHIRE_TARGET=web bun run build` (adapter-node → `build/`), then a pruned
+   `SUNSTONE_TARGET=web bun run build` (adapter-node → `build/`), then a pruned
    production `node_modules` for the externalized runtime deps (e.g. `yaml`).
-3. **`runtime`** (`node:22-bookworm-slim`) — the `sapphire-server` binary, the
+3. **`runtime`** (`node:22-bookworm-slim`) — the `sunstone-server` binary, the
    `build/` output, the production `node_modules`, and the entrypoint. `bookworm`
    on both build and runtime keeps glibc compatible.

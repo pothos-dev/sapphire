@@ -28,7 +28,7 @@ async function bootFresh(page: Page) {
   await expect(page.getByTestId('tree')).toBeVisible();
   await page.evaluate(() =>
     window.localStorage.setItem(
-      'sapphire:bundleState:/fake/bundle',
+      'sunstone:bundleState:/fake/bundle',
       JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] }),
     ),
   );
@@ -83,7 +83,7 @@ test('layout persistence: a 2-column stacked layout + global mode + active tile 
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (!raw) return null;
         const parsed = JSON.parse(raw) as {
           layout?: { columns: { tiles: unknown[] }[]; active: [number, number] };
@@ -138,7 +138,7 @@ test('layout persistence: an OLD single-Concept session migrates to one tile', a
   // Seed a legacy session: only lastOpenConcept + a single editorMode, NO layout.
   await page.evaluate(() =>
     window.localStorage.setItem(
-      'sapphire:bundleState:/fake/bundle',
+      'sunstone:bundleState:/fake/bundle',
       JSON.stringify({
         lastOpenConcept: 'concepts/codemirror.md',
         editorMode: 'view',

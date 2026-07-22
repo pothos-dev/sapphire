@@ -13,8 +13,8 @@ import type {
 } from '$lib/types';
 
 /**
- * Read-only HTTP Backend implementation for the "Sapphire Web" build target,
- * talking to the `sapphire-server` axum binary over `fetch`.
+ * Read-only HTTP Backend implementation for the "Sunstone Web" build target,
+ * talking to the `sunstone-server` axum binary over `fetch`.
  *
  * It implements ONLY the read methods needed by the walking skeleton
  * (`bundleRoot`, `listTree`, `readConcept`). Everything else is deliberately

@@ -23,7 +23,7 @@ test('right sidebar starts collapsed, expands to reveal Backlinks, and persists'
 
   // Clean slate so the "fresh Bundle" defaults apply deterministically. Clear
   // AFTER the first load and reload once to boot fresh.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -61,7 +61,7 @@ test('right sidebar starts collapsed, expands to reveal Backlinks, and persists'
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as { rightSidebarOpen?: boolean };
       }),

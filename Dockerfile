@@ -1,19 +1,19 @@
 # syntax=docker/dockerfile:1
 #
-# Sapphire Web — single-image, multi-stage build.
+# Sunstone Web — single-image, multi-stage build.
 #
 # The image bundles TWO server processes (see docker/entrypoint.sh):
-#   - sapphire-server : the read-only Rust API (axum) over sapphire-core.
+#   - sunstone-server : the read-only Rust API (axum) over sunstone-core.
 #   - node build      : the SvelteKit adapter-node SSR web server.
 #
 # This is the WEB deployment only. The Tauri desktop app (src-tauri) is NOT
 # built or shipped here — src-tauri sources are copied into the Rust stage only
 # because it is a Cargo *workspace member* (its manifest must be present to
 # resolve the workspace), but nothing in it is compiled: we build just the
-# `sapphire-server` package.
+# `sunstone-server` package.
 
 # ---------------------------------------------------------------------------
-# Stage 1 — Rust API: compile sapphire-server in release mode.
+# Stage 1 — Rust API: compile sunstone-server in release mode.
 # bookworm base so the resulting glibc matches the node:*-bookworm-slim runtime.
 # ---------------------------------------------------------------------------
 FROM rust:1-bookworm AS rust-build
@@ -21,7 +21,7 @@ WORKDIR /app
 
 # Workspace manifests + lockfile first (with the crate sources) so the build
 # resolves the pinned dependency graph. src-tauri is copied for workspace
-# resolution only; `-p sapphire-server` never compiles it.
+# resolution only; `-p sunstone-server` never compiles it.
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY src-tauri/Cargo.toml ./src-tauri/Cargo.toml
@@ -40,8 +40,8 @@ RUN mkdir -p src-tauri/src \
 # builds; copy the finished binary OUT of the (non-persisted) cache mount.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
-    cargo build --release -p sapphire-server \
- && cp target/release/sapphire-server /usr/local/bin/sapphire-server
+    cargo build --release -p sunstone-server \
+ && cp target/release/sunstone-server /usr/local/bin/sunstone-server
 
 # ---------------------------------------------------------------------------
 # Stage 2 — Frontend: build the SvelteKit adapter-node output with bun.
@@ -60,8 +60,8 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 # above is not clobbered).
 COPY . .
 
-# SAPPHIRE_TARGET=web selects adapter-node (see svelte.config.js); output -> build/.
-RUN SAPPHIRE_TARGET=web bun run build
+# SUNSTONE_TARGET=web selects adapter-node (see svelte.config.js); output -> build/.
+RUN SUNSTONE_TARGET=web bun run build
 
 # Prune to a PRODUCTION-only node_modules for the runtime image. adapter-node
 # bundles the app but leaves externalized deps (e.g. `yaml`) to be resolved from
@@ -79,12 +79,12 @@ WORKDIR /app
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
-    SAPPHIRE_API_PORT=8787 \
-    SAPPHIRE_API_INTERNAL=http://localhost:8787 \
-    SAPPHIRE_BUNDLE=/bundle
+    SUNSTONE_API_PORT=8787 \
+    SUNSTONE_API_INTERNAL=http://localhost:8787 \
+    SUNSTONE_BUNDLE=/bundle
 
 # Rust API binary + the adapter-node build + its production node_modules.
-COPY --from=rust-build /usr/local/bin/sapphire-server /usr/local/bin/sapphire-server
+COPY --from=rust-build /usr/local/bin/sunstone-server /usr/local/bin/sunstone-server
 COPY --from=web-build /app/build ./build
 COPY --from=web-build /app/node_modules ./node_modules
 COPY --from=web-build /app/package.json ./package.json

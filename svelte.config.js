@@ -1,6 +1,6 @@
 // Adapter is target-dependent:
 //
-//  - WEB build (`SAPPHIRE_TARGET=web`): `@sveltejs/adapter-node` with SSR on
+//  - WEB build (`SUNSTONE_TARGET=web`): `@sveltejs/adapter-node` with SSR on
 //    (see `+layout.ts`), so the read-only viewer is server-rendered then
 //    hydrates and is served by a Node process behind the `/api` proxy.
 //  - DEFAULT (desktop/Tauri): `@sveltejs/adapter-static` in SPA mode
@@ -13,14 +13,14 @@ import adapterStatic from "@sveltejs/adapter-static";
 import adapterNode from "@sveltejs/adapter-node";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
-const isWeb = process.env.SAPPHIRE_TARGET === "web";
+const isWeb = process.env.SUNSTONE_TARGET === "web";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
   kit: {
     adapter: isWeb
-      ? adapterNode({ out: process.env.SAPPHIRE_NODE_OUT || "build" })
+      ? adapterNode({ out: process.env.SUNSTONE_NODE_OUT || "build" })
       : adapterStatic({
           fallback: "index.html",
         }),

@@ -44,11 +44,11 @@ test('external reload clears a stale open error', async ({ page }) => {
   await page.evaluate(() => {
     (
       window as unknown as {
-        __sapphireFake: {
+        __sunstoneFake: {
           simulateExternalChange: (kind: string, path: string, content?: string) => void;
         };
       }
-    ).__sapphireFake.simulateExternalChange(
+    ).__sunstoneFake.simulateExternalChange(
       'modified',
       'concepts/ghost.md',
       `---\ntype: concept\ntitle: Ghost\n---\n\n# Ghost Now Exists\n`,

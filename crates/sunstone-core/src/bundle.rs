@@ -277,7 +277,7 @@ mod tests {
     fn temp_root() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
-            "sapphire-tree-crud-{}-{}",
+            "sunstone-tree-crud-{}-{}",
             std::process::id(),
             n
         ));
@@ -351,7 +351,7 @@ mod tests {
         // symlink) canonicalizes outside the root, so resolve_new rejects it.
         let root = temp_root();
         let outside = std::env::temp_dir().join(format!(
-            "sapphire-outside-{}-{}",
+            "sunstone-outside-{}-{}",
             std::process::id(),
             COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
@@ -385,7 +385,7 @@ mod tests {
         // must be rejected: the canonical target falls outside the root.
         let root = temp_root();
         let outside = std::env::temp_dir().join(format!(
-            "sapphire-outside-resolve-{}-{}",
+            "sunstone-outside-resolve-{}-{}",
             std::process::id(),
             COUNTER.fetch_add(1, Ordering::Relaxed)
         ));

@@ -1,9 +1,9 @@
-// Playwright config for the READ-ONLY WEB VIEWER (Sapphire Web).
+// Playwright config for the READ-ONLY WEB VIEWER (Sunstone Web).
 //
 // Unlike the desktop suite (playwright.config.ts, static SPA + in-memory fake),
 // the web viewer is architecturally bound to the HTTP backend: it renders only
 // in the SSR web build and reads through `/api/*`. So this config boots the
-// real read-only stack end-to-end — the `sapphire-server` Rust binary over a
+// real read-only stack end-to-end — the `sunstone-server` Rust binary over a
 // small committed fixture Bundle (`tests/fixtures/web-bundle`), plus the
 // adapter-node SvelteKit server proxying `/api` to it — and drives the viewer
 // against that read-only backend (the faithful analog of "the fake backend's
@@ -40,7 +40,7 @@ export default defineConfig({
   webServer: [
     {
       // The read-only Rust API server over the deterministic fixture Bundle.
-      command: `cargo build -p sapphire-server && SAPPHIRE_BUNDLE=tests/fixtures/web-bundle SAPPHIRE_API_PORT=${RUST_PORT} ./target/debug/sapphire-server`,
+      command: `cargo build -p sunstone-server && SUNSTONE_BUNDLE=tests/fixtures/web-bundle SUNSTONE_API_PORT=${RUST_PORT} ./target/debug/sunstone-server`,
       url: `http://localhost:${RUST_PORT}/api/bundle-root`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,
@@ -50,7 +50,7 @@ export default defineConfig({
       // the Rust server. `reuseExistingServer` lets a pre-started server be
       // reused (needed in sandboxes that protect in-repo build dirs — build to a
       // temp dir and start it by hand, then Playwright reuses it on this port).
-      command: `SAPPHIRE_TARGET=web bun run build && PORT=${WEB_PORT} SAPPHIRE_API_INTERNAL=http://localhost:${RUST_PORT} node build/index.js`,
+      command: `SUNSTONE_TARGET=web bun run build && PORT=${WEB_PORT} SUNSTONE_API_INTERNAL=http://localhost:${RUST_PORT} node build/index.js`,
       url: `http://localhost:${WEB_PORT}`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,

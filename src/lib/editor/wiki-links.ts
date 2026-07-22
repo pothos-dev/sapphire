@@ -18,7 +18,7 @@ import { resolveWikilink, splitWikilinkTarget } from '$lib/links';
 // secondary link format alongside primary markdown links.
 //
 // We reuse atomic-editor's built-in `wikiLinks` CodeMirror extension and supply
-// a Sapphire `resolve`/`onOpen` adapter:
+// a Sunstone `resolve`/`onOpen` adapter:
 //   - `resolve(target)` runs the pure, synchronous name-based resolver
 //     (`resolveWikilink`) against the same cached index `exists()` the
 //     broken-link decoration uses, and reports `resolved` / `missing`.
@@ -76,7 +76,7 @@ function labelFor(rawTarget: string, path: string): string {
 }
 
 /**
- * Build the `wikiLinks` extension configured with the Sapphire adapter. NO
+ * Build the `wikiLinks` extension configured with the Sunstone adapter. NO
  * `suggest` (autocomplete is deferred, ADR-0004). `openOnClick` so a plain
  * click navigates, matching how rendered markdown links open.
  */

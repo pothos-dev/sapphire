@@ -45,7 +45,7 @@ test('editor grid: Alt+arrow moves across columns/tiles, delegates at edges, sti
   await expect(tree).toBeVisible();
   await page.evaluate(() =>
     window.localStorage.setItem(
-      'sapphire:bundleState:/fake/bundle',
+      'sunstone:bundleState:/fake/bundle',
       JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] }),
     ),
   );

@@ -3,7 +3,7 @@ import { test, expect } from './fixtures';
 /**
  * Slice: launcher.
  *
- * Launching Sapphire with no path (`sapphire` alone) shows the launcher: a list
+ * Launching Sunstone with no path (`sunstone` alone) shows the launcher: a list
  * of previously-opened folders (most-recent first), each removable, plus an
  * "Open folder…" native picker. Picking a folder opens it in-process and reloads
  * into the editor.

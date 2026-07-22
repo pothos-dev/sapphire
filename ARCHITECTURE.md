@@ -1,4 +1,4 @@
-# Sapphire — Architecture & Conventions
+# Sunstone — Architecture & Conventions
 
 This document is the contract for all implementation work. Every slice (see
 `docs/tickets/`) builds against the seams defined here. Read it before touching code.

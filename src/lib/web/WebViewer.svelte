@@ -30,7 +30,7 @@
 
   let { data }: Props = $props();
 
-  // The read-only "Sapphire Web" viewer, shaped like the desktop shell: a
+  // The read-only "Sunstone Web" viewer, shaped like the desktop shell: a
   // toolbar over the CENTER pane (sidebar toggles + back/forward + theme), left
   // Sidebar Accordion (Explorer + Tags) and right Sidebar Accordion (Outline +
   // Backlinks) reusing the desktop `SidebarSection`, and the rendered Concept in

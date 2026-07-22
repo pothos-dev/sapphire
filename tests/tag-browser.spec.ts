@@ -67,12 +67,12 @@ test('tag browser reflects frontmatter tag edits on disk', async ({ page }) => {
   await page.evaluate(() => {
     const fake = (
       window as unknown as {
-        __sapphireFake: {
+        __sunstoneFake: {
           simulateExternalChange: (kind: string, path: string, content?: string) => void;
           files: Record<string, string>;
         };
       }
-    ).__sapphireFake;
+    ).__sunstoneFake;
     const original = fake.files['concepts/bundle.md'];
     const updated = original.replace('tags: [okf, core]', 'tags: [okf, core, freshtag]');
     fake.simulateExternalChange('modified', 'concepts/bundle.md', updated);

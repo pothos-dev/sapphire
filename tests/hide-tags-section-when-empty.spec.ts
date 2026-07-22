@@ -39,7 +39,7 @@ test('Tags Section is hidden when the Bundle has no tags', async ({ page }) => {
   // Strip every Concept's tags. The fake fires file-changed events, bumping the
   // index `version`; `bundleTags` recomputes to empty and the Section unmounts.
   await page.evaluate(() => {
-    (window as unknown as { __sapphireFake: Fake }).__sapphireFake.clearAllTags();
+    (window as unknown as { __sunstoneFake: Fake }).__sunstoneFake.clearAllTags();
   });
 
   // The Tags Section is gone; the Explorer Section remains.

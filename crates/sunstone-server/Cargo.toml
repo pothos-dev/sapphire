@@ -1,17 +1,17 @@
 [package]
-name = "sapphire-server"
+name = "sunstone-server"
 version = "0.14.0"
-description = "Read-only HTTP server exposing a Sapphire Bundle over sapphire-core (Sapphire Web)"
+description = "Read-only HTTP server exposing a Sunstone Bundle over sunstone-core (Sunstone Web)"
 authors = ["you"]
 edition = "2021"
 
 [[bin]]
-name = "sapphire-server"
+name = "sunstone-server"
 path = "src/main.rs"
 
 [dependencies]
-# Sapphire's reusable domain logic — the SAME bundle/index code the desktop uses.
-sapphire-core = { path = "../sapphire-core" }
+# Sunstone's reusable domain logic — the SAME bundle/index code the desktop uses.
+sunstone-core = { path = "../sunstone-core" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
 # Wrap a broadcast receiver as a Stream for the SSE (`/api/events`) route.

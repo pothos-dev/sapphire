@@ -30,14 +30,14 @@ export interface Backend {
   bundleRoot(): Promise<string>;
 
   // --- Launcher: known folders + runtime Bundle switch (slice: launcher) -----
-  // When Sapphire starts with NO path (`sapphire` alone), no Bundle is open and
+  // When Sunstone starts with NO path (`sunstone` alone), no Bundle is open and
   // the frontend shows the launcher: a most-recent-first list of previously-
   // opened folders (each removable), plus an "Open folder…" native picker.
   // Picking a folder opens it IN-PROCESS via `openBundle`, after which the
   // frontend reloads so the whole app re-initializes against the new Bundle.
 
   /**
-   * The currently-open Bundle root, or `null` when Sapphire launched with no
+   * The currently-open Bundle root, or `null` when Sunstone launched with no
    * path and is showing the launcher. The frontend decides launcher-vs-editor
    * from this on startup.
    */
@@ -83,7 +83,7 @@ export interface Backend {
 
   /**
    * Subscribe to filesystem changes in the Bundle (created/modified/removed),
-   * as detected by the Rust watcher. Sapphire's own autosave writes are
+   * as detected by the Rust watcher. Sunstone's own autosave writes are
    * suppressed and never delivered here. Returns an unsubscribe function.
    */
   onFileChanged(cb: (change: FileChange) => void): () => void;

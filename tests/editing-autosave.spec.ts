@@ -43,9 +43,9 @@ test('editing + autosave: typing persists via the backend', async ({ page }) => 
         (m) =>
           (
             window as unknown as {
-              __sapphireFake: { files: Record<string, string> };
+              __sunstoneFake: { files: Record<string, string> };
             }
-          ).__sapphireFake.files['concepts/bundle.md'].includes(m),
+          ).__sunstoneFake.files['concepts/bundle.md'].includes(m),
         marker,
       ),
     )
@@ -81,7 +81,7 @@ test('watcher: external change reloads the open Concept', async ({ page }) => {
     ({ ext }) => {
       (
         window as unknown as {
-          __sapphireFake: {
+          __sunstoneFake: {
             simulateExternalChange: (
               kind: string,
               path: string,
@@ -89,7 +89,7 @@ test('watcher: external change reloads the open Concept', async ({ page }) => {
             ) => void;
           };
         }
-      ).__sapphireFake.simulateExternalChange(
+      ).__sunstoneFake.simulateExternalChange(
         'modified',
         'concepts/bundle.md',
         `---\ntype: concept\ntitle: Bundle\n---\n\n# Bundle\n\n${ext}\n`,
@@ -104,7 +104,7 @@ test('watcher: external change reloads the open Concept', async ({ page }) => {
   await page.evaluate(() => {
     (
       window as unknown as {
-        __sapphireFake: {
+        __sunstoneFake: {
           simulateExternalChange: (
             kind: string,
             path: string,
@@ -112,7 +112,7 @@ test('watcher: external change reloads the open Concept', async ({ page }) => {
           ) => void;
         };
       }
-    ).__sapphireFake.simulateExternalChange(
+    ).__sunstoneFake.simulateExternalChange(
       'created',
       'concepts/new-note.md',
       `---\ntype: concept\ntitle: New Note\n---\n\n# New Note\n`,

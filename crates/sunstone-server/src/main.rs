@@ -1,6 +1,6 @@
-//! Sapphire Web's read-only HTTP server.
+//! Sunstone Web's read-only HTTP server.
 //!
-//! A thin axum binary over `sapphire-core` — the SAME bundle/index logic the
+//! A thin axum binary over `sunstone-core` — the SAME bundle/index logic the
 //! Tauri desktop shell uses. It resolves a Bundle root, builds the index on
 //! startup (reusing `AppState`), and serves three READ-ONLY JSON routes:
 //!
@@ -17,7 +17,7 @@
 //! - `GET /api/events`               → SSE stream of filesystem `FileChange`s
 //!
 //! There is NO write path here. Every `path` crossing the seam is validated by
-//! `sapphire-core` against the Bundle root (bundle-relative, forward-slash);
+//! `sunstone-core` against the Bundle root (bundle-relative, forward-slash);
 //! `..`/escape attempts are rejected with a 400 — this is now a genuine network
 //! boundary, not just an in-process call.
 //!
@@ -45,14 +45,14 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
 
-use sapphire_core::app_state::AppState;
-use sapphire_core::bundle::{self, TreeNode};
-use sapphire_core::index::TagCount;
-use sapphire_core::render::{self, RenderPayload};
-use sapphire_core::search::{self, SearchHit};
-use sapphire_core::watcher::{self, FileChange};
+use sunstone_core::app_state::AppState;
+use sunstone_core::bundle::{self, TreeNode};
+use sunstone_core::index::TagCount;
+use sunstone_core::render::{self, RenderPayload};
+use sunstone_core::search::{self, SearchHit};
+use sunstone_core::watcher::{self, FileChange};
 
-/// Default HTTP port. Overridable via `SAPPHIRE_API_PORT`.
+/// Default HTTP port. Overridable via `SUNSTONE_API_PORT`.
 const DEFAULT_PORT: u16 = 8787;
 
 /// Capacity of the filesystem-change broadcast channel. A slow SSE consumer that
@@ -69,7 +69,7 @@ struct ServerState {
 #[tokio::main]
 async fn main() {
     let root = resolve_bundle_root();
-    eprintln!("sapphire-server: serving bundle {}", root.display());
+    eprintln!("sunstone-server: serving bundle {}", root.display());
 
     // Reuse the desktop's AppState (canonical root + in-memory index built on
     // startup); the index is kept current by the watcher below.
@@ -88,7 +88,7 @@ async fn main() {
     }) {
         Ok(w) => Some(watcher::WatcherHandle::new(w)),
         Err(e) => {
-            eprintln!("sapphire-server: filesystem watcher failed to start: {e}");
+            eprintln!("sunstone-server: filesystem watcher failed to start: {e}");
             None
         }
     };
@@ -99,7 +99,7 @@ async fn main() {
     });
     let app = router(state);
 
-    let port = std::env::var("SAPPHIRE_API_PORT")
+    let port = std::env::var("SUNSTONE_API_PORT")
         .ok()
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
@@ -108,7 +108,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .unwrap_or_else(|e| panic!("failed to bind {addr}: {e}"));
-    eprintln!("sapphire-server: listening on http://{addr}");
+    eprintln!("sunstone-server: listening on http://{addr}");
     axum::serve(listener, app).await.expect("server error");
 }
 
@@ -240,7 +240,7 @@ async fn concept_exists_handler(
 /// Acquire the shared index read lock, mapping a poisoned lock to a 500.
 fn read_index(
     state: &ServerState,
-) -> Result<std::sync::RwLockReadGuard<'_, sapphire_core::index::Index>, ApiError> {
+) -> Result<std::sync::RwLockReadGuard<'_, sunstone_core::index::Index>, ApiError> {
     state
         .app
         .read_index()
@@ -281,7 +281,7 @@ async fn events_handler(
 
 // --- Error mapping ----------------------------------------------------------
 
-/// An error crossing the HTTP boundary: a status + a message. `sapphire-core`
+/// An error crossing the HTTP boundary: a status + a message. `sunstone-core`
 /// returns stringly-typed errors; we classify them into 4xx codes so a path
 /// escape is a `400 Bad Request` (a client mistake / attack) while a missing
 /// Concept is a `404 Not Found`.
@@ -299,7 +299,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// Map a `sapphire-core` error string to an HTTP status. Path-escape / invalid
+/// Map a `sunstone-core` error string to an HTTP status. Path-escape / invalid
 /// path errors are the caller's fault (a real network boundary now guards
 /// them) → `400`; everything else (a genuinely missing/unreadable file) → `404`.
 fn classify(msg: &str) -> StatusCode {
@@ -312,11 +312,11 @@ fn classify(msg: &str) -> StatusCode {
 
 // --- Bundle root resolution -------------------------------------------------
 
-/// Resolve the Bundle root: `SAPPHIRE_BUNDLE` if set, else the repo `examples/`
-/// dir (a sensible dev default). Canonicalized so `sapphire-core`'s containment
+/// Resolve the Bundle root: `SUNSTONE_BUNDLE` if set, else the repo `examples/`
+/// dir (a sensible dev default). Canonicalized so `sunstone-core`'s containment
 /// check (`resolve` confirms the target stays under the canonical root) holds.
 fn resolve_bundle_root() -> PathBuf {
-    let explicit = std::env::var("SAPPHIRE_BUNDLE")
+    let explicit = std::env::var("SUNSTONE_BUNDLE")
         .ok()
         .filter(|s| !s.trim().is_empty())
         .map(PathBuf::from);
@@ -325,7 +325,7 @@ fn resolve_bundle_root() -> PathBuf {
 }
 
 /// Dev fallback Bundle: the repo's `examples/` directory, relative to this
-/// crate. Lets `cargo run -p sapphire-server` open a real Bundle out of the box.
+/// crate. Lets `cargo run -p sunstone-server` open a real Bundle out of the box.
 fn default_dev_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
 }
@@ -342,7 +342,7 @@ mod tests {
     fn temp_bundle() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
-            "sapphire-server-{}-{}",
+            "sunstone-server-{}-{}",
             std::process::id(),
             n
         ));
@@ -436,7 +436,7 @@ mod tests {
             "---\ntype: concept\n---\n# Hello\n\nSee [deep](sub/deep.md).\n",
         )
         .unwrap();
-        let index = sapphire_core::index::Index::build(&root);
+        let index = sunstone_core::index::Index::build(&root);
         let payload = render::render_concept(&root, &index, "note.md").unwrap();
         assert!(payload.html.contains("<h1 id="));
         assert!(payload.html.contains("<p>"));
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn render_route_rejects_path_escape_with_400() {
         let root = temp_bundle();
-        let index = sapphire_core::index::Index::build(&root);
+        let index = sunstone_core::index::Index::build(&root);
         let err = render::render_concept(&root, &index, "../secret.md").unwrap_err();
         assert_eq!(classify(&err), StatusCode::BAD_REQUEST);
     }
@@ -491,7 +491,7 @@ mod tests {
             "---\ntype: concept\ntags: [x]\n---\n[to note](/note.md)\n",
         )
         .unwrap();
-        let index = sapphire_core::index::Index::build(&root);
+        let index = sunstone_core::index::Index::build(&root);
 
         assert_eq!(index.backlinks("note.md"), vec!["a.md".to_string()]);
         assert!(index.all_tags().iter().any(|t| t.tag == "x" && t.count == 1));

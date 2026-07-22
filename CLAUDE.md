@@ -1,6 +1,6 @@
-# Sapphire — agent guide
+# Sunstone — agent guide
 
-Sapphire is a CLI-launched **Tauri 2 + SvelteKit (Svelte 5 runes) + Rust**
+Sunstone is a CLI-launched **Tauri 2 + SvelteKit (Svelte 5 runes) + Rust**
 markdown editor with first-class Open Knowledge Format (OKF) support. Start here,
 then read the deeper docs:
 

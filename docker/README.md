@@ -1,12 +1,12 @@
-# Running Sapphire Web as a read-only git-backed wiki server
+# Running Sunstone Web as a read-only git-backed wiki server
 
-Sapphire Web serves an OKF Bundle as a server-rendered, read-only viewer. This
+Sunstone Web serves an OKF Bundle as a server-rendered, read-only viewer. This
 guide covers the **git-backed** deployment: your wiki lives in a git repo, a
-small piece of infrastructure keeps a folder in sync with it, and Sapphire Web
+small piece of infrastructure keeps a folder in sync with it, and Sunstone Web
 mounts that folder **read-only** and serves it — pushing live updates to every
 connected browser via its filesystem watcher.
 
-Sapphire itself is unchanged: it only ever **mounts a folder read-only**. All
+Sunstone itself is unchanged: it only ever **mounts a folder read-only**. All
 git/content fetching lives *outside* the image, in a sidecar or a host-side
 hook. See [`../docs/deploy-web.md`](../docs/deploy-web.md) for the base
 single-folder deployment and the image internals.
@@ -22,7 +22,7 @@ single-folder deployment and the image internals.
 ## Publishing to Docker Hub
 
 The single-folder and git-backed guides here build the image locally. To install
-Sapphire Web on a remote host **without a repo checkout or build context**, push
+Sunstone Web on a remote host **without a repo checkout or build context**, push
 the image to Docker Hub once and pull it there (see
 [running the published image](#running-the-published-image-remote-host) below).
 
@@ -36,10 +36,10 @@ your namespace on your behalf. Do this once:
    **Read & Write** scope.
 2. In this GitHub repo, under **Settings → Secrets and variables → Actions**, set:
    - a **variable** `DOCKERHUB_USERNAME` — your Docker Hub namespace (used to
-     derive the image name `<namespace>/sapphire-web`; nothing is hardcoded), and
+     derive the image name `<namespace>/sunstone-web`; nothing is hardcoded), and
    - a **secret** `DOCKERHUB_TOKEN` — the access token from step 1.
 
-The image name is always `${DOCKERHUB_USERNAME}/sapphire-web`.
+The image name is always `${DOCKERHUB_USERNAME}/sunstone-web`.
 
 ### Automatic path: tag a release
 
@@ -64,8 +64,8 @@ docker login                     # authenticate to Docker Hub
 
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t <your-user>/sapphire-web:<version> \
-  -t <your-user>/sapphire-web:latest \
+  -t <your-user>/sunstone-web:<version> \
+  -t <your-user>/sunstone-web:latest \
   --push .
 ```
 
@@ -84,23 +84,23 @@ read-only Bundle mount, published web port, and no-auth/internal-only posture as
 the base compose:
 
 ```bash
-DOCKERHUB_USERNAME=your-user SAPPHIRE_TAG=0.14.0 \
-SAPPHIRE_BUNDLE_HOST=/srv/okf/my-bundle SAPPHIRE_WEB_PORT=8080 \
+DOCKERHUB_USERNAME=your-user SUNSTONE_TAG=0.14.0 \
+SUNSTONE_BUNDLE_HOST=/srv/okf/my-bundle SUNSTONE_WEB_PORT=8080 \
   docker compose -f docker-compose.remote.yml pull && \
   docker compose -f docker-compose.remote.yml up -d
 ```
 
-`SAPPHIRE_TAG` defaults to `latest`. To keep a git-backed Bundle in sync on the
+`SUNSTONE_TAG` defaults to `latest`. To keep a git-backed Bundle in sync on the
 remote too, combine it with a sync sidecar: run the `git-checkout` service from
 [`../docker-compose.git-checkout.yml`](../docker-compose.git-checkout.yml)
 alongside this file (`-f docker-compose.remote.yml -f docker-compose.git-checkout.yml`)
-and point `SAPPHIRE_BUNDLE` at the shared `/content` volume — the remote image
+and point `SUNSTONE_BUNDLE` at the shared `/content` volume — the remote image
 replaces the locally-built one while the sidecar handles the content.
 
 ## How it fits together
 
 ```
-   author            infra (outside Sapphire)                  Sapphire Web
+   author            infra (outside Sunstone)                  Sunstone Web
   ┌───────┐  git   ┌───────────────────────┐  shared folder  ┌──────────────┐
   │ push  │ ─────▶ │ sidecar / bare-repo    │ ──────────────▶ │ watcher →    │
   │ commit│        │ hook writes work-tree  │      (:ro)      │ /api/events  │
@@ -108,17 +108,17 @@ replaces the locally-built one while the sidecar handles the content.
                                                               └──────────────┘
 ```
 
-Sapphire's Rust API runs a recursive `notify`/inotify watcher over the Bundle
-root ([`crates/sapphire-core/src/watcher.rs`](../crates/sapphire-core/src/watcher.rs))
+Sunstone's Rust API runs a recursive `notify`/inotify watcher over the Bundle
+root ([`crates/sunstone-core/src/watcher.rs`](../crates/sunstone-core/src/watcher.rs))
 and fans every change out over the `/api/events` SSE stream
-([`crates/sapphire-server/src/main.rs`](../crates/sapphire-server/src/main.rs)).
+([`crates/sunstone-server/src/main.rs`](../crates/sunstone-server/src/main.rs)).
 **Whether an external content update actually reaches a browser depends entirely
 on how the sync writes the folder** — see the verdict below.
 
 ## The live-reload verdict (tested)
 
 I stood up each approach against a local git repo and watched `/api/events`
-while pushing commits (Docker 29, git-sync v4.4.2, `sapphire-web:latest`).
+while pushing commits (Docker 29, git-sync v4.4.2, `sunstone-web:latest`).
 
 | Approach | Live reload? | Notes |
 | --- | --- | --- |
@@ -138,7 +138,7 @@ worktree.
 /content/.worktrees/<sha>/…             # a whole new dir per commit
 ```
 
-Sapphire canonicalises `SAPPHIRE_BUNDLE` **once at startup**
+Sunstone canonicalises `SUNSTONE_BUNDLE` **once at startup**
 (`resolve_bundle_root`), so the watcher attaches to that *one* worktree's inode.
 When git-sync swaps the symlink:
 
@@ -149,7 +149,7 @@ When git-sync swaps the symlink:
 
 Observed directly: after a push, the only SSE traffic was spurious `removed`
 events for the *old* files, and `/api/concept` began returning
-`No such file or directory`. A `docker compose restart sapphire-web` recovers it
+`No such file or directory`. A `docker compose restart sunstone-web` recovers it
 (it re-canonicalises to the current worktree and serves the latest commit) — so
 git-sync is a "restart per update" model, not live reload.
 
@@ -163,7 +163,7 @@ and the API served the new content with no restart.
 ## Recommended: bare repo + `post-receive` hook (push-instant, no sidecar)
 
 Push to a bare repo on the host; a hook checks the ref out **in place** into the
-folder Sapphire serves. Instant, no polling, no extra container. The git metadata
+folder Sunstone serves. Instant, no polling, no extra container. The git metadata
 stays in the bare repo, so the served folder holds only content files (clean SSE).
 
 The ready-to-install hook is [`post-receive.example`](post-receive.example):
@@ -176,7 +176,7 @@ install -m 0755 docker/post-receive.example /srv/wiki.git/hooks/post-receive
 #   (edit DEPLOY_REF / WORK_TREE in the hook if your branch or path differ)
 
 # Point the base compose at the work-tree (folder mount, read-only):
-SAPPHIRE_BUNDLE_HOST=/srv/wiki SAPPHIRE_WEB_PORT=8080 docker compose up -d
+SUNSTONE_BUNDLE_HOST=/srv/wiki SUNSTONE_WEB_PORT=8080 docker compose up -d
 
 # From anywhere with SSH to the host:
 git remote add wiki ssh://user@host/srv/wiki.git
@@ -197,10 +197,10 @@ keeps a mirror repo in a **private** volume and checks the work-tree out into a
 the served folder has no `.git` and SSE stays clean.
 
 ```bash
-SAPPHIRE_GIT_REPO=https://github.com/you/wiki \
-SAPPHIRE_GIT_REF=main \
-SAPPHIRE_GIT_PERIOD=30 \
-SAPPHIRE_WEB_PORT=8080 \
+SUNSTONE_GIT_REPO=https://github.com/you/wiki \
+SUNSTONE_GIT_REF=main \
+SUNSTONE_GIT_PERIOD=30 \
+SUNSTONE_WEB_PORT=8080 \
   docker compose -f docker-compose.git-checkout.yml up -d
 ```
 
@@ -208,8 +208,8 @@ Services and volumes:
 
 | Service | Role | Volumes |
 | --- | --- | --- |
-| `git-checkout` | mirrors + checks out the repo every `SAPPHIRE_GIT_PERIOD`s | `gitdir` (private, git metadata), `content` (shared work-tree) |
-| `sapphire-web` | serves `content` read-only; `SAPPHIRE_BUNDLE=/content` | `content:/content:ro` |
+| `git-checkout` | mirrors + checks out the repo every `SUNSTONE_GIT_PERIOD`s | `gitdir` (private, git metadata), `content` (shared work-tree) |
+| `sunstone-web` | serves `content` read-only; `SUNSTONE_BUNDLE=/content` | `content:/content:ro` |
 
 Content shows up within one poll interval and is pushed straight to browsers.
 
@@ -221,14 +221,14 @@ sidecar. It is the most "standard" option, **but** — per the verdict above —
 does not live-reload and the server 404s after the first sync until restarted:
 
 ```bash
-SAPPHIRE_GIT_REPO=https://github.com/you/wiki \
-SAPPHIRE_GIT_REF=main \
-SAPPHIRE_GIT_PERIOD=30s \
-SAPPHIRE_WEB_PORT=8080 \
+SUNSTONE_GIT_REPO=https://github.com/you/wiki \
+SUNSTONE_GIT_REF=main \
+SUNSTONE_GIT_PERIOD=30s \
+SUNSTONE_WEB_PORT=8080 \
   docker compose -f docker-compose.gitsync.yml up -d
 
 # After content changes, pick them up with:
-docker compose -f docker-compose.gitsync.yml restart sapphire-web
+docker compose -f docker-compose.gitsync.yml restart sunstone-web
 ```
 
 Only choose git-sync if a manual restart per update is acceptable; otherwise use
@@ -237,7 +237,7 @@ live.
 
 > A fresh named volume is root-owned and git-sync's default uid (65533) cannot
 > write it, so the compose runs git-sync as `user: "0:0"`. It only writes the
-> shared volume; Sapphire mounts it `:ro`.
+> shared volume; Sunstone mounts it `:ro`.
 
 ## Approach 3: webhook-triggered pull
 
@@ -258,19 +258,19 @@ Sidecar knobs (both `docker-compose.git-checkout.yml` and `docker-compose.gitsyn
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SAPPHIRE_GIT_REPO` | — (required) | Git URL of the wiki repo to sync. |
-| `SAPPHIRE_GIT_REF` | `main` | Branch / tag / commit to serve. |
-| `SAPPHIRE_GIT_PERIOD` | `30` (checkout) / `30s` (git-sync) | Poll interval. |
-| `SAPPHIRE_WEB_PORT` | `3000` | Host port the viewer is published on. |
+| `SUNSTONE_GIT_REPO` | — (required) | Git URL of the wiki repo to sync. |
+| `SUNSTONE_GIT_REF` | `main` | Branch / tag / commit to serve. |
+| `SUNSTONE_GIT_PERIOD` | `30` (checkout) / `30s` (git-sync) | Poll interval. |
+| `SUNSTONE_WEB_PORT` | `3000` | Host port the viewer is published on. |
 
-Sapphire container env (see [`../docs/deploy-web.md`](../docs/deploy-web.md)):
+Sunstone container env (see [`../docs/deploy-web.md`](../docs/deploy-web.md)):
 
 | Variable | Meaning |
 | --- | --- |
-| `SAPPHIRE_BUNDLE` | Bundle root inside the container. Point at a **stable directory** (`/content`), not a swapped symlink. |
+| `SUNSTONE_BUNDLE` | Bundle root inside the container. Point at a **stable directory** (`/content`), not a swapped symlink. |
 | `HOST` / `PORT` | SSR web bind (`0.0.0.0:3000`). |
-| `SAPPHIRE_API_PORT` / `SAPPHIRE_API_INTERNAL` | Internal Rust API port + URL. |
+| `SUNSTONE_API_PORT` / `SUNSTONE_API_INTERNAL` | Internal Rust API port + URL. |
 
 Shared content is passed as a **named volume** between the sidecar (read-write)
-and Sapphire (`:ro`), or as a **host folder** bind-mount for the post-receive-hook
-approach (`SAPPHIRE_BUNDLE_HOST`).
+and Sunstone (`:ro`), or as a **host folder** bind-mount for the post-receive-hook
+approach (`SUNSTONE_BUNDLE_HOST`).

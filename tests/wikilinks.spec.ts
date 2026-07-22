@@ -24,7 +24,7 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 type FakeWindow = Window & {
-  __sapphireFake: {
+  __sunstoneFake: {
     simulateExternalChange: (kind: string, path: string, content?: string) => void;
     files: Record<string, string>;
   };
@@ -36,7 +36,7 @@ const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 async function createConcept(page: Page, path: string, body: string): Promise<void> {
   await page.evaluate(
     ([p, b]) => {
-      (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange(
+      (window as unknown as FakeWindow).__sunstoneFake.simulateExternalChange(
         'created',
         p,
         b,
@@ -198,7 +198,7 @@ test('rename rewrites inbound bare wikilinks to the new basename', async ({ page
   // The inbound bare wikilink was rewritten to the new basename; the alias is
   // preserved verbatim on the aliased form.
   const files = await page.evaluate(
-    () => (window as unknown as FakeWindow).__sapphireFake.files,
+    () => (window as unknown as FakeWindow).__sunstoneFake.files,
   );
   expect(files['rn-source.md']).toContain('[[rn-renamed]]');
   expect(files['rn-source.md']).toContain('[[rn-renamed|My Label]]');

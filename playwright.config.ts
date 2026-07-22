@@ -19,8 +19,8 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
-  // `web-viewer.spec.ts` drives the read-only Sapphire Web viewer, which is
-  // architecturally bound to the SSR (adapter-node) build + the `sapphire-server`
+  // `web-viewer.spec.ts` drives the read-only Sunstone Web viewer, which is
+  // architecturally bound to the SSR (adapter-node) build + the `sunstone-server`
   // HTTP backend — NOT the static SPA + in-memory fake this desktop suite serves.
   // It has its own runner (`playwright.web.config.ts`, whose `testMatch` selects
   // exactly this file), so exclude it here or the default `playwright test` run

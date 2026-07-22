@@ -39,7 +39,7 @@ index 4951e264cdf8f9e1c2f52936ed6e4cb6558769e1..fbf13f0ec66ab9d62a205de2447af577
      onLinkClick?: (url: string) => void;
 +    /**
 +     * When `true`, every line renders with its markup hidden regardless of the
-+     * cursor position — a full reading view (Sapphire VIEW mode). Defaults to
++     * cursor position — a full reading view (Sunstone VIEW mode). Defaults to
 +     * `false`, the Obsidian-style hybrid where the active line shows raw markup.
 +     */
 +    alwaysRender?: boolean;
@@ -61,7 +61,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..864b2038174712c7968dcfdf24f89483
          // is fine; the caller can supply an opener that handles this.
      }
  }
-+// Sapphire VIEW-mode facet: when any input is `true`, the inline-preview
++// Sunstone VIEW-mode facet: when any input is `true`, the inline-preview
 +// decoration builder treats no line as active, so every line's raw markup
 +// hides (renders) regardless of cursor position — a full reading view. The
 +// host toggles this by reconfiguring the extension via a Compartment.
@@ -83,7 +83,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..864b2038174712c7968dcfdf24f89483
      const linkEl = target.closest('.cm-atomic-link');
      if (!linkEl || (root && !root.contains(linkEl)))
          return null;
-+    // Sapphire VIEW (reading) mode: the link text isn't editable, so the
++    // Sunstone VIEW (reading) mode: the link text isn't editable, so the
 +    // whole link is the click target — no need to hit the trailing icon.
 +    if (wholeLink)
 +        return linkEl;
@@ -104,7 +104,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..864b2038174712c7968dcfdf24f89483
      const ranges = [];
      const activeLines = new Set();
 -    if (view.hasFocus) {
-+    // Sapphire VIEW mode: with alwaysRender set, leave activeLines (and the
++    // Sunstone VIEW mode: with alwaysRender set, leave activeLines (and the
 +    // link-active set below) empty so the line-based reveal rule hides every
 +    // line's markup — full reading view independent of the cursor.
 +    const alwaysRender = state.facet(alwaysRenderFacet);
@@ -230,7 +230,7 @@ index de6e2618e9b0bd8c788aea16f95d6a9181f84e67..6f23542fc98af8a9b6b495195b6e5312
    color: var(--atomic-editor-link-hover, #a5b4fc);
  }
  
-+/* Reading view (Sapphire VIEW mode): the whole link follows the link, not
++/* Reading view (Sunstone VIEW mode): the whole link follows the link, not
 + * just the trailing icon, so the pointer cursor spans the link text too.
 + * Scoped to the non-editable content DOM — VIEW mode sets
 + * `contenteditable="false"`; edit/hybrid keep the text-caret cursor. */

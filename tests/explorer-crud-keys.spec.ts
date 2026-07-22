@@ -26,7 +26,7 @@ async function focusedRow(page: Page): Promise<string | null> {
 async function freshLoad(page: Page) {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 }

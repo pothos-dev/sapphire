@@ -25,7 +25,7 @@ export interface MermaidThemeConfig {
 }
 
 /**
- * Build the mermaid init config that themes a Diagram with Sapphire's OWN
+ * Build the mermaid init config that themes a Diagram with Sunstone's OWN
  * palette and font, instead of mermaid's generic `dark`/`default` themes (which
  * ship their own colours and font — the cause of the white-block/black-text/
  * wrong-font look in dark mode). We use mermaid's `base` theme and override its

@@ -41,7 +41,7 @@ async function freshLoad(page: Page) {
   // `concepts/` holds an index.md so it now opens COLLAPSED by default (see
   // treeNav.defaultOpenFolders); seeding the expanded set keeps these keyboard-nav
   // assertions focused on movement rather than the fresh-Bundle collapse default.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 }

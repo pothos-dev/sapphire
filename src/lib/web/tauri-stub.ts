@@ -4,7 +4,7 @@
 // web bundle (IPC-seam rule + no native shell on the web). In the web build
 // `vite.config.js` resolves `./tauri` to THIS module instead, so the real one
 // (and `@tauri-apps/api`) never enter the graph. The web backend selection
-// (`__SAPPHIRE_WEB__`) never touches `tauriBackend`, so this proxy is only a
+// (`__SUNSTONE_WEB__`) never touches `tauriBackend`, so this proxy is only a
 // safety net: any accidental use fails loudly rather than silently.
 
 import type { Backend } from '../ipc/backend';

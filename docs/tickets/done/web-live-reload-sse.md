@@ -5,8 +5,8 @@ tool, since the web app itself never writes), every connected browser updates
 without a manual refresh. This maps the desktop's watcher event onto a web-native
 push channel.
 
-- New `/api/events` route in `sapphire-server` streaming filesystem changes as
-  Server-Sent Events (`text/event-stream`). The `sapphire-core` watcher's change
+- New `/api/events` route in `sunstone-server` streaming filesystem changes as
+  Server-Sent Events (`text/event-stream`). The `sunstone-core` watcher's change
   events are broadcast to every connected client (a broadcast channel drained per
   connection). No self-write suppression is needed — the web app has no write path,
   so every change is a genuine external edit worth delivering.

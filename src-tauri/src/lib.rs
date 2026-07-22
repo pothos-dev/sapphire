@@ -4,13 +4,13 @@ mod session;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use sapphire_core::bundle::{self, TreeNode};
-use sapphire_core::config::{self, BundleState, KnownBundle, WindowState};
-use sapphire_core::git::{self, FileAtRev, FileHistory};
-use sapphire_core::index::TagCount;
-use sapphire_core::render::{self, RenderPayload};
-use sapphire_core::rewrite::{self, AnchorRename, RewriteSummary};
-use sapphire_core::search::{self, SearchHit};
+use sunstone_core::bundle::{self, TreeNode};
+use sunstone_core::config::{self, BundleState, KnownBundle, WindowState};
+use sunstone_core::git::{self, FileAtRev, FileHistory};
+use sunstone_core::index::TagCount;
+use sunstone_core::render::{self, RenderPayload};
+use sunstone_core::rewrite::{self, AnchorRename, RewriteSummary};
+use sunstone_core::search::{self, SearchHit};
 use session::Session;
 use tauri::{Manager, State, WindowEvent};
 
@@ -22,7 +22,7 @@ fn bundle_root(session: State<'_, Arc<Session>>) -> Result<String, String> {
     Ok(state.bundle_root.to_string_lossy().into_owned())
 }
 
-/// The currently-open Bundle root, or `None` when Sapphire launched with no path
+/// The currently-open Bundle root, or `None` when Sunstone launched with no path
 /// and is showing the launcher. The frontend decides launcher-vs-editor from this.
 #[tauri::command]
 fn current_bundle(session: State<'_, Arc<Session>>) -> Option<String> {
@@ -269,7 +269,7 @@ fn file_at_rev(
 /// Render the Concept at `path` (bundle-relative) to server-quality HTML: the
 /// body rendered with CriticMarkup annotations and resolved wikilinks, plus the
 /// parsed frontmatter and heading outline. Same core render the web viewer uses
-/// (`sapphire_core::render`); feeds the desktop "Export as PDF" print path. Links
+/// (`sunstone_core::render`); feeds the desktop "Export as PDF" print path. Links
 /// resolve against the in-memory index; the read lock is held only for the call.
 #[tauri::command]
 fn render_concept(session: State<'_, Arc<Session>>, path: String) -> Result<RenderPayload, String> {
@@ -499,15 +499,15 @@ fn capture_window_state(window: &tauri::WebviewWindow) -> Option<WindowState> {
 /// Resolve the Bundle to open at startup, or `None` to show the launcher.
 ///
 /// A Bundle is opened up front ONLY when one was explicitly named:
-///   1. the `SAPPHIRE_BUNDLE` env var, if set and non-empty, else
+///   1. the `SUNSTONE_BUNDLE` env var, if set and non-empty, else
 ///   2. the positional CLI path (already parsed by `cli::parse_args`).
 ///
-/// With neither (`sapphire` with no arguments) we return `None`: the frontend
+/// With neither (`sunstone` with no arguments) we return `None`: the frontend
 /// shows the launcher (pick a known folder or open a new one), which then calls
 /// `open_bundle` to open one in-process. The result is canonicalized so it keys
 /// the config store stably.
 fn resolve_startup_bundle(cli_path: Option<String>) -> Option<PathBuf> {
-    let explicit = std::env::var("SAPPHIRE_BUNDLE")
+    let explicit = std::env::var("SUNSTONE_BUNDLE")
         .ok()
         .filter(|s| !s.is_empty())
         .or(cli_path)?;
@@ -517,14 +517,14 @@ fn resolve_startup_bundle(cli_path: Option<String>) -> Option<PathBuf> {
 
 /// Env marker set on the re-spawned child of a `--detached` launch, so the child
 /// runs the UI normally instead of detaching again (which would loop forever).
-const DETACHED_CHILD_ENV: &str = "SAPPHIRE_DETACHED_CHILD";
+const DETACHED_CHILD_ENV: &str = "SUNSTONE_DETACHED_CHILD";
 
 /// Re-spawn this executable as a console-independent child and let the parent
 /// return immediately, freeing the terminal (`--detached` / `-d`). The child is
 /// given its own process group (so terminal job-control signals — Ctrl+C, and
 /// SIGHUP on terminal close — don't reach it) with stdio detached to null; on
 /// Windows it gets `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`. The Bundle
-/// path is forwarded; `SAPPHIRE_BUNDLE` and the rest of the environment are
+/// path is forwarded; `SUNSTONE_BUNDLE` and the rest of the environment are
 /// inherited. The `DETACHED_CHILD_ENV` marker stops the child from detaching
 /// again.
 fn spawn_detached(bundle: &Option<String>) -> std::io::Result<()> {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build Sapphire in release mode and install the binary to ~/.local/bin/sapphire.
+# Build Sunstone in release mode and install the binary to ~/.local/bin/sunstone.
 #
-# Sapphire is CLI-launched (`sapphire ./docs`), so only the binary is needed —
+# Sunstone is CLI-launched (`sunstone ./docs`), so only the binary is needed —
 # no installer bundles. `tauri build --no-bundle` builds the frontend (via the
 # configured beforeBuildCommand) and compiles the release binary, skipping the
 # slower .deb/.AppImage/etc. packaging.
@@ -13,7 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-BIN_NAME="sapphire"
+BIN_NAME="sunstone"
 INSTALL_DIR="$HOME/.local/bin"
 # Honour CARGO_TARGET_DIR if set, else the cargo WORKSPACE-ROOT target dir.
 # (The repo is a cargo workspace — crates/* + src-tauri — so build output lands
@@ -42,5 +42,5 @@ install -m 0755 "$BUILT_BIN" "$INSTALL_DIR/$BIN_NAME"
 echo "==> Installed $("$INSTALL_DIR/$BIN_NAME" --version 2>/dev/null || echo "$BIN_NAME")"
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
-  *) echo "note: $INSTALL_DIR is not on your PATH — add it to use 'sapphire' directly." ;;
+  *) echo "note: $INSTALL_DIR is not on your PATH — add it to use 'sunstone' directly." ;;
 esac

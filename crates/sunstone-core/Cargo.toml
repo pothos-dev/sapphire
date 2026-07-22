@@ -1,7 +1,7 @@
 [package]
-name = "sapphire-core"
+name = "sunstone-core"
 version = "0.14.0"
-description = "Sapphire's reusable domain logic (bundle, index, rewrite, search, watcher)"
+description = "Sunstone's reusable domain logic (bundle, index, rewrite, search, watcher)"
 authors = ["you"]
 edition = "2021"
 

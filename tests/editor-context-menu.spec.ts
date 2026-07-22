@@ -10,11 +10,11 @@ import { test, expect } from './fixtures';
  * fake backend (mirroring critic-annotations.spec.ts): create a Concept, select
  * a word with the keyboard, then open the menu WITHOUT collapsing the selection
  * via a synthetic `contextmenu` event, and assert against the fake source in
- * `window.__sapphireFake.files[...]`.
+ * `window.__sunstoneFake.files[...]`.
  */
 
 type FakeWindow = Window & {
-  __sapphireFake: {
+  __sunstoneFake: {
     simulateExternalChange: (kind: string, path: string, content?: string) => void;
     files: Record<string, string>;
   };
@@ -24,12 +24,12 @@ const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 
 /** Create a Concept at a bundle-relative path via the fake watcher hook. */
 async function createConcept(page: Page, path: string, body: string): Promise<void> {
-  // The fake backend installs `__sapphireFake` during app boot; wait for it so a
+  // The fake backend installs `__sunstoneFake` during app boot; wait for it so a
   // create issued right after navigation doesn't race initialization.
-  await page.waitForFunction(() => '__sapphireFake' in window);
+  await page.waitForFunction(() => '__sunstoneFake' in window);
   await page.evaluate(
     ([p, b]) => {
-      (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange('created', p, b);
+      (window as unknown as FakeWindow).__sunstoneFake.simulateExternalChange('created', p, b);
     },
     [path, body] as const,
   );
@@ -74,7 +74,7 @@ test('formatting menu: "Bold" wraps the selection as **word**', async ({ page })
   await expect(menu).toHaveCount(0);
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['fmt-bold.md']),
+      page.evaluate(() => (window as unknown as FakeWindow).__sunstoneFake.files['fmt-bold.md']),
     )
     .toContain('**Highlightme**');
 });
@@ -100,7 +100,7 @@ test('formatting menu: "Insert link" wraps the selection as [word]()', async ({ 
   await expect(menu).toHaveCount(0);
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['fmt-link.md']),
+      page.evaluate(() => (window as unknown as FakeWindow).__sunstoneFake.files['fmt-link.md']),
     )
     .toContain('[Highlightme]()');
 });
@@ -188,7 +188,7 @@ test.describe('clipboard', () => {
 
     await expect
       .poll(() =>
-        page.evaluate(() => (window as unknown as FakeWindow).__sapphireFake.files['clip-paste.md']),
+        page.evaluate(() => (window as unknown as FakeWindow).__sunstoneFake.files['clip-paste.md']),
       )
       .toContain('PASTED Before after.');
   });

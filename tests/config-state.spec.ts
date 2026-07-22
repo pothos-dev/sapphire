@@ -55,7 +55,7 @@ test('session state persists across reload; theme follows OS', async ({ page }) 
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as { lastOpenConcept: string | null; expandedFolders: string[] };
       }),

@@ -1,22 +1,22 @@
-# Sapphire Web + git-checkout sidecar — RECOMMENDED for LIVE RELOAD.
+# Sunstone Web + git-checkout sidecar — RECOMMENDED for LIVE RELOAD.
 #
 # A tiny sidecar keeps a mirror repo in a PRIVATE volume and checks the working
 # tree out IN PLACE into a shared volume, with the git metadata kept OUT of the
 # served tree (--git-dir points at the private volume, --work-tree at the shared
 # one). Because the served path is stable and files are rewritten in place,
-# Sapphire's inotify watcher fires and /api/events pushes the change to every
+# Sunstone's inotify watcher fires and /api/events pushes the change to every
 # connected browser — no restart, no manual refresh. Verified: see docker/README.md.
 #
-# Content fetching lives entirely outside the Sapphire image (Sapphire is
+# Content fetching lives entirely outside the Sunstone image (Sunstone is
 # unchanged — folder-mount only).
 #
 #   docker compose -f docker-compose.git-checkout.yml up -d
 #
 # Configure via env (defaults shown):
-#   SAPPHIRE_GIT_REPO    git URL to sync            (required)
-#   SAPPHIRE_GIT_REF     branch / tag / commit      (default: main)
-#   SAPPHIRE_GIT_PERIOD  poll interval, seconds     (default: 30)
-#   SAPPHIRE_WEB_PORT    host port for the viewer   (default: 3000)
+#   SUNSTONE_GIT_REPO    git URL to sync            (required)
+#   SUNSTONE_GIT_REF     branch / tag / commit      (default: main)
+#   SUNSTONE_GIT_PERIOD  poll interval, seconds     (default: 30)
+#   SUNSTONE_WEB_PORT    host port for the viewer   (default: 3000)
 #
 # For push-instant (no polling) updates instead, push to a bare repo with the
 # post-receive hook (docker/post-receive.example) — same clean checkout, same
@@ -36,30 +36,30 @@ services:
         set -eu
         git config --global --add safe.directory '*'
         if [ ! -d /gitdir/refs ]; then
-          echo "git-checkout: mirroring $$SAPPHIRE_GIT_REPO into /gitdir"
-          git clone --mirror "$$SAPPHIRE_GIT_REPO" /gitdir
+          echo "git-checkout: mirroring $$SUNSTONE_GIT_REPO into /gitdir"
+          git clone --mirror "$$SUNSTONE_GIT_REPO" /gitdir
         fi
         mkdir -p /content
         while true; do
           git --git-dir=/gitdir fetch -q --prune origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' || true
           # checkout -f rewrites only changed files under /content in place; the
           # .git metadata stays in /gitdir, so the watched tree has no git noise.
-          git --git-dir=/gitdir --work-tree=/content checkout -f "$$SAPPHIRE_GIT_REF" -- . || true
-          sleep "$$SAPPHIRE_GIT_PERIOD"
+          git --git-dir=/gitdir --work-tree=/content checkout -f "$$SUNSTONE_GIT_REF" -- . || true
+          sleep "$$SUNSTONE_GIT_PERIOD"
         done
     environment:
-      SAPPHIRE_GIT_REPO: ${SAPPHIRE_GIT_REPO:?set SAPPHIRE_GIT_REPO to the wiki git URL}
-      SAPPHIRE_GIT_REF: ${SAPPHIRE_GIT_REF:-main}
-      SAPPHIRE_GIT_PERIOD: ${SAPPHIRE_GIT_PERIOD:-30}
+      SUNSTONE_GIT_REPO: ${SUNSTONE_GIT_REPO:?set SUNSTONE_GIT_REPO to the wiki git URL}
+      SUNSTONE_GIT_REF: ${SUNSTONE_GIT_REF:-main}
+      SUNSTONE_GIT_PERIOD: ${SUNSTONE_GIT_PERIOD:-30}
     volumes:
       - gitdir:/gitdir      # private: git metadata, NOT served
-      - content:/content    # shared: the working tree Sapphire reads
+      - content:/content    # shared: the working tree Sunstone reads
 
-  sapphire-web:
+  sunstone-web:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sapphire-web:latest
+    image: sunstone-web:latest
     init: true
     restart: unless-stopped
     depends_on:
@@ -68,14 +68,14 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 3000
-      SAPPHIRE_API_PORT: 8787
-      SAPPHIRE_API_INTERNAL: http://localhost:8787
+      SUNSTONE_API_PORT: 8787
+      SUNSTONE_API_INTERNAL: http://localhost:8787
       # A stable directory (no symlink swap) — the watcher stays attached.
-      SAPPHIRE_BUNDLE: /content
+      SUNSTONE_BUNDLE: /content
     volumes:
       - content:/content:ro
     ports:
-      - "${SAPPHIRE_WEB_PORT:-3000}:3000"
+      - "${SUNSTONE_WEB_PORT:-3000}:3000"
 
 volumes:
   gitdir:

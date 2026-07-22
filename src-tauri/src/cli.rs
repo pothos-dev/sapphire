@@ -1,6 +1,6 @@
 //! Command-line argument parsing.
 //!
-//! Sapphire is CLI-launched (`sapphire ./docs`). The arguments are an optional
+//! Sunstone is CLI-launched (`sunstone ./docs`). The arguments are an optional
 //! positional Bundle path, the conventional `--help`/`--version` flags, and
 //! `--detached`/`-d` (run detached from the spawning console). We hand-roll the
 //! parse (no `clap`) to keep the dependency surface small; the grammar is tiny
@@ -10,7 +10,7 @@
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct RunOptions {
     /// The Bundle root from the command line; `None` means "fall back to
-    /// `SAPPHIRE_BUNDLE` / the per-build default" (see `resolve_bundle_root`).
+    /// `SUNSTONE_BUNDLE` / the per-build default" (see `resolve_bundle_root`).
     pub bundle: Option<String>,
     /// Detach from the spawning console: re-spawn the UI as an independent
     /// process and return the shell prompt immediately (see `lib.rs`).
@@ -53,13 +53,13 @@ where
             // is treated as a positional (harmless; not a recognised flag).
             _ if a.starts_with('-') && a != "-" => {
                 return CliAction::Error(format!(
-                    "unknown option '{a}'\n\nTry 'sapphire --help' for usage."
+                    "unknown option '{a}'\n\nTry 'sunstone --help' for usage."
                 ));
             }
             _ => {
                 if opts.bundle.is_some() {
                     return CliAction::Error(format!(
-                        "unexpected extra argument '{a}'\n\nTry 'sapphire --help' for usage."
+                        "unexpected extra argument '{a}'\n\nTry 'sunstone --help' for usage."
                     ));
                 }
                 opts.bundle = Some(a.to_string());
@@ -69,7 +69,7 @@ where
     CliAction::Run(opts)
 }
 
-/// The `--version` line, e.g. `sapphire 0.10.0`.
+/// The `--version` line, e.g. `sunstone 0.10.0`.
 pub fn version_string() -> String {
     format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
 }
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn version_string_is_name_and_semver() {
         let v = version_string();
-        assert!(v.starts_with("sapphire "));
-        assert_eq!(v, format!("sapphire {}", env!("CARGO_PKG_VERSION")));
+        assert!(v.starts_with("sunstone "));
+        assert_eq!(v, format!("sunstone {}", env!("CARGO_PKG_VERSION")));
     }
 }

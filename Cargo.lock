@@ -3376,55 +3376,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sapphire"
-version = "0.16.0"
-dependencies = [
- "block2",
- "gtk",
- "objc2-foundation",
- "objc2-web-kit",
- "sapphire-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "webkit2gtk",
- "webview2-com",
- "windows",
-]
-
-[[package]]
-name = "sapphire-core"
-version = "0.14.0"
-dependencies = [
- "comrak",
- "dirs 5.0.1",
- "grep-matcher",
- "grep-regex",
- "grep-searcher",
- "ignore",
- "notify",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
-]
-
-[[package]]
-name = "sapphire-server"
-version = "0.14.0"
-dependencies = [
- "axum",
- "sapphire-core",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
 name = "schemars"
 version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3864,6 +3815,55 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "sunstone"
+version = "0.16.0"
+dependencies = [
+ "block2",
+ "gtk",
+ "objc2-foundation",
+ "objc2-web-kit",
+ "serde",
+ "serde_json",
+ "sunstone-core",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "webkit2gtk",
+ "webview2-com",
+ "windows",
+]
+
+[[package]]
+name = "sunstone-core"
+version = "0.14.0"
+dependencies = [
+ "comrak",
+ "dirs 5.0.1",
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
+ "ignore",
+ "notify",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
+name = "sunstone-server"
+version = "0.14.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "sunstone-core",
+ "tokio",
+ "tokio-stream",
+]
 
 [[package]]
 name = "swift-rs"

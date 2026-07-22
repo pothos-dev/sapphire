@@ -23,7 +23,7 @@ test('sidebar + section collapse state persists across reload', async ({ page })
   // Clean slate so the "fresh Bundle" defaults apply deterministically. Clear
   // AFTER the first load (not via addInitScript, which would re-clear on the
   // reload under test) and reload once to boot fresh.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -54,7 +54,7 @@ test('sidebar + section collapse state persists across reload', async ({ page })
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as {
           leftSidebarOpen?: boolean;
@@ -98,7 +98,7 @@ test('global Properties show/hide flag persists across reload', async ({ page })
 
   // Reset to a deterministic state: concepts/ + concepts/editor/ expanded (concepts/
   // now defaults COLLAPSED as it holds an index.md), everything else at defaults.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 
@@ -116,7 +116,7 @@ test('global Properties show/hide flag persists across reload', async ({ page })
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (!raw) return null;
         return (JSON.parse(raw) as { propertiesShown?: boolean }).propertiesShown ?? null;
       }),

@@ -26,7 +26,7 @@ test('outline lists headings, skips frontmatter/code, scrolls on click, and pers
 
   // Reset to a deterministic state: concepts/ + concepts/editor/ expanded (concepts/
   // now defaults COLLAPSED as it holds an index.md), everything else at defaults.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -106,7 +106,7 @@ test('outline lists headings, skips frontmatter/code, scrolls on click, and pers
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as { outlineOpen?: boolean };
       }),
@@ -118,7 +118,7 @@ test('outline lists headings, skips frontmatter/code, scrolls on click, and pers
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (!raw) return null;
         return JSON.parse(raw) as { outlineOpen?: boolean };
       }),

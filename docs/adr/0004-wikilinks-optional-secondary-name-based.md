@@ -1,9 +1,9 @@
 # Wikilinks as an optional, name-based secondary link format
 
-Sapphire supports `[[wikilink]]` syntax as an **optional, secondary** link format **in
+Sunstone supports `[[wikilink]]` syntax as an **optional, secondary** link format **in
 addition to** standard markdown links, which remain the primary/canonical form. OKF itself does
 not use wikilinks (see [ADR-0001](0001-codemirror-hybrid-live-preview.md)); we support them
-because Sapphire bundles frequently originate as Obsidian vaults, where `[[ ]]` is the norm.
+because Sunstone bundles frequently originate as Obsidian vaults, where `[[ ]]` is the norm.
 Markdown links resolve by **path**; wikilinks resolve by **name** — a fundamentally different
 model that this ADR introduces deliberately.
 
@@ -35,7 +35,7 @@ The governing design rule is **match Obsidian exactly**, since the links origina
   name-based (wikilink). A new name→path index is required, in **both** the Rust backend (for
   Backlinks and rename-rewrite) and the TS fake backend (for the editor resolver and tests).
 - Rendering reuses atomic-editor's `wikiLinks` extension (previously disabled per ADR-0001) with
-  a Sapphire-supplied `resolve`/`onOpen` adapter, contingent on its `resolve()` cache being
+  a Sunstone-supplied `resolve`/`onOpen` adapter, contingent on its `resolve()` cache being
   invalidatable on index change; if not, a custom extension replaces it. Either way, broken
   wikilinks are styled to match the existing `cm-broken-link` look.
 - Embeds (`![[ ]]`), block references (`#^`), and `[[`-autocomplete are explicitly **out of

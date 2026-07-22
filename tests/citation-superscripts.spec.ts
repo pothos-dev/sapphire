@@ -12,7 +12,7 @@ import { test, expect } from './fixtures';
  */
 
 type FakeWindow = Window & {
-  __sapphireFake: {
+  __sunstoneFake: {
     simulateExternalChange: (kind: string, path: string, content?: string) => void;
     files: Record<string, string>;
   };
@@ -21,10 +21,10 @@ type FakeWindow = Window & {
 const fm = (title: string) => `---\ntype: concept\ntitle: ${title}\n---\n\n`;
 
 async function createConcept(page: Page, path: string, body: string): Promise<void> {
-  await page.waitForFunction(() => '__sapphireFake' in window);
+  await page.waitForFunction(() => '__sunstoneFake' in window);
   await page.evaluate(
     ([p, b]) => {
-      (window as unknown as FakeWindow).__sapphireFake.simulateExternalChange('created', p, b);
+      (window as unknown as FakeWindow).__sunstoneFake.simulateExternalChange('created', p, b);
     },
     [path, body] as const,
   );

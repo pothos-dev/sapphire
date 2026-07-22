@@ -81,7 +81,7 @@ test('editor modes: chosen mode persists across a reload', async ({ page }) => {
 
   // The fake backend is localStorage-backed and (under the shared CDP browser)
   // survives across runs, so clear it and reload to boot from a clean session.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
 
   const tree = page.getByTestId('tree');
@@ -101,7 +101,7 @@ test('editor modes: chosen mode persists across a reload', async ({ page }) => {
   await expect
     .poll(async () =>
       page.evaluate(() => {
-        const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
+        const raw = window.localStorage.getItem('sunstone:bundleState:/fake/bundle');
         if (raw === null) return null;
         return JSON.parse(raw) as { lastOpenConcept: string | null; editorMode?: string };
       }),

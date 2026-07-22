@@ -1,4 +1,4 @@
-# Per-project sandbox image for Sapphire (Tauri 2 + SvelteKit).
+# Per-project sandbox image for Sunstone (Tauri 2 + SvelteKit).
 #
 # Adds the Rust toolchain and the Tauri v2 Linux system libraries on top of the
 # ax agent base image, so the Rust side (`cargo test`, `cargo check`, `cargo

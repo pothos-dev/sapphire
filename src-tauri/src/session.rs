@@ -2,7 +2,7 @@
 //! (launcher) and "a Bundle open" (the editor).
 //!
 //! Historically the desktop shell built one `AppState` at startup and managed it
-//! for the whole process lifetime. The launcher (open Sapphire with no path →
+//! for the whole process lifetime. The launcher (open Sunstone with no path →
 //! pick a known folder) needs to switch the open Bundle at RUNTIME, so the
 //! command layer no longer talks to a fixed `AppState` — it goes through this
 //! `Session`, which holds the *current* `AppState` (and its filesystem watcher)
@@ -16,9 +16,9 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use sapphire_core::app_state::AppState;
-use sapphire_core::config;
-use sapphire_core::watcher::{self, WatcherHandle, FILE_CHANGED_EVENT};
+use sunstone_core::app_state::AppState;
+use sunstone_core::config;
+use sunstone_core::watcher::{self, WatcherHandle, FILE_CHANGED_EVENT};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager};
 
 /// The runtime Bundle session, managed in Tauri state. Commands that need the

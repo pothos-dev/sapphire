@@ -17,7 +17,7 @@ import { test, expect } from './fixtures';
 function persisted(page: Page, path: string): Promise<string> {
   return page.evaluate(
     (p) =>
-      (window as unknown as { __sapphireFake: { files: Record<string, string> } }).__sapphireFake
+      (window as unknown as { __sunstoneFake: { files: Record<string, string> } }).__sunstoneFake
         .files[p],
     path,
   );

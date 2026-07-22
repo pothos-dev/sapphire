@@ -1,6 +1,6 @@
 name: Publish Web Image
 
-# Build the Sapphire Web image and push it multi-arch to Docker Hub.
+# Build the Sunstone Web image and push it multi-arch to Docker Hub.
 #
 # Runs on the same v* tags as the desktop release flow (release.yml), and can be
 # triggered manually via workflow_dispatch (optionally overriding the tag). This
@@ -32,7 +32,7 @@ jobs:
       - name: Compute image tags
         id: meta
         run: |
-          IMAGE="${{ vars.DOCKERHUB_USERNAME }}/sapphire-web"
+          IMAGE="${{ vars.DOCKERHUB_USERNAME }}/sunstone-web"
           if [ "${{ github.event_name }}" = "push" ]; then
             # Tag push (v1.2.3) → publish :1.2.3 and :latest.
             VERSION="${GITHUB_REF_NAME#v}"
