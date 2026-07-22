@@ -110,19 +110,17 @@
   // and header title can render it.
   let frontmatterProps = $state<Property[]>([]);
 
-  // This Pane's tri-state view mode lives on the Pane STATE object (`pane.mode`)
-  // so it is part of the persisted layout shape (multi-concept-tiling ticket 06)
-  // and survives a relaunch. Toggling here also writes the session's GLOBAL
-  // `editorMode` (the default a fresh Pane / fresh Bundle adopts), but tiles can
-  // otherwise diverge.
-  function changeEditorMode(mode: EditorMode): void {
+  // The tri-state view mode is GLOBAL (session.editorMode), toggled from the
+  // NavBar and applied to EVERY tile at once — it is not a per-Pane setting. This
+  // effect subscribes each Pane's live view to that global mode: whenever it
+  // changes, the view re-renders in the new mode. Freshly (re)built views adopt
+  // it via `initialMode` below. `pane.mode` is kept in sync so the persisted
+  // layout stays self-consistent (all tiles share the global mode).
+  $effect(() => {
+    const mode = session.editorMode;
     pane.mode = mode;
-    session.setEditorMode(mode);
-    if (view) {
-      setEditorMode(view, mode);
-      view.focus();
-    }
-  }
+    if (view) setEditorMode(view, mode);
+  });
 
   const currentPaneTitle = $derived(paneTitle(pane.activePath, frontmatterProps));
 
@@ -495,7 +493,7 @@
         doc: body,
         frontmatter: props,
         path: pane.activePath,
-        initialMode: pane.mode,
+        initialMode: session.editorMode,
         onChange: (full) => pane.edit(full),
         onFrontmatterChange: (p) => (frontmatterProps = p),
         onBlur: () => void pane.flush(),
@@ -622,7 +620,6 @@
     hasOpenConcept={pane.activePath !== null}
     canGoBack={pane.canGoBack}
     canGoForward={pane.canGoForward}
-    editorMode={pane.mode}
     {canUndo}
     {canRedo}
     {reviewActive}
@@ -633,7 +630,6 @@
     onClose={onClose}
     onSplitRight={onSplitRight}
     onSplitDown={onSplitDown}
-    onSetMode={changeEditorMode}
     onUndo={doUndo}
     onRedo={doRedo}
     onToggleReview={toggleReview}
