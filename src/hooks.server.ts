@@ -1,45 +1,92 @@
 import type { Handle } from '@sveltejs/kit';
+import { sequence } from '@sveltejs/kit/hooks';
+import { handle as authHandle } from './auth';
+import { mintWriteJwt } from '$lib/server/jwt';
 
 /**
- * Same-origin `/api/*` proxy (WEB build only, adapter-node).
+ * Same-origin `/api/*` proxy (WEB build only, adapter-node), now with the
+ * authenticated write path (tickets 04/07).
  *
- * The browser-side `http.ts` Backend and SSR `load` both fetch relative
- * `/api/...` so there is ONE public origin (the SvelteKit server) and no CORS.
- * This hook forwards those requests to the Rust `sunstone-server` at an
- * internal base URL (`SUNSTONE_API_INTERNAL`, default `http://localhost:8787`).
+ * The browser-side `http.ts` Backend and SSR `load` fetch relative `/api/...`
+ * so there is ONE public origin (the SvelteKit server) and no CORS. This hook
+ * forwards to the Rust `sunstone-server` at `SUNSTONE_API_INTERNAL`
+ * (default `http://localhost:8787`).
  *
- * The upstream response BODY is streamed straight through (not buffered), so
- * the SSE `/api/events` stream reaches the browser incrementally — awaiting the
- * whole body would hang forever on a never-ending stream. Ordinary JSON routes
- * stream fine too (they just end quickly). For `text/event-stream` we add
- * `cache-control: no-cache` so no intermediary buffers the stream.
+ * READS (GET/HEAD) forward unchanged — no body, no auth (reads are open).
+ * WRITES (any other method) are the enforcement chokepoint: the hook resolves
+ * the Auth.js session and, ONLY if valid, mints a short-lived HS256 JWT
+ * (`SUNSTONE_JWT_SECRET`) and forwards it as `Authorization: Bearer` alongside
+ * the method, body, content-type, and the per-tab `x-sunstone-client` id. axum
+ * verifies the JWT itself, so it is self-defending. An unauthenticated write is
+ * rejected here with a 401 (axum never sees it).
+ *
+ * The upstream response BODY is streamed straight through (not buffered), so the
+ * SSE `/api/events` stream reaches the browser incrementally. For
+ * `text/event-stream` we add `cache-control: no-cache` so no intermediary
+ * buffers the stream.
  *
  * In the DEFAULT desktop build (adapter-static SPA) there is no server at
  * runtime, so this hook is never invoked — the static build is unaffected.
- * Everything except `/api/*` passes straight through to SvelteKit.
  */
 const API_INTERNAL = process.env.SUNSTONE_API_INTERNAL ?? 'http://localhost:8787';
+const JWT_SECRET = process.env.SUNSTONE_JWT_SECRET ?? '';
 
-export const handle: Handle = async ({ event, resolve }) => {
+const apiProxy: Handle = async ({ event, resolve }) => {
   const { pathname, search } = event.url;
-  if (pathname.startsWith('/api/')) {
-    const target = `${API_INTERNAL}${pathname}${search}`;
-    const isEvents = pathname === '/api/events';
-    const upstream = await fetch(target, {
-      method: event.request.method,
-      headers: { accept: isEvents ? 'text/event-stream' : 'application/json' },
-      // Let the client abort propagate to the upstream stream (SSE disconnect).
-      signal: event.request.signal,
-    });
+  if (!pathname.startsWith('/api/')) return resolve(event);
 
-    const contentType = upstream.headers.get('content-type') ?? 'application/json';
-    const headers: Record<string, string> = { 'content-type': contentType };
-    if (contentType.includes('text/event-stream')) {
-      headers['cache-control'] = 'no-cache';
-      headers['connection'] = 'keep-alive';
+  const method = event.request.method;
+  const isWrite = method !== 'GET' && method !== 'HEAD';
+  const isEvents = pathname === '/api/events';
+
+  const headers: Record<string, string> = {
+    accept: isEvents ? 'text/event-stream' : 'application/json',
+  };
+  let body: string | undefined;
+
+  if (isWrite) {
+    // Enforcement chokepoint: a write needs a valid session → a minted JWT.
+    const session = await event.locals.auth();
+    const user = session?.user;
+    if (!user?.name || !user?.email) {
+      return new Response('not signed in', { status: 401 });
     }
-    // Pass the upstream ReadableStream through un-buffered so SSE streams live.
-    return new Response(upstream.body, { status: upstream.status, headers });
+    if (!JWT_SECRET) {
+      // Misconfiguration, not a client error: writing is unavailable.
+      return new Response('write auth is not configured', { status: 503 });
+    }
+    const jwt = mintWriteJwt(
+      { sub: user.email, name: user.name, email: user.email },
+      JWT_SECRET,
+    );
+    headers['authorization'] = `Bearer ${jwt}`;
+    const contentType = event.request.headers.get('content-type');
+    if (contentType) headers['content-type'] = contentType;
+    // Forward the per-tab client id so the server can stamp the SSE echo.
+    const clientId = event.request.headers.get('x-sunstone-client');
+    if (clientId) headers['x-sunstone-client'] = clientId;
+    // Write bodies are small JSON — buffer them (no streaming request needed).
+    body = await event.request.text();
   }
-  return resolve(event);
+
+  const upstream = await fetch(`${API_INTERNAL}${pathname}${search}`, {
+    method,
+    headers,
+    body,
+    // Let a client abort propagate to the upstream stream (SSE disconnect).
+    signal: event.request.signal,
+  });
+
+  const contentType = upstream.headers.get('content-type') ?? 'application/json';
+  const outHeaders: Record<string, string> = { 'content-type': contentType };
+  if (contentType.includes('text/event-stream')) {
+    outHeaders['cache-control'] = 'no-cache';
+    outHeaders['connection'] = 'keep-alive';
+  }
+  // Pass the upstream ReadableStream through un-buffered so SSE streams live.
+  return new Response(upstream.body, { status: upstream.status, headers: outHeaders });
 };
+
+// Auth.js first (populates `event.locals.auth()` + serves `/auth/*`), then the
+// `/api` proxy which depends on the resolved session for writes.
+export const handle = sequence(authHandle, apiProxy);

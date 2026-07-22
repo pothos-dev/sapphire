@@ -2,7 +2,11 @@
 declare global {
   namespace App {
     // interface Error {}
-    // interface Locals {}
+    interface Locals {
+      /** Resolved Auth.js session accessor (web build; populated by the auth
+       * hook). The `/api` proxy uses it to gate + attribute writes. */
+      auth(): Promise<import('@auth/sveltekit').Session | null>;
+    }
     // interface PageData {}
     // interface PageState {}
     // interface Platform {}
