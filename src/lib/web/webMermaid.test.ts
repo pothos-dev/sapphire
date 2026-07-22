@@ -1,15 +1,8 @@
 import { test, expect } from 'bun:test';
-import { resolvedTheme } from './webMermaid';
 import { mermaidThemeConfig, mermaidCacheKey } from '../editor/mermaidTheme';
 
-// The web mermaid island's pure bits: theme resolution + the reused theming /
-// cache-key helpers (the render/DOM path needs a browser and is covered by the
-// Playwright spec).
-
-test('resolvedTheme maps prefers-color-scheme to the app theme', () => {
-  expect(resolvedTheme(true)).toBe('dark');
-  expect(resolvedTheme(false)).toBe('light');
-});
+// The web mermaid island's pure bits: the reused theming / cache-key helpers
+// (the render/DOM path needs a browser and is covered by the Playwright spec).
 
 test('mermaidThemeConfig is the shared, CM-free helper (base theme + darkMode)', () => {
   const read = (name: string) => `val(${name})`;

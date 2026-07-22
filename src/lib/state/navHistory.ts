@@ -19,11 +19,6 @@ export interface NavHistory {
 /** The empty history (nothing visited yet). */
 export const EMPTY_HISTORY: NavHistory = { entries: [], index: -1 };
 
-/** The current Concept path, or null when the history is empty. */
-export function currentEntry(h: NavHistory): string | null {
-  return h.index >= 0 && h.index < h.entries.length ? h.entries[h.index] : null;
-}
-
 /** True when there is a previous Concept to go Back to. */
 export function canGoBack(h: NavHistory): boolean {
   return h.index > 0;

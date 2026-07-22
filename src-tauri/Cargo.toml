@@ -1,7 +1,7 @@
 [package]
 name = "sunstone"
 version = "0.16.0"
-description = "A Tauri App"
+description = "Sunstone — a CLI-launched markdown editor with first-class Open Knowledge Format (OKF) support"
 authors = ["you"]
 edition = "2021"
 

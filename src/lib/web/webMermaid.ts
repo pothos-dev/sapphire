@@ -17,11 +17,6 @@ import {
   type ResolvedTheme,
 } from '../editor/mermaidTheme';
 
-/** Map the OS `prefers-color-scheme` match to the app's resolved theme. Pure. */
-export function resolvedTheme(prefersDark: boolean): ResolvedTheme {
-  return prefersDark ? 'dark' : 'light';
-}
-
 /**
  * Lazily-resolved mermaid module + one-time `initialize`. The dynamic import is
  * only triggered when a Concept actually contains a diagram (hydrate finds a

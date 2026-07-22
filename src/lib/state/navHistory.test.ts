@@ -3,7 +3,6 @@ import {
   EMPTY_HISTORY,
   canGoBack,
   canGoForward,
-  currentEntry,
   goBack,
   goForward,
   pushEntry,
@@ -14,8 +13,7 @@ import {
 const h = (entries: string[], index: number): NavHistory => ({ entries, index });
 
 describe('navHistory', () => {
-  test('empty history has no current entry and no moves', () => {
-    expect(currentEntry(EMPTY_HISTORY)).toBeNull();
+  test('empty history has no moves', () => {
     expect(canGoBack(EMPTY_HISTORY)).toBe(false);
     expect(canGoForward(EMPTY_HISTORY)).toBe(false);
   });
@@ -25,7 +23,6 @@ describe('navHistory', () => {
     expect(a).toEqual(h(['a.md'], 0));
     const b = pushEntry(a, 'b.md');
     expect(b).toEqual(h(['a.md', 'b.md'], 1));
-    expect(currentEntry(b)).toBe('b.md');
   });
 
   test('pushEntry truncates forward history (browser semantics)', () => {
