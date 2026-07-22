@@ -57,6 +57,13 @@ can implement web writing without further design choices.
   — keep the SSR read view; mount the editor as a client-only island (`onMount` +
   **dynamic** `import('$lib/editor/cm')` into a `bind:this` host) so atomic-editor / CSS
   never enter the SSR graph. Don't drop SSR per-route.
+- [Auth & git-identity model](issues/04-auth-and-git-identity-model.md) — **provider-agnostic
+  OAuth/OIDC** via `@auth/sveltekit` (any provider giving name+email; Dex fronts LDAP/password).
+  Reads open, **writes gated at the `/api` hook**, which mints a per-request ~60s **HS256 JWT**
+  that **axum verifies itself** (axum self-defends; loopback now optional defense-in-depth).
+  Commit **author = committer = OIDC name+email**. Authz = **trust the (operator-scoped)
+  provider**, no app allowlist. CSRF via SvelteKit Origin check + `SameSite`/`HttpOnly` cookie
+  + Auth.js `skipCSRFCheck`.
 
 ## Not yet specified
 
@@ -71,17 +78,18 @@ can implement web writing without further design choices.
   now writes, so it must suppress its own echo like the desktop watcher does), and the
   last-write-wins warn/reload flow. Depends on the write routes + editor shell.
 - **Viewer↔editor gating in the web UI** — anonymous = read-only viewer vs
-  authenticated = editor; how the mode is chosen and surfaced. Depends on auth + shell.
+  authenticated = editor; how the mode is chosen and surfaced. Auth model now decided
+  (ticket 04: OAuth session, reads open); still depends on the editor shell (ticket 06).
 - **Deployment / ops** — self-hosted always-on server, Bundle-as-git-repo assumptions,
   env/config, how the Node SSR process and the axum server are run together. Depends on
   the git model.
 - **Web write test strategy** — how Playwright exercises writing against the fake/http
   backend and how the fake backend models commits.
-- **`/api` proxy + axum hardening** (surfaced by ticket 01) — the `hooks.server.ts` proxy
-  currently forwards no cookie/body/auth and only GET-shaped reads; write routes need it
-  to forward POST bodies + the trusted identity, and axum must move from `0.0.0.0` to
-  loopback-bound under the header-trust model. Belongs to the auth decision + write-route
-  surface tickets.
+- **`/api` proxy body/identity forwarding** — the `hooks.server.ts` proxy forwards no
+  cookie/body/auth and only GET-shaped reads today; write routes need it to forward POST
+  bodies **and mint+attach the HS256 JWT** (per ticket 04). Auth model now decided; the
+  concrete forwarding shape folds into *Server write-route surface* (ticket 07). (axum
+  `0.0.0.0`→loopback is now optional defense-in-depth, not required — axum verifies the JWT.)
 
 ## Out of scope
 
@@ -94,3 +102,7 @@ can implement web writing without further design choices.
   everything (few known users).
 - **Multi-Bundle / Bundle switching on the web** — the server serves one fixed Bundle.
 - **Offline / PWA editing.**
+- **CLI/bot web write path** ([ticket 04](issues/04-auth-and-git-identity-model.md) §8) —
+  automation clones the git repo and commits/pushes via normal git, so the web write API
+  needs no machine credential; axum accepts only the hook-minted JWT. Returns as a fresh
+  effort if a bot ever needs the API.
