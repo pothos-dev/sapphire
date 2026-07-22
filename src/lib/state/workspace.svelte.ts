@@ -21,6 +21,7 @@ import {
   MIN_WEIGHT,
   type Layout,
 } from '$lib/paneLayout';
+import { rememberTile, type ColumnMemory } from '$lib/paneNav';
 
 /** Monotonic Pane-id source: ids are opaque, stable, and never reused. */
 let paneIdCounter = 0;
@@ -229,6 +230,14 @@ export class Workspace {
   /** The focused tile's Pane id. */
   activeId = $state<string>('');
 
+  /**
+   * Per-column sticky landing memory: the tile last focused in each column, by
+   * column id (see `paneNav`). Updated whenever a tile becomes active, so
+   * Alt+Left/Right movement returns to the tile you were last on in a column.
+   * Plain field (not a rune): read only at movement time, nothing renders it.
+   */
+  #columnMemory: ColumnMemory = {};
+
   constructor() {
     const pane = this.#create();
     this.layout = singlePaneLayout(pane.id);
@@ -253,9 +262,19 @@ export class Workspace {
     return this.#panes.get(id);
   }
 
-  /** Make the tile `id` the focused/active Pane. No-op for an unknown id. */
+  /** The per-column sticky landing memory (read by the Alt+arrow grid nav). */
+  get columnMemory(): ColumnMemory {
+    return this.#columnMemory;
+  }
+
+  /**
+   * Make the tile `id` the focused/active Pane and record it as its column's
+   * sticky tile. No-op for an unknown id.
+   */
   setActive(id: string): void {
-    if (this.#panes.has(id)) this.activeId = id;
+    if (!this.#panes.has(id)) return;
+    this.activeId = id;
+    this.#columnMemory = rememberTile(this.#columnMemory, this.layout, id);
   }
 
   /**

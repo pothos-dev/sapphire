@@ -38,6 +38,7 @@
     resizeTiles as layoutResizeTiles,
     MIN_WEIGHT,
   } from '$lib/paneLayout';
+  import { nextTile } from '$lib/paneNav';
 
   // The tiling workspace (row of columns of Panes) behind the editor facade. App
   // renders its layout + drives split/close/resize/active; the facade stays the
@@ -234,6 +235,18 @@
       const dir = directionForKey(e.key);
       if (dir !== null) {
         e.preventDefault();
+        // Editor grid layer FIRST: when focus is in the editor Region, Alt+arrows
+        // move between tiles (left/right → columns, up/down → tiles in a column).
+        // Only a move that EXITS the grid edge delegates to the Region backbone,
+        // so the leftmost/rightmost column crosses into the sidebars exactly as
+        // the single editor does today.
+        if (focus.focusedRegion === 'editor') {
+          const move = nextTile(workspace.layout, workspace.activeId, dir, workspace.columnMemory);
+          if (move.kind === 'tile') {
+            focusTile(move.id);
+            return;
+          }
+        }
         focus.moveFocus(dir);
       }
     };
@@ -444,6 +457,25 @@
   function openConceptFromTree(path: string) {
     openConcept(path);
     focusEditorWhenReady();
+  }
+
+  // Move keyboard focus to tile `id`: make it the active Pane (so Outline /
+  // Backlinks / Properties, which track the active Pane, follow) and focus its
+  // CodeMirror view. Retries across frames like `focusEditorWhenReady`, since the
+  // target tile's view may still be building. Focusing the view fires its
+  // `focusin`, which keeps the 'editor' Region active.
+  function focusTile(id: string) {
+    workspace.setActive(id);
+    let tries = 0;
+    const attempt = () => {
+      const ref = paneRefs[id];
+      if (ref?.hasView()) {
+        ref.focusView();
+      } else if (tries++ < 10) {
+        requestAnimationFrame(attempt);
+      }
+    };
+    requestAnimationFrame(attempt);
   }
 
   // Focus the active Pane's CodeMirror view once it exists (retry across frames,

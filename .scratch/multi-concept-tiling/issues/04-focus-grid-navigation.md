@@ -12,7 +12,7 @@ untouched — all tiling movement lives in a pure `paneNav.ts` module.
 
 **Blocked by:** 03 — Tiling, dividers, Split & close.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] `Alt+Left/Right` moves focus between columns; `Alt+Up/Down` moves between
       tiles within the current column; the active pane is the focused tile.
