@@ -100,7 +100,7 @@ function renderTextWithCitations(seg: string, atLineStart: boolean): string {
   let p = 0;
   for (const ref of findCitationRefs(rest)) {
     out += escapeHtml(rest.slice(p, ref.from));
-    out += `<sup class="citation-ref"><a href="#cite-${ref.num}">${ref.num}</a></sup>`;
+    out += `<sup class="citation-ref"><a href="#cite-${ref.num}">[${ref.num}]</a></sup>`;
     p = ref.to;
   }
   out += escapeHtml(rest.slice(p));

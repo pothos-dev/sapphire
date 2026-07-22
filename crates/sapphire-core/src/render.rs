@@ -515,7 +515,7 @@ const CITE_CLOSE: char = '\u{E003}';
 
 /// Superscript link standing in for an inline `[n]` reference.
 fn citation_ref_html(num: &str) -> String {
-    format!(r##"<sup class="citation-ref"><a href="#cite-{num}">{num}</a></sup>"##)
+    format!(r##"<sup class="citation-ref"><a href="#cite-{num}">[{num}]</a></sup>"##)
 }
 
 /// Literal, anchored `[n]` for a citation-table row (the jump target).
@@ -1018,14 +1018,16 @@ mod tests {
     #[test]
     fn inline_citation_becomes_superscript_link() {
         let p = render("deepen umami and body.[6][7][8]\n", "a.md", &["a.md"]);
-        // Each reference is its own superscript link to the matching row.
+        // Each reference is its own superscript link to the matching row, with
+        // the `[n]` brackets kept around the clickable number.
         assert!(p
             .html
-            .contains(r##"<sup class="citation-ref"><a href="#cite-6">6</a></sup>"##));
-        assert!(p.html.contains(r##"href="#cite-7">7<"##));
-        assert!(p.html.contains(r##"href="#cite-8">8<"##));
-        // The stray reference-link brackets are gone (no literal `[7]`).
-        assert!(!p.html.contains("[7]"));
+            .contains(r##"<sup class="citation-ref"><a href="#cite-6">[6]</a></sup>"##));
+        assert!(p.html.contains(r##"href="#cite-7">[7]<"##));
+        assert!(p.html.contains(r##"href="#cite-8">[8]<"##));
+        // comrak's stray URL-less reference link is gone — the only `[7]` left is
+        // the one inside our superscript anchor, never bare text.
+        assert!(!p.html.contains(">[7]</a></sup>[7]"));
     }
 
     #[test]
@@ -1036,7 +1038,7 @@ mod tests {
             .html
             .contains(r#"<a id="cite-6" class="citation-def">[6]</a>"#));
         // …and is NOT wrapped in a superscript.
-        assert!(!p.html.contains(r##"<sup class="citation-ref"><a href="#cite-6">6</a></sup> Kokumi"##));
+        assert!(!p.html.contains(r##"<sup class="citation-ref"><a href="#cite-6">[6]</a></sup> Kokumi"##));
     }
 
     #[test]

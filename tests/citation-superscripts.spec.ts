@@ -57,19 +57,20 @@ async function openKokumi(page: Page) {
 test('inline references render as superscript links; table rows stay literal', async ({ page }) => {
   const editor = await openKokumi(page);
 
-  // Three superscript references, one per number, in document order.
+  // Three superscript references, one per number, in document order. The `[n]`
+  // brackets are kept around the clickable number.
   const refs = editor.locator('.cm-citation-ref');
   await expect(refs).toHaveCount(3);
-  await expect(refs.nth(0)).toHaveText('6');
-  await expect(refs.nth(1)).toHaveText('7');
-  await expect(refs.nth(2)).toHaveText('8');
+  await expect(refs.nth(0)).toHaveText('[6]');
+  await expect(refs.nth(1)).toHaveText('[7]');
+  await expect(refs.nth(2)).toHaveText('[8]');
   // They are actual <sup> elements.
   await expect(refs.first()).toHaveJSProperty('tagName', 'SUP');
 
-  // The raw inline bracketed form is hidden (replaced by the widgets).
+  // On the reference line, the three raw source tokens are replaced by the
+  // bracketed superscript widgets — no bare `[6]` source text remains.
   const refLine = editor.locator('.cm-line', { hasText: 'consommés' }).first();
-  await expect(refLine).not.toContainText('[6]');
-  await expect(refLine).not.toContainText('[7]');
+  await expect(refLine.locator('.cm-citation-ref')).toHaveCount(3);
 
   // The table is virtualized off-screen; jump to it via the reference, then
   // assert the row keeps its literal `[6]` and is NOT rendered as a superscript.

@@ -42,7 +42,7 @@ class CitationWidget extends WidgetType {
   toDOM(): HTMLElement {
     const sup = document.createElement('sup');
     sup.className = 'cm-citation-ref';
-    sup.textContent = this.num;
+    sup.textContent = `[${this.num}]`;
     sup.dataset.citation = this.num;
     sup.setAttribute('role', 'link');
     sup.setAttribute('aria-label', `Citation ${this.num}`);
