@@ -1,4 +1,5 @@
 import type { Backend } from './backend';
+import { isOwnEcho } from '$lib/web/concurrency';
 import type {
   TreeNode,
   FileChange,
@@ -6,6 +7,7 @@ import type {
   BundleState,
   SearchHit,
   RewriteSummary,
+  AnchorRename,
   FileHistory,
   FileAtRev,
   RenderPayload,
@@ -13,19 +15,15 @@ import type {
 } from '$lib/types';
 
 /**
- * Read-only HTTP Backend implementation for the "Sunstone Web" build target,
- * talking to the `sunstone-server` axum binary over `fetch`.
+ * HTTP Backend implementation for the "Sunstone Web" build target, talking to
+ * the `sunstone-server` axum binary over `fetch`.
  *
- * It implements ONLY the read methods needed by the walking skeleton
- * (`bundleRoot`, `listTree`, `readConcept`). Everything else is deliberately
- * inert:
- *   - WRITE methods reject with a clear "read-only web build" error — the web
- *     surface has no write path (by design, this slice and beyond).
- *   - The remaining READ methods (index queries, tags, search, session state)
- *     land in later slices; they reject with a "not implemented in slice 2"
- *     marker so a premature call fails loudly rather than silently.
- *   - `onFileChanged` is a no-op returning an unsubscribe (SSE arrives in a
- *     later slice).
+ * Reads (`bundleRoot`, `listTree`, `readConcept`, the index queries, search,
+ * render) are open. WRITES (`writeConcept`, Tree CRUD, `rewriteAnchors`) are the
+ * authenticated, git-backed write path (ticket 07): each maps 1:1 to a server
+ * write route; the `/api` hook attaches the auth JWT on writes only. A few
+ * launcher/session methods are inapplicable on the web (single fixed Bundle,
+ * View state client-side) and stay inert.
  *
  * Requests target relative `/api/...` (same origin). In the browser those hit
  * the SvelteKit origin and are proxied to the Rust server (see the `/api`
@@ -33,13 +31,26 @@ import type {
  * SSR reads its data directly in `+page.ts`'s `load`, so this seam is primarily
  * the hydrated-island path.
  *
- * See ARCHITECTURE.md "The IPC seam" and the web-readonly-api ticket.
+ * See ARCHITECTURE.md "The IPC seam" and the enable-web-writing effort.
  */
 
-/** Error thrown by every write method — the web build has no write path. */
-const READ_ONLY = 'read-only web build: writes are not available on the web';
 /** Marker for read methods that later slices will implement. */
 const NOT_YET = 'not implemented in slice 2 (web read-only skeleton)';
+/** The web serves ONE fixed Bundle and has no launcher, so folder switching is
+ * inapplicable (writing Concepts, by contrast, is now supported — see below). */
+const NO_LAUNCHER = 'the web serves a single fixed Bundle: no folder switching';
+
+/**
+ * This tab's write client id (ticket 08): minted once per tab, in-memory, and
+ * forwarded on every web write as `x-sunstone-client`. The server stamps the
+ * SSE broadcast with it so this tab drops its own echo while every other tab
+ * treats the change as genuine. NOT persisted — two tabs are independent
+ * writers, so each reloads on the other's write (correct last-write-wins).
+ */
+export const CLIENT_ID =
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 /** GET `url` and parse the JSON body, mapping a non-2xx to a thrown Error. */
 async function getJson<T>(url: string): Promise<T> {
@@ -49,6 +60,51 @@ async function getJson<T>(url: string): Promise<T> {
     const detail = await res.text().catch(() => '');
     throw new Error(`${res.status} ${res.statusText}: ${detail || url}`);
   }
+  return (await res.json()) as T;
+}
+
+/**
+ * Map a write route's HTTP status + server detail to a user-facing message
+ * (ticket 07 §8 taxonomy: 400 invalid path / 409 conflict / 404 missing / 401
+ * unauthenticated / 500 server). Pure so it is unit-testable; `sendJson` throws
+ * an `Error` carrying this message on any non-2xx write response.
+ */
+export function httpWriteError(status: number, detail: string): string {
+  const extra = detail.trim() ? `: ${detail.trim()}` : '';
+  switch (status) {
+    case 400:
+      return `Invalid path${extra}`;
+    case 401:
+      return 'You are not signed in, or your session expired — sign in to edit.';
+    case 404:
+      return `Not found${extra}`;
+    case 409:
+      return `Conflict${extra}`;
+    default:
+      return `Save failed (${status})${extra}`;
+  }
+}
+
+/**
+ * Send a JSON write to `url` with `method`, forwarding the per-tab `clientId`.
+ * A `204 No Content` resolves to `undefined`; a `200` parses its JSON body
+ * (a `RewriteSummary`). A non-2xx throws with a `httpWriteError` message.
+ */
+async function sendJson<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'content-type': 'application/json',
+      'x-sunstone-client': CLIENT_ID,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(httpWriteError(res.status, detail));
+  }
+  // 204 (writeConcept/create/delete) has no body; 200 carries a RewriteSummary.
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -66,7 +122,19 @@ export function parseFileChange(data: string): FileChange | null {
       Array.isArray(raw.paths) &&
       raw.paths.every((p) => typeof p === 'string')
     ) {
-      return { kind: raw.kind, paths: raw.paths };
+      const change: FileChange = { kind: raw.kind, paths: raw.paths };
+      // A web write carries an `origin` stamp (clientId + author); external /
+      // desktop edits omit it. Carry it through only when well-formed.
+      const origin = raw.origin;
+      if (
+        origin &&
+        typeof origin.clientId === 'string' &&
+        origin.author &&
+        typeof origin.author.name === 'string'
+      ) {
+        change.origin = { clientId: origin.clientId, author: { name: origin.author.name } };
+      }
+      return change;
     }
   } catch {
     /* fall through */
@@ -89,10 +157,10 @@ export const httpBackend: Backend = {
     return Promise.resolve([]);
   },
   forgetBundle(): Promise<void> {
-    return Promise.reject(new Error(READ_ONLY));
+    return Promise.reject(new Error(NO_LAUNCHER));
   },
   openBundle(): Promise<void> {
-    return Promise.reject(new Error(READ_ONLY));
+    return Promise.reject(new Error(NO_LAUNCHER));
   },
   pickFolder(): Promise<string | null> {
     return Promise.resolve(null);
@@ -106,30 +174,38 @@ export const httpBackend: Backend = {
     return getJson<string>(`/api/concept?path=${encodeURIComponent(path)}`);
   },
 
-  // --- Write path: never available on the web (read-only build). ------------
-  writeConcept(): Promise<void> {
-    return Promise.reject(new Error(READ_ONLY));
+  // --- Write path (ticket 07): authenticated, git-backed, commit-per-op. -----
+  // Each maps 1:1 to a `sunstone-server` write route; the `/api` hook attaches
+  // the auth JWT (writes only). `x-sunstone-client` carries this tab's clientId
+  // so the SSE echo of our own write is dropped (see `onFileChanged`). Errors
+  // surface via `httpWriteError` (401/400/404/409/500).
+  writeConcept(path: string, content: string): Promise<void> {
+    return sendJson<void>('PUT', '/api/concept', { path, content });
   },
-  createConcept(): Promise<void> {
-    return Promise.reject(new Error(READ_ONLY));
+  createConcept(path: string): Promise<void> {
+    return sendJson<void>('POST', '/api/concept', { path });
   },
-  createFolder(): Promise<void> {
-    return Promise.reject(new Error(READ_ONLY));
+  createFolder(path: string): Promise<void> {
+    return sendJson<void>('POST', '/api/folder', { path });
   },
-  renamePath(): Promise<RewriteSummary> {
-    return Promise.reject(new Error(READ_ONLY));
+  renamePath(from: string, to: string): Promise<RewriteSummary> {
+    return sendJson<RewriteSummary>('POST', '/api/rename', { from, to });
   },
-  movePath(): Promise<RewriteSummary> {
-    return Promise.reject(new Error(READ_ONLY));
+  movePath(from: string, toDir: string): Promise<RewriteSummary> {
+    return sendJson<RewriteSummary>('POST', '/api/move', { from, toDir });
   },
-  deletePath(): Promise<void> {
-    return Promise.reject(new Error(READ_ONLY));
+  deletePath(path: string): Promise<void> {
+    return sendJson<void>('DELETE', `/api/concept?path=${encodeURIComponent(path)}`);
   },
-  rewriteAnchors(): Promise<RewriteSummary> {
-    return Promise.reject(new Error(READ_ONLY));
+  rewriteAnchors(target: string, renames: AnchorRename[]): Promise<RewriteSummary> {
+    return sendJson<RewriteSummary>('POST', '/api/rewrite-anchors', { target, renames });
   },
+
+  // `saveBundleState` is off the server write surface (ticket 07 §6): it is
+  // per-user *View state*, never committed into the shared Bundle. On the web it
+  // is a client-side / deferred concern, so persisting it server-side is a no-op.
   saveBundleState(): Promise<void> {
-    return Promise.reject(new Error(READ_ONLY));
+    return Promise.resolve();
   },
 
   // --- Filesystem change events over SSE (`/api/events`). -------------------
@@ -144,7 +220,9 @@ export const httpBackend: Backend = {
     const source = new EventSource('/api/events');
     source.onmessage = (e: MessageEvent) => {
       const change = parseFileChange(typeof e.data === 'string' ? e.data : '');
-      if (change) cb(change);
+      // Drop the echo of THIS tab's own write (ticket 08 §1): we already have
+      // that content. Every other client sees it as a genuine change.
+      if (change && !isOwnEcho(change, CLIENT_ID)) cb(change);
     };
     return () => source.close();
   },

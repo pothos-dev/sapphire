@@ -35,6 +35,33 @@ pub struct FileChange {
     pub kind: String,
     /// Affected bundle-relative paths.
     pub paths: Vec<String>,
+    /// Attribution for a *web write* (ticket 08): the originating tab's
+    /// `clientId` + the authoring OIDC user. `None` for a desktop/external edit
+    /// (the watcher always emits `None` — it cannot know the writer), so every
+    /// client treats a watcher-sourced change as genuine. The web write path
+    /// broadcasts its own stamped change instead. Omitted from JSON when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<FileOrigin>,
+}
+
+/// Web-write attribution stamped onto a broadcast `FileChange` so each browser
+/// can drop the echo of *its own* write (`origin.clientId == myClientId`) while
+/// treating every other write as a genuine external change (ticket 08 §1).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileOrigin {
+    /// The originating browser tab's in-memory client id (forwarded on the write).
+    pub client_id: String,
+    /// The authoring user (OIDC identity), for the "Updated by <name>" notice.
+    pub author: FileAuthor,
+}
+
+/// The authoring user carried in a [`FileOrigin`]. Only `name` is surfaced to
+/// other clients (no email over the change channel).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAuthor {
+    pub name: String,
 }
 
 /// Start watching `root` recursively, keeping `state`'s index current and
@@ -107,6 +134,8 @@ where
     sink(FileChange {
         kind: kind.to_string(),
         paths: rel_paths,
+        // The watcher cannot attribute a change to a web writer — always genuine.
+        origin: None,
     });
 }
 

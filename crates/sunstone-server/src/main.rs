@@ -27,17 +27,20 @@
 //! writes, there is nothing to suppress — every change is a genuine external
 //! edit worth delivering to all connected browsers.
 
+mod auth;
+mod write;
+
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::sse::{Event, KeepAlive, Sse},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -45,12 +48,16 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
 
+use auth::AuthedUser;
 use sunstone_core::app_state::AppState;
 use sunstone_core::bundle::{self, TreeNode};
+use sunstone_core::git::CommitIdentity;
 use sunstone_core::index::TagCount;
 use sunstone_core::render::{self, RenderPayload};
+use sunstone_core::rewrite::{AnchorRename, RewriteSummary};
 use sunstone_core::search::{self, SearchHit};
-use sunstone_core::watcher::{self, FileChange};
+use sunstone_core::watcher::{self, FileAuthor, FileChange, FileOrigin};
+use write::WriteResult;
 
 /// Default HTTP port. Overridable via `SUNSTONE_API_PORT`.
 const DEFAULT_PORT: u16 = 8787;
@@ -59,11 +66,19 @@ const DEFAULT_PORT: u16 = 8787;
 /// falls this far behind sees a lag error (skipped, not fatal).
 const EVENTS_CHANNEL_CAP: usize = 256;
 
-/// Shared server state: the domain `AppState` (bundle root + index) plus the
-/// broadcast sender every `/api/events` connection subscribes to.
-struct ServerState {
-    app: Arc<AppState>,
-    events: broadcast::Sender<FileChange>,
+/// Shared server state: the domain `AppState` (bundle root + index), the
+/// broadcast sender every `/api/events` connection subscribes to, the global
+/// write lock serializing the write→commit critical section (ticket 05/07 §4),
+/// and the HS256 secret used to verify hook-minted write JWTs (ticket 04).
+pub(crate) struct ServerState {
+    pub(crate) app: Arc<AppState>,
+    pub(crate) events: broadcast::Sender<FileChange>,
+    /// Serializes every write op's entire write → (rewrite) → commit section
+    /// (one Bundle = one working tree = one shared `index.lock`).
+    pub(crate) write_lock: Mutex<()>,
+    /// Shared secret for verifying hook-minted write JWTs. `None` (env unset)
+    /// disables writing — every write route 401s at the `AuthedUser` extractor.
+    pub(crate) jwt_secret: Option<Vec<u8>>,
 }
 
 #[tokio::main]
@@ -93,9 +108,24 @@ async fn main() {
         }
     };
 
+    // Write auth: the HS256 secret shared with the SvelteKit `/api` hook. Absent
+    // → writing is disabled (every write route 401s) — a safe read-only default.
+    let jwt_secret = std::env::var(auth::SECRET_ENV)
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(String::into_bytes);
+    if jwt_secret.is_none() {
+        eprintln!(
+            "sunstone-server: {} unset — write routes are disabled (read-only)",
+            auth::SECRET_ENV
+        );
+    }
+
     let state = Arc::new(ServerState {
         app: app_state,
         events,
+        write_lock: Mutex::new(()),
+        jwt_secret,
     });
     let app = router(state);
 
@@ -115,9 +145,21 @@ async fn main() {
 /// Build the read-only route table over a `ServerState`.
 fn router(state: Arc<ServerState>) -> Router {
     Router::new()
+        // `/api/concept` carries the read (GET) plus the per-method write verbs
+        // (ticket 07 §1): PUT overwrites, POST creates, DELETE removes (by query).
+        .route(
+            "/api/concept",
+            get(concept_handler)
+                .put(write_concept_handler)
+                .post(create_concept_handler)
+                .delete(delete_concept_handler),
+        )
+        .route("/api/folder", post(create_folder_handler))
+        .route("/api/rename", post(rename_handler))
+        .route("/api/move", post(move_handler))
+        .route("/api/rewrite-anchors", post(rewrite_anchors_handler))
         .route("/api/bundle-root", get(bundle_root_handler))
         .route("/api/tree", get(tree_handler))
-        .route("/api/concept", get(concept_handler))
         .route("/api/render", get(render_handler))
         .route("/api/search", get(search_handler))
         .route("/api/backlinks", get(backlinks_handler))
@@ -279,6 +321,221 @@ async fn events_handler(
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
+// --- Write routes (ticket 07) -----------------------------------------------
+//
+// Every handler takes `AuthedUser` (proof it is gated; reads omit it) and runs
+// its orchestration on a blocking thread under the global write lock. The
+// identity flows into the git commit author/committer; a stamped `FileChange`
+// is broadcast so other browsers live-refresh while the writer drops its echo.
+
+#[derive(Deserialize)]
+struct WriteConceptBody {
+    path: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct PathBody {
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct RenameBody {
+    from: String,
+    to: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MoveBody {
+    from: String,
+    to_dir: String,
+}
+
+#[derive(Deserialize)]
+struct RewriteAnchorsBody {
+    target: String,
+    renames: Vec<AnchorRename>,
+}
+
+async fn write_concept_handler(
+    State(state): State<Arc<ServerState>>,
+    user: AuthedUser,
+    headers: HeaderMap,
+    Json(body): Json<WriteConceptBody>,
+) -> Result<StatusCode, WriteError> {
+    let ident = identity(&user);
+    let result = run_write(&state, move |app| {
+        write::write_concept(app, &ident, &body.path, &body.content)
+    })
+    .await?;
+    broadcast_write(&state, result, &headers, &user);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn create_concept_handler(
+    State(state): State<Arc<ServerState>>,
+    user: AuthedUser,
+    headers: HeaderMap,
+    Json(body): Json<PathBody>,
+) -> Result<StatusCode, WriteError> {
+    let ident = identity(&user);
+    let result =
+        run_write(&state, move |app| write::create_concept(app, &ident, &body.path)).await?;
+    broadcast_write(&state, result, &headers, &user);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn create_folder_handler(
+    State(state): State<Arc<ServerState>>,
+    user: AuthedUser,
+    headers: HeaderMap,
+    Json(body): Json<PathBody>,
+) -> Result<StatusCode, WriteError> {
+    let ident = identity(&user);
+    let result =
+        run_write(&state, move |app| write::create_folder(app, &ident, &body.path)).await?;
+    broadcast_write(&state, result, &headers, &user);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_concept_handler(
+    State(state): State<Arc<ServerState>>,
+    user: AuthedUser,
+    headers: HeaderMap,
+    Query(q): Query<ConceptQuery>,
+) -> Result<StatusCode, WriteError> {
+    let ident = identity(&user);
+    let result = run_write(&state, move |app| write::delete_path(app, &ident, &q.path)).await?;
+    broadcast_write(&state, result, &headers, &user);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn rename_handler(
+    State(state): State<Arc<ServerState>>,
+    user: AuthedUser,
+    headers: HeaderMap,
+    Json(body): Json<RenameBody>,
+) -> Result<Json<RewriteSummary>, WriteError> {
+    let ident = identity(&user);
+    let result = run_write(&state, move |app| {
+        write::rename_path(app, &ident, &body.from, &body.to)
+    })
+    .await?;
+    let summary = result.summary.unwrap_or_default();
+    broadcast_write(&state, result, &headers, &user);
+    Ok(Json(summary))
+}
+
+async fn move_handler(
+    State(state): State<Arc<ServerState>>,
+    user: AuthedUser,
+    headers: HeaderMap,
+    Json(body): Json<MoveBody>,
+) -> Result<Json<RewriteSummary>, WriteError> {
+    let ident = identity(&user);
+    let result = run_write(&state, move |app| {
+        write::move_path(app, &ident, &body.from, &body.to_dir)
+    })
+    .await?;
+    let summary = result.summary.unwrap_or_default();
+    broadcast_write(&state, result, &headers, &user);
+    Ok(Json(summary))
+}
+
+async fn rewrite_anchors_handler(
+    State(state): State<Arc<ServerState>>,
+    user: AuthedUser,
+    headers: HeaderMap,
+    Json(body): Json<RewriteAnchorsBody>,
+) -> Result<Json<RewriteSummary>, WriteError> {
+    let ident = identity(&user);
+    let result = run_write(&state, move |app| {
+        write::rewrite_anchors(app, &ident, &body.target, &body.renames)
+    })
+    .await?;
+    let summary = result.summary.unwrap_or_default();
+    broadcast_write(&state, result, &headers, &user);
+    Ok(Json(summary))
+}
+
+/// The commit identity for the authenticated user (author == committer).
+fn identity(user: &AuthedUser) -> CommitIdentity {
+    CommitIdentity {
+        name: user.name.clone(),
+        email: user.email.clone(),
+    }
+}
+
+/// Run a write op on a blocking thread while holding the global write lock, so
+/// the whole write → (rewrite) → commit section is serialized. Maps the join
+/// error and the op's `String` error into a `WriteError`.
+async fn run_write<F>(state: &Arc<ServerState>, op: F) -> Result<WriteResult, WriteError>
+where
+    F: FnOnce(&AppState) -> Result<WriteResult, String> + Send + 'static,
+{
+    let state = state.clone();
+    let joined = tokio::task::spawn_blocking(move || -> Result<WriteResult, String> {
+        let _guard = state
+            .write_lock
+            .lock()
+            .map_err(|_| "write lock poisoned".to_string())?;
+        op(&state.app)
+    })
+    .await;
+    match joined {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(msg)) => Err(WriteError(msg)),
+        Err(join) => Err(WriteError(format!("write task failed: {join}"))),
+    }
+}
+
+/// Broadcast each change group stamped with the write's `origin` (the forwarded
+/// per-tab `clientId` + the OIDC author name), so other browsers live-refresh
+/// and the writer's own tab drops its echo (ticket 08 §1).
+fn broadcast_write(
+    state: &ServerState,
+    result: WriteResult,
+    headers: &HeaderMap,
+    user: &AuthedUser,
+) {
+    let client_id = client_id(headers);
+    for group in result.changes {
+        // Err only means "no subscribers right now" — fine to ignore.
+        let _ = state.events.send(FileChange {
+            kind: group.kind.to_string(),
+            paths: group.paths,
+            origin: Some(FileOrigin {
+                client_id: client_id.clone(),
+                author: FileAuthor {
+                    name: user.name.clone(),
+                },
+            }),
+        });
+    }
+}
+
+/// The originating tab's client id, forwarded by the client on the write (empty
+/// when absent — then no browser matches it and every tab treats it as genuine).
+fn client_id(headers: &HeaderMap) -> String {
+    headers
+        .get("x-sunstone-client")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// A write failure crossing the HTTP boundary: classified by `classify_write`
+/// (400/409/404/500 — distinct from the read classifier's 404 default). Auth
+/// failures never reach here — the `AuthedUser` extractor 401s first.
+struct WriteError(String);
+
+impl IntoResponse for WriteError {
+    fn into_response(self) -> Response {
+        (write::classify_write(&self.0), self.0).into_response()
+    }
+}
+
 // --- Error mapping ----------------------------------------------------------
 
 /// An error crossing the HTTP boundary: a status + a message. `sunstone-core`
@@ -405,6 +662,8 @@ mod tests {
         let _app = router(Arc::new(ServerState {
             app: Arc::new(AppState::new(root)),
             events,
+            write_lock: Mutex::new(()),
+            jwt_secret: None,
         }));
     }
 
@@ -418,6 +677,7 @@ mod tests {
         let change = FileChange {
             kind: "modified".to_string(),
             paths: vec!["note.md".to_string()],
+            origin: None,
         };
         tx.send(change).unwrap();
         let ra = a.recv().await.unwrap();

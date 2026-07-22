@@ -17,4 +17,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"]
 # Wrap a broadcast receiver as a Stream for the SSE (`/api/events`) route.
 tokio-stream = { version = "0.1", features = ["sync"] }
 serde = { workspace = true }
-serde_json = { workspace = true }
+serde_json.workspace = true
+hmac = "0.13.0"
+sha2 = "0.11.0"
+base64 = "0.22.1"

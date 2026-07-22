@@ -41,6 +41,21 @@ export type FileChange = {
   kind: 'created' | 'modified' | 'removed';
   /** affected bundle-relative paths */
   paths: string[];
+  /**
+   * Attribution for a *web write* (ticket 08): the originating tab's `clientId`
+   * plus the authoring user. `null`/absent for a desktop or external edit —
+   * always treated as a genuine external change. Each browser drops the echo of
+   * its own write by matching `origin.clientId` against its per-tab client id.
+   */
+  origin?: FileChangeOrigin | null;
+};
+
+/** Web-write attribution stamped onto a broadcast {@link FileChange}. */
+export type FileChangeOrigin = {
+  /** the originating browser tab's in-memory client id */
+  clientId: string;
+  /** the authoring user (OIDC identity) — only the name is carried */
+  author: { name: string };
 };
 
 /**
