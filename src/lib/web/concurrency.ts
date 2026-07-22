@@ -20,3 +20,68 @@ import type { FileChange } from '$lib/types';
 export function isOwnEcho(change: FileChange, myClientId: string): boolean {
   return change.origin?.clientId === myClientId;
 }
+
+/**
+ * What the editor shell should do in response to a genuine (non-echo)
+ * `FileChange` (ticket 08 §2–3). Discriminated so the `.svelte` glue is a thin
+ * `switch`:
+ *   - `refresh`   — the change touched only OTHER files: refresh the read-only
+ *                   surfaces (tree, backlinks, tags); the buffer is untouched.
+ *   - `reload`    — the active Concept changed under a CLEAN buffer: silently
+ *                   reload from disk + show an "Updated by <author>" notice.
+ *   - `conflict`  — the active Concept changed under a DIRTY buffer: raise the
+ *                   blocking discard-vs-keep modal.
+ *   - `deleted`   — the active Concept was removed (remote delete, or a remote
+ *                   rename which surfaces as `removed(old)`): drop to the
+ *                   deleted state (a dirty buffer is recreatable via Save).
+ * `author` is the attributed writer name (from `origin`), or `null` for an
+ * external/desktop edit ("changed on disk").
+ */
+export type ChangeAction =
+  | { type: 'refresh' }
+  | { type: 'reload'; author: string | null }
+  | { type: 'conflict'; author: string | null }
+  | { type: 'deleted'; author: string | null; dirty: boolean };
+
+/**
+ * Route a genuine `FileChange` against the open buffer (ticket 08 §2). `change`
+ * must already have passed the {@link isOwnEcho} filter. `activePath` is the open
+ * Concept's bundle-relative path (or `null` when nothing is open); `dirty` is
+ * whether the active buffer has unsaved edits. A `created` on the active path is
+ * treated as `modified` (ticket 08 §2).
+ */
+export function routeFileChange(
+  change: FileChange,
+  activePath: string | null,
+  dirty: boolean,
+): ChangeAction {
+  const author = change.origin?.author.name ?? null;
+  const touchesActive = activePath !== null && change.paths.includes(activePath);
+  if (!touchesActive) return { type: 'refresh' };
+  if (change.kind === 'removed') return { type: 'deleted', author, dirty };
+  // 'created' (treated as 'modified') or 'modified' on the active path.
+  return dirty ? { type: 'conflict', author } : { type: 'reload', author };
+}
+
+/**
+ * The Edit-toggle label (ticket 08 §4): "Save" when the buffer is dirty (its
+ * click IS the Save path — no ambiguity), "Done" when clean (exit to the viewer
+ * with no dialog). The implicit three-way exit dialog fires only on the OTHER,
+ * implicit exits (Concept switch, wikilink nav), never on this toggle.
+ */
+export function editToggleLabel(dirty: boolean): 'Save' | 'Done' {
+  return dirty ? 'Save' : 'Done';
+}
+
+/** A structural tree operation that may need the clean-buffer gate. */
+export type StructuralOp = 'create' | 'rename' | 'move' | 'delete';
+
+/**
+ * Whether a structural op must gate on a clean active buffer (ticket 08 §5).
+ * Create is exempt — it rewrites no existing file and cannot stale the active
+ * buffer; rename/move/delete gate whenever the active buffer is dirty (they
+ * rewrite links across the Bundle and can't run with unsaved changes open).
+ */
+export function structuralOpGated(op: StructuralOp, dirty: boolean): boolean {
+  return dirty && op !== 'create';
+}
