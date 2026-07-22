@@ -6,10 +6,15 @@
 <title>Sunstone — a fast, focused markdown editor</title>
 <meta name="description" content="A lightweight desktop markdown editor — the good parts of a knowledge base without the plugin sprawl or vendor lock-in. Open any folder. First-class Open Knowledge Format support." />
 <link rel="icon" href="assets/logo.svg" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="preload" href="assets/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin />
 <style>
+  @font-face {
+    font-family: 'Jost';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: block;
+    src: url('assets/fonts/jost-latin.woff2') format('woff2');
+  }
   /* ---- Brand tokens (mirrored from src/app.css) ---- */
   :root {
     --bg: #fdf3ea;
