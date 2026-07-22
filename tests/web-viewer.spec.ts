@@ -264,9 +264,8 @@ test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sid
     page.locator('[data-testid="tree-concept"][data-path="guide/index.md"]'),
   ).toHaveCount(0);
 
-  // The guide folder holds an index.md (progressive-disclosure listing), so it
-  // opens COLLAPSED by default — its ordinary child (topic.md) is hidden until
-  // the folder is expanded (mirrors desktop; see treeNav.defaultOpenFolders).
+  // All folders open COLLAPSED by default — the guide folder's ordinary child
+  // (topic.md) is hidden until the folder is expanded (mirrors desktop).
   const guideDir = page.getByTestId('tree-dir').filter({ hasText: 'guide' });
   const topic = page.locator('[data-testid="tree-concept"][data-path="guide/topic.md"]');
   await expect(topic).toHaveCount(0);

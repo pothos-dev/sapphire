@@ -5,7 +5,7 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { backend } from '$lib/ipc';
   import { theme } from '$lib/state/theme.svelte';
-  import { ordinaryChildren, defaultOpenFolders, reservedChildren } from '$lib/treeNav';
+  import { ordinaryChildren, reservedChildren } from '$lib/treeNav';
   import { RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import WebTree from './WebTree.svelte';
@@ -86,16 +86,8 @@
     };
   });
 
-  // --- Explorer tree: expanded-folder state (seeded like desktop, then persisted) ---
+  // --- Explorer tree: expanded-folder state (all folders start collapsed, then persisted) ---
   let expandedFolders = $state(new Set<string>());
-  let seeded = false;
-  $effect(() => {
-    if (seeded || !data.tree) return;
-    const next = new Set(expandedFolders);
-    for (const p of defaultOpenFolders(data.tree, 2)) next.add(p);
-    expandedFolders = next;
-    seeded = true;
-  });
   const isExpanded = (path: string): boolean => expandedFolders.has(path);
   function setExpanded(path: string, open: boolean): void {
     const next = new Set(expandedFolders);
@@ -175,7 +167,6 @@
     if (typeof ui.propertiesOpen === 'boolean') propertiesOpen = ui.propertiesOpen;
     if (Array.isArray(ui.expandedFolders)) {
       expandedFolders = new Set(ui.expandedFolders);
-      seeded = true; // stored folders win over the default-open seeding
     }
     const stopTheme = theme.start();
     uiLoaded = true;

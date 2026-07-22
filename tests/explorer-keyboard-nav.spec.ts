@@ -38,9 +38,8 @@ async function freshLoad(page: Page) {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
   // Seed a deterministic tree state: `concepts/` + `concepts/editor/` expanded.
-  // `concepts/` holds an index.md so it now opens COLLAPSED by default (see
-  // treeNav.defaultOpenFolders); seeding the expanded set keeps these keyboard-nav
-  // assertions focused on movement rather than the fresh-Bundle collapse default.
+  // All folders open COLLAPSED by default; seeding the expanded set keeps these
+  // keyboard-nav assertions focused on movement rather than the collapse default.
   await page.evaluate(() => window.localStorage.setItem('sunstone:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();

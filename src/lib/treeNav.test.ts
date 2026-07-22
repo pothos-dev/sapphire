@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { TreeNode } from './types';
 import {
-  defaultOpenFolders,
   flattenVisible,
   indexOfPath,
   neighborAfterRemoval,
@@ -198,43 +197,5 @@ describe('reservedChildren', () => {
     expect(reservedChildren(tree.children![2])).toEqual([
       { path: 'concepts/index.md', kind: 'index' },
     ]);
-  });
-});
-
-describe('defaultOpenFolders', () => {
-  test('excludes folders holding an index.md; still descends into them', () => {
-    // `concepts/` has an index.md → collapsed by default (excluded). Its child
-    // `concepts/editor` (depth 1, no index) still seeds open.
-    expect(defaultOpenFolders(tree, 2)).toEqual(['concepts/editor']);
-  });
-  test('maxDepth 1 keeps only top-level folders without an index.md', () => {
-    // `concepts/` is the only depth-0 folder and holds an index.md → nothing.
-    expect(defaultOpenFolders(tree, 1)).toEqual([]);
-  });
-  test('a folder without an index.md seeds open; a sibling with one does not', () => {
-    const t: TreeNode = {
-      name: '',
-      path: '',
-      isDir: true,
-      children: [
-        {
-          name: 'guides',
-          path: 'guides',
-          isDir: true,
-          children: [{ name: 'intro.md', path: 'guides/intro.md', isDir: false }],
-        },
-        {
-          name: 'docs',
-          path: 'docs',
-          isDir: true,
-          children: [
-            { name: 'index.md', path: 'docs/index.md', isDir: false },
-            { name: 'sub', path: 'docs/sub', isDir: true, children: [] },
-          ],
-        },
-      ],
-    };
-    // guides (no index) → open; docs (has index) → excluded; docs/sub → open.
-    expect(defaultOpenFolders(t, 2)).toEqual(['guides', 'docs/sub']);
   });
 });

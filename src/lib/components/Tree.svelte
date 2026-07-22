@@ -63,9 +63,9 @@
   }
 
   // Expanded state is owned by the session store (persisted per-Bundle, restored
-  // on launch). The store is seeded with the default-open folders (depth < 2) on
-  // startup for a fresh Bundle, so reading it here gives both the restored set
-  // and the sensible default. Toggling reports back to the store, which persists.
+  // on launch). A fresh Bundle starts with every folder collapsed, so reading it
+  // here gives the restored set (empty by default). Toggling reports back to the
+  // store, which persists.
   const expanded = $derived(node.isDir && session.isExpanded(node.path));
 
   const indent = $derived(depth * 16);

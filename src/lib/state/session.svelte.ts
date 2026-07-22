@@ -178,9 +178,8 @@ class SessionStore {
   }
 
   /**
-   * Mark restoration complete and persist once, capturing any defaults seeded
-   * during startup (e.g. the fresh-Bundle default-open folders). After this,
-   * `setExpanded` / `setLastOpenConcept` persist normally.
+   * Mark restoration complete and persist once, capturing any state set during
+   * startup. After this, `setExpanded` / `setLastOpenConcept` persist normally.
    */
   endRestore(): void {
     this.restored = true;

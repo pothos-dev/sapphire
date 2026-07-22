@@ -24,7 +24,6 @@
   import { focus } from '$lib/state/focus.svelte';
   import { explorerNav } from '$lib/state/explorerNav.svelte';
   import {
-    defaultOpenFolders,
     flattenVisible,
     neighborAfterRemoval,
     ordinaryChildren,
@@ -127,14 +126,6 @@
         await workspace.restore(stored);
       } else {
         activePaneRef?.setMode(session.editorMode);
-      }
-
-      if (
-        bundle.tree &&
-        session.expandedFolders.size === 0 &&
-        session.lastOpenConcept === null
-      ) {
-        for (const p of defaultOpenFolders(bundle.tree, 2)) session.setExpanded(p, true);
       }
 
       session.endRestore();

@@ -61,36 +61,6 @@ export function reservedChildren(node: TreeNode): ReservedEntry[] {
     .sort((a, b) => RESERVED_ORDER.indexOf(a.kind) - RESERVED_ORDER.indexOf(b.kind));
 }
 
-/** Whether `node` directly contains an `index.md` reserved file. */
-function hasIndexFile(node: TreeNode): boolean {
-  return (node.children ?? []).some((c) => !c.isDir && reservedKind(c.path) === 'index');
-}
-
-/**
- * Bundle-relative paths of every directory shallower than `maxDepth`, used to
- * seed the default-expanded folders of a FRESH Bundle. `root` is the Bundle-root
- * node (`path: ''`), which is itself excluded; its direct child folders are
- * depth 0, so `maxDepth` of 2 expands the top two folder levels.
- *
- * A folder that holds an `index.md` (an OKF progressive-disclosure listing) is
- * NOT default-expanded: its index page stands in for browsing its contents, so
- * it opens COLLAPSED on first sight. The walk still descends into it, so a
- * nested folder without an index within `maxDepth` still seeds open. After the
- * fresh-Bundle seed the per-folder collapse state is remembered in the session
- * store's `expandedFolders` cache, so a later manual expand/collapse sticks.
- */
-export function defaultOpenFolders(root: TreeNode, maxDepth: number): string[] {
-  const out: string[] = [];
-  const walk = (node: TreeNode, depth: number): void => {
-    if (!node.isDir) return;
-    if (depth >= 0 && depth < maxDepth && node.path !== '' && !hasIndexFile(node))
-      out.push(node.path);
-    for (const child of node.children ?? []) walk(child, depth + 1);
-  };
-  walk(root, -1);
-  return out;
-}
-
 /**
  * Flatten the Bundle tree into the ordered list of VISIBLE rows: a depth-first
  * walk over the ordinary children of `root`, descending into a folder only when
