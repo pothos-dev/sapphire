@@ -59,7 +59,7 @@
    desktop `--atomic-editor-link: var(--accent)`) — internal, external, and
    plain markdown links alike, so nothing falls back to raw browser blue. */
 .rendered a {
-  color: var(--accent, #2d6cdf);
+  color: var(--accent, #d9622b);
   text-decoration: none;
 }
 
@@ -84,7 +84,7 @@
 }
 
 .rendered sup.citation-ref a {
-  color: var(--accent, #2d6cdf);
+  color: var(--accent, #d9622b);
   font-weight: 600;
   text-decoration: none;
 }

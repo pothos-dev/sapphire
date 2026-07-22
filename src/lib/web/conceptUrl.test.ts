@@ -107,8 +107,8 @@ describe('conceptTitle', () => {
     expect(conceptTitle('providers/index.md', render({}))).toBe('providers');
   });
 
-  test('uses Sapphire Web when nothing is open or the path is the root index', () => {
-    expect(conceptTitle(null, null)).toBe('Sapphire Web');
-    expect(conceptTitle('index.md', render({}))).toBe('Sapphire Web');
+  test('uses Sunstone Web when nothing is open or the path is the root index', () => {
+    expect(conceptTitle(null, null)).toBe('Sunstone Web');
+    expect(conceptTitle('index.md', render({}))).toBe('Sunstone Web');
   });
 });

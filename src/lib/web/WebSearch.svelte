@@ -227,7 +227,7 @@
 
   .fts-input:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px var(--accent-soft, rgba(80, 120, 255, 0.3));
+    box-shadow: 0 0 0 3px var(--accent-soft, rgba(217, 98, 43, 0.3));
   }
 
   .fts-hint {
@@ -266,13 +266,13 @@
   }
 
   .fts-item.selected {
-    background: var(--accent-soft, rgba(80, 120, 255, 0.2));
+    background: var(--accent-soft, rgba(217, 98, 43, 0.2));
     color: var(--tag-text, inherit);
   }
 
   .fts-item:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px var(--accent-soft, rgba(80, 120, 255, 0.3));
+    box-shadow: 0 0 0 3px var(--accent-soft, rgba(217, 98, 43, 0.3));
   }
 
   .fts-loc {
@@ -306,7 +306,7 @@
   }
 
   .fts-mark {
-    background: var(--accent-soft, rgba(80, 120, 255, 0.3));
+    background: var(--accent-soft, rgba(217, 98, 43, 0.3));
     color: var(--tag-text, inherit);
     border-radius: var(--radius-sm, 4px);
   }

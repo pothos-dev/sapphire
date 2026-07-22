@@ -1,4 +1,4 @@
-// Concept ↔ pretty-URL mapping for Sapphire Web (pure; no DOM/IPC).
+// Concept ↔ pretty-URL mapping for Sunstone Web (pure; no DOM/IPC).
 //
 // The web viewer addresses a Concept by its LOCATION in the URL path rather than
 // a `?path=` query, dropping the `.md` extension and a trailing `/index`:
@@ -52,7 +52,7 @@ export function urlToConcept(urlPath: string, files: Set<string>): string | null
 /**
  * The human title for a Concept, for the document `<title>`: its frontmatter
  * `title`, else its first H1, else a name derived from the path (a folder index
- * uses the folder name). Falls back to `Sapphire Web` when nothing is open.
+ * uses the folder name). Falls back to `Sunstone Web` when nothing is open.
  */
 export function conceptTitle(selected: string | null, rendered: RenderPayload | null): string {
   const fm = rendered?.frontmatter.find((f) => f.key.toLowerCase() === 'title')?.values[0]?.trim();
@@ -60,12 +60,12 @@ export function conceptTitle(selected: string | null, rendered: RenderPayload | 
   const h1 = rendered?.outline.find((h) => h.level === 1)?.text.trim();
   if (h1) return h1;
   if (selected) return nameFromPath(selected);
-  return 'Sapphire Web';
+  return 'Sunstone Web';
 }
 
 function nameFromPath(path: string): string {
   const parts = stripMd(path).split('/');
   let last = parts.pop() ?? '';
   if (last === 'index') last = parts.pop() ?? ''; // a folder index → the folder name
-  return last || 'Sapphire Web';
+  return last || 'Sunstone Web';
 }

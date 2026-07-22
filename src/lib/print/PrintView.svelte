@@ -149,7 +149,7 @@
 </script>
 
 <svelte:head>
-  <title>Print — Sapphire</title>
+  <title>Print — Sunstone</title>
 </svelte:head>
 
 <div class="print-view" data-testid="print-view" data-toolbar={toolbar ? '1' : '0'}>

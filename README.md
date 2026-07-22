@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="src-tauri/icons/128x128.png" alt="Sapphire" width="128" height="128" />
+<img src="src-tauri/icons/128x128.png" alt="Sunstone" width="128" height="128" />
 
-# Sapphire
+# Sunstone
 
 **A lightweight markdown editor — a slimmed-down Obsidian. Fast, focused, no bloat.**
 
 </div>
 
-Sapphire is a desktop markdown editor for people who want the good parts of a
+Sunstone is a desktop markdown editor for people who want the good parts of a
 knowledge base — live preview, wikilinks, backlinks, properties, tags, instant
 search — without the plugin sprawl and proprietary lock-in. It opens a plain
 folder of markdown files and gets out of your way.
@@ -17,7 +17,7 @@ folder of markdown files and gets out of your way.
 
 ## Open any folder. No vault required.
 
-There is no proprietary "vault" to create, import, or convert into. Sapphire
+There is no proprietary "vault" to create, import, or convert into. Sunstone
 runs against **any** folder of markdown files. Point it at an existing
 directory — your notes, your docs repo, a cloned knowledge base — and start
 editing. Your files stay plain `.md` on disk, readable by every other tool you
@@ -25,7 +25,7 @@ already use, and portable the moment you close the app.
 
 ## Built for the Google Open Knowledge Format
 
-Sapphire has first-class support for the
+Sunstone has first-class support for the
 [**Open Knowledge Format (OKF)**](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/) —
 Google's open standard for sharing knowledge as portable, agent-readable,
 vendor-neutral markdown bundles.
@@ -33,11 +33,11 @@ vendor-neutral markdown bundles.
 OKF is intentionally minimal: a directory of markdown files with YAML
 frontmatter describing typed concepts. There is no schema registry, no central
 authority, and no required tooling — if you can `cat` a file you can read OKF,
-and if you can `git clone` a repo you can ship it. That makes a Sapphire
+and if you can `git clone` a repo you can ship it. That makes a Sunstone
 knowledge base equally consumable by humans, by AI agents, and by any other
 editor, with nothing to migrate and no vendor to depend on.
 
-Sapphire's frontmatter model (the typed-concept `type` / `title` / `tags`
+Sunstone's frontmatter model (the typed-concept `type` / `title` / `tags`
 fields, reserved files, and bundle structure) conforms to the OKF spec:
 
 - Upstream spec: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
@@ -68,7 +68,7 @@ fields, reserved files, and bundle structure) conforms to the OKF spec:
   so they travel in git and any other tool can read them — ideal for leaving
   feedback on generated docs for an agent's next pass.
 - **Right sidebar** — a second, collapsible sidebar housing Backlinks.
-- **Light + dark theming** — a sapphire-blue palette that follows your OS color
+- **Light + dark theming** — a warm amber palette that follows your OS color
   scheme.
 
 ## Screenshots
@@ -78,11 +78,11 @@ preview, Outline, Backlinks, and the Tag browser, all on screen.
 
 ### Light
 
-![Sapphire in light mode](docs/assets/screenshot-light.png)
+![Sunstone in light mode](docs/assets/screenshot-light.png)
 
 ### Dark
 
-![Sapphire in dark mode](docs/assets/screenshot-dark.png)
+![Sunstone in dark mode](docs/assets/screenshot-dark.png)
 
 ### Annotations
 
@@ -96,7 +96,7 @@ icons, and a hovered note. The annotations are CriticMarkup in the underlying
 
 ## Development
 
-Sapphire is built with [Tauri](https://tauri.app/),
+Sunstone is built with [Tauri](https://tauri.app/),
 [SvelteKit](https://svelte.dev/docs/kit), and TypeScript.
 
 ```sh
@@ -108,7 +108,7 @@ bunx playwright test # run the end-to-end suite
 
 ### Web deployment
 
-Sapphire can also be served as a read-only, server-rendered web viewer over a
+Sunstone can also be served as a read-only, server-rendered web viewer over a
 Bundle, packaged as a single Docker image. See
 [`docs/deploy-web.md`](docs/deploy-web.md) for the `docker compose` run and the
 **internal-network / no-auth** caveat, and

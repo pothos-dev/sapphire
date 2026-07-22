@@ -98,7 +98,7 @@
 <div class="launcher" data-testid="launcher" bind:this={launcherRoot}>
   <div class="card">
     <header class="head">
-      <h1 class="title">Sapphire</h1>
+      <h1 class="title">Sunstone</h1>
       <p class="subtitle">Open a folder to start</p>
     </header>
 
@@ -167,7 +167,9 @@
     justify-content: center;
     height: 100vh;
     overflow: auto;
-    background: var(--bg);
+    /* The first screen a user sees — carry the warm sunstone gradient here so
+       the branded launcher reads as a sunlit canvas behind the elevated card. */
+    background: var(--bg-gradient, var(--bg));
     color: var(--text);
   }
 

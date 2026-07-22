@@ -1,5 +1,5 @@
 /*
- * Sapphire design tokens — the single source of truth for colour, type, radius,
+ * Sunstone design tokens — the single source of truth for colour, type, radius,
  * and elevation. Components reference these semantic variables (never raw hex),
  * so re-theming is a matter of editing the blocks below.
  *
@@ -9,48 +9,53 @@
  * CodeMirror reads `--atomic-editor-font*` from here too, so the note prose
  * shares the app's typeface.
  *
- * Palette identity: a muted sapphire-blue accent (matching the app icon) over a
- * cool blue-grey "paper", kept low-saturation throughout — a sophisticated,
- * understated blue rather than a loud primary.
+ * Palette identity: a warm amber-orange accent over a sunlit peach-cream
+ * "paper", washed with a soft orange→amber→red gradient (--bg-gradient). Warm
+ * and radiant throughout — like light through sunstone — while keeping enough
+ * restraint that long prose stays comfortable.
  */
 
 :root,
 [data-theme='light'] {
   /* Surfaces */
-  --bg: #eef1f5; /* app canvas — cool blue-grey paper */
-  --bg-elevated: #f9fafc; /* panels, inputs, dialogs */
-  --bg-sunken: #e3e8ef; /* subtle wells */
+  --bg: #fdf3ea; /* app canvas — warm peach-cream paper */
+  --bg-elevated: #fffaf4; /* panels, inputs, dialogs */
+  --bg-sunken: #f6e4d5; /* subtle wells — warm sand */
+
+  /* Soft sunlit gradient washed across the document background (see `body`).
+     A shallow diagonal from amber morning light into a peach-red glow. */
+  --bg-gradient: linear-gradient(150deg, #fff3e0 0%, #fde5cf 45%, #f9d8c6 78%, #f6cdbd 100%);
 
   /* Text */
-  --text: #2b303a; /* deep blue-grey, not pure black */
-  --text-muted: #6b7280;
-  --text-faint: #99a0ac;
+  --text: #3a2a20; /* warm espresso brown, not pure black */
+  --text-muted: #8a6c58;
+  --text-faint: #b49685;
 
   /* Lines */
-  --border: #d7dde6;
-  --border-strong: #c2cad6;
+  --border: #ecd6c3;
+  --border-strong: #ddbda4;
 
-  /* Accent — muted sapphire blue */
-  --accent: #45699c;
-  --accent-contrast: #f9fafc; /* text/icon sitting on a solid accent fill */
-  --accent-soft: rgba(69, 105, 156, 0.16); /* selection / active wash */
-  --accent-ring: rgba(69, 105, 156, 0.45); /* focus ring */
+  /* Accent — warm amber orange */
+  --accent: #d9622b;
+  --accent-contrast: #fffaf4; /* text/icon sitting on a solid accent fill */
+  --accent-soft: rgba(217, 98, 43, 0.16); /* selection / active wash */
+  --accent-ring: rgba(217, 98, 43, 0.45); /* focus ring */
 
   /* Neutral interaction wash */
-  --hover: rgba(62, 70, 84, 0.07);
+  --hover: rgba(120, 68, 38, 0.07);
 
   /* Active-Region lift: the Region holding keyboard focus is BRIGHTENED (never
      darkened) by a subtle translucent-white wash, so the Focused item's ring
      reads against it rather than blending into a dimmed backdrop. */
   --region-active: rgba(255, 255, 255, 0.5);
 
-  /* Danger — muted clay, never vivid */
-  --danger: #b15c4f;
-  --danger-contrast: #f9fafc;
+  /* Danger — a true red, distinct from the warm-orange accent */
+  --danger: #c62f2f;
+  --danger-contrast: #fffaf4;
 
   /* Tag chips — derived from the accent */
-  --tag-bg: rgba(69, 105, 156, 0.14);
-  --tag-text: #3a5d8e;
+  --tag-bg: rgba(217, 98, 43, 0.14);
+  --tag-text: #b0491c;
 
   /* Radius scale — smooth edges */
   --radius-sm: 6px;
@@ -58,9 +63,9 @@
   --radius-lg: 14px;
   --radius-pill: 999px;
 
-  /* Elevation — soft, low-contrast */
-  --shadow-md: 0 4px 16px rgba(24, 31, 45, 0.1);
-  --shadow-lg: 0 14px 44px rgba(24, 31, 45, 0.18);
+  /* Elevation — soft, low-contrast, warm-tinted */
+  --shadow-md: 0 4px 16px rgba(90, 45, 20, 0.12);
+  --shadow-lg: 0 14px 44px rgba(90, 45, 20, 0.2);
 
   /* Type */
   --font-ui: 'Quicksand Variable', 'Quicksand', system-ui, -apple-system, sans-serif;
@@ -123,32 +128,35 @@
    without re-declaring any colours. */
 [data-theme='dark'],
 body:has([data-theme='dark']) {
-  --bg: #171b22; /* deep sapphire charcoal */
-  --bg-elevated: #1f242e;
-  --bg-sunken: #12151b;
+  --bg: #1d1511; /* deep warm ember charcoal */
+  --bg-elevated: #271c16;
+  --bg-sunken: #150f0b;
 
-  --text: #dbe1ea;
-  --text-muted: #8b929e;
-  --text-faint: #676e7a;
+  /* Embers-at-dusk gradient — a darker, quieter counterpart to the light wash. */
+  --bg-gradient: linear-gradient(150deg, #241811 0%, #1d1511 55%, #17100c 100%);
 
-  --border: rgba(157, 170, 190, 0.14);
-  --border-strong: rgba(157, 170, 190, 0.24);
+  --text: #ecdcd0;
+  --text-muted: #b39685;
+  --text-faint: #7d6857;
 
-  --accent: #7da3cf;
-  --accent-contrast: #0f131a;
-  --accent-soft: rgba(125, 163, 207, 0.2);
-  --accent-ring: rgba(125, 163, 207, 0.5);
+  --border: rgba(210, 160, 120, 0.14);
+  --border-strong: rgba(210, 160, 120, 0.24);
 
-  --hover: rgba(200, 208, 222, 0.07);
+  --accent: #f0864a;
+  --accent-contrast: #1a1109;
+  --accent-soft: rgba(240, 134, 74, 0.2);
+  --accent-ring: rgba(240, 134, 74, 0.5);
+
+  --hover: rgba(222, 200, 180, 0.07);
 
   /* Same brightening lift over the dark "paper" — a faint white wash. */
   --region-active: rgba(255, 255, 255, 0.05);
 
-  --danger: #c06d5f;
-  --danger-contrast: #0f131a;
+  --danger: #e06a4a;
+  --danger-contrast: #1a1109;
 
-  --tag-bg: rgba(125, 163, 207, 0.16);
-  --tag-text: #a7c4e6;
+  --tag-bg: rgba(240, 134, 74, 0.16);
+  --tag-text: #f3b48a;
 
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 14px 44px rgba(0, 0, 0, 0.5);
@@ -203,7 +211,12 @@ body {
   font-family: var(--font-ui);
   /* Quicksand reads light at 400; 500 is the comfortable UI baseline. */
   font-weight: 500;
-  background: var(--bg);
+  /* Warm sunlit gradient wash; `--bg` is the solid fallback and the color that
+     overscroll/rubber-band exposes. `fixed` keeps the gradient anchored to the
+     viewport rather than tiling as content scrolls. */
+  background: var(--bg-gradient, var(--bg));
+  background-color: var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

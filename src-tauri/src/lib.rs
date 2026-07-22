@@ -314,7 +314,7 @@ fn open_print_window(app: tauri::AppHandle, path: String) -> Result<(), String> 
         "print",
         tauri::WebviewUrl::App(format!("index.html{query}").into()),
     )
-    .title("Print — Sapphire")
+    .title("Print — Sunstone")
     .inner_size(900.0, 1100.0)
     .build()
     .map_err(|e| e.to_string())?;

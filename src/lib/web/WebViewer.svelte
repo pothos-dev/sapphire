@@ -604,7 +604,7 @@
 
   .reserved-btn.selected {
     opacity: 1;
-    background: var(--accent-soft, rgba(80, 120, 255, 0.2));
+    background: var(--accent-soft, rgba(217, 98, 43, 0.2));
     color: var(--tag-text, inherit);
   }
 

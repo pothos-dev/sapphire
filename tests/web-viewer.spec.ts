@@ -6,7 +6,7 @@ import { test, expect } from './fixtures';
 const LIVE_NOTE = resolve('tests/fixtures/web-bundle/live-note.md');
 
 /**
- * The read-only "Sapphire Web" viewer with SERVER-SIDE RENDER
+ * The read-only "Sunstone Web" viewer with SERVER-SIDE RENDER
  * (slices: web-readonly-api-walking-skeleton + web-server-side-render).
  *
  * Drives the SSR'd web shell (adapter-node) against the read-only HTTP backend

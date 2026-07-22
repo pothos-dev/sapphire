@@ -116,7 +116,7 @@
   }
 
   .entry:focus-visible {
-    outline: 2px solid var(--accent-ring, #2d6cdf);
+    outline: 2px solid var(--accent-ring, #d9622b);
     outline-offset: -2px;
   }
 

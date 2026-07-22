@@ -899,7 +899,9 @@
     height: 100vh;
     overflow: hidden;
     color: var(--text);
-    background: var(--bg);
+    /* Warm sunlit gradient behind the shell; panes paint their own solid
+       surfaces on top, so it reads through gutters and translucent chrome. */
+    background: var(--bg-gradient, var(--bg));
   }
 
   .side-bar {
