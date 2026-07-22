@@ -2,7 +2,7 @@
 
 This document is the contract for all implementation work. Every slice (see
 `docs/tickets/`) builds against the seams defined here. Read it before touching code.
-See `CONTEXT.md` for domain language and `docs/adr/` for decisions.
+See `docs/GLOSSARY.md` for domain language and `docs/adr/` for decisions.
 
 ## Stack
 

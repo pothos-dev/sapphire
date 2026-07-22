@@ -2,7 +2,7 @@
 //!
 //! Wikilinks are an OPTIONAL, SECONDARY link format (see
 //! `docs/adr/0004-wikilinks-optional-secondary-name-based.md` and the
-//! **Wikilink** term in `CONTEXT.md`). Standard markdown links remain primary
+//! **Wikilink** term in `docs/GLOSSARY.md`). Standard markdown links remain primary
 //! and resolve by PATH (`paths::resolve_internal`); wikilinks resolve by NAME —
 //! a fundamentally different model. The governing rule is **match Obsidian
 //! exactly**, since the `[[ ]]` links originate from Obsidian vaults.

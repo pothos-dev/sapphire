@@ -1,7 +1,7 @@
 // Tags Section keyboard-navigation state (slice: tags-multi-expand-keyboard-nav).
 //
 // Owns the Tags Region's Focused item — the keyboard cursor, a row in the
-// two-level Tags tree (a tag root or a tagged-Concept leaf; CONTEXT.md "Focused
+// two-level Tags tree (a tag root or a tagged-Concept leaf; docs/GLOSSARY.md "Focused
 // item"). Like the Explorer, arrowing moves the Focused item without opening
 // anything; only Enter on a leaf opens the Concept (and moves focus to the
 // Editor). Tags has NO CRUD verbs — tags derive from frontmatter, so there is

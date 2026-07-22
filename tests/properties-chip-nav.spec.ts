@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 /**
  * Slice: properties-chip-subnavigation.
  *
- * A list/chip VALUE cell now has THREE focus depths (CONTEXT.md "Focused item"):
+ * A list/chip VALUE cell now has THREE focus depths (docs/GLOSSARY.md "Focused item"):
  *   1. grid nav   — the value cell wrapper is the Focused item (properties-grid-nav),
  *   2. chip sub-nav — Enter drops in onto the first chip; ←/→ move across the strip
  *      `[chip]…[+ new-tag input]` (↑/↓ inert); `d` deletes the focused chip (focus →

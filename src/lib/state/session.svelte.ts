@@ -16,7 +16,7 @@ import { flagsToClearOnEnter } from '$lib/transientReveal';
  * path, toggling several folders) collapse into one write.
  *
  * Persistence is keyed (in the backend) by the Bundle's absolute path and lives
- * in the OS config folder — NEVER in the Bundle (CONTEXT.md). Window geometry is
+ * in the OS config folder — NEVER in the Bundle (docs/GLOSSARY.md). Window geometry is
  * owned by Rust; we carry the opaque `window` field through untouched so a save
  * here never clobbers it.
  *

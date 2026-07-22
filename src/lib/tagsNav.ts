@@ -1,7 +1,7 @@
 // Flattened-visible-row math for the Tags Section's keyboard navigation
 // (slice: tags-multi-expand-keyboard-nav). Pure; no DOM/state.
 //
-// The Tags Section is a TWO-level tree (CONTEXT.md): tag roots, each of which —
+// The Tags Section is a TWO-level tree (docs/GLOSSARY.md): tag roots, each of which —
 // when expanded — reveals the Concepts carrying that tag as nested leaves.
 // Arrowing the keyboard Focused item moves over the VISIBLE rows only: every tag
 // root, plus the concept leaves of the EXPANDED tags, in render order

@@ -24,7 +24,7 @@
   let { node, selected, onopen, onmenu, depth = 0 }: Props = $props();
 
   // The Focused item (keyboard cursor) is INDEPENDENT of the open Concept
-  // (CONTEXT.md): this row carries the roving `tabindex="0"` + the spotlight ring
+  // (docs/GLOSSARY.md): this row carries the roving `tabindex="0"` + the spotlight ring
   // when it is the Explorer's Focused item, every other row stays `tabindex="-1"`.
   const isFocusedItem = $derived(explorerNav.focusedPath === node.path);
 

@@ -1,6 +1,6 @@
 ## What to build
 
-In-Concept **Find**: an editor-local find panel docked above the Editor pane, distinct from the cross-Bundle **Search** modal (see CONTEXT.md).
+In-Concept **Find**: an editor-local find panel docked above the Editor pane, distinct from the cross-Bundle **Search** modal (see docs/GLOSSARY.md).
 
 Wire the already-present `@codemirror/search` package into the editor:
 

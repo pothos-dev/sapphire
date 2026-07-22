@@ -1,8 +1,16 @@
-# Sunstone
+---
+type: Reference
+title: Sunstone Glossary
+description: The canonical domain language for Sunstone — the terms to use and the synonyms to avoid.
+tags: [glossary, domain, ubiquitous-language]
+timestamp: 2026-07-22
+---
 
-A lightweight, CLI-launched Tauri + Svelte markdown editor/viewer with Obsidian-style
-live editing and first-class support for the Open Knowledge Format (OKF). `sunstone ./docs`
-opens a folder as an editable knowledge base.
+# Glossary
+
+Sunstone is a lightweight, CLI-launched Tauri + Svelte markdown editor/viewer with
+Obsidian-style live editing and first-class support for the Open Knowledge Format
+(OKF). `sunstone ./docs` opens a folder as an editable knowledge base.
 
 ## Language
 
@@ -138,6 +146,16 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
   Regions cut across Panes and Sections (see term). Each Region has at most one **Focused item**.
 - In the **Explorer**, the **Focused item** (keyboard position) is independent of the open
   **Concept** (what the Editor shows); they coincide only until you arrow away.
+
+## Example dialogue
+
+> **Dev:** "When I arrow down in the **Explorer**, does the **Editor** follow along?"
+> **Domain expert:** "No — arrowing only moves the **Focused item**. The open **Concept**
+> doesn't change until you press Enter on a tree row."
+> **Dev:** "And if the same Concept is open in two **Tiles**?"
+> **Domain expert:** "They share one buffer — edit in one Tile and the other reflects it.
+> But only one is the active **Tile**, and that's the one the **Outline** and **Backlinks**
+> describe."
 
 ## Flagged ambiguities
 

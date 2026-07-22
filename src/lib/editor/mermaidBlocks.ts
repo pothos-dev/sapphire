@@ -8,7 +8,7 @@ import type { EditorState } from '@codemirror/state';
 // document. Kept separate from the render/widget shell (mermaid.ts) so it is
 // unit-testable, following the `path.ts` / `outline.ts` convention.
 //
-// A Diagram (CONTEXT.md) is the rendered output of a `FencedCode` node whose
+// A Diagram (docs/GLOSSARY.md) is the rendered output of a `FencedCode` node whose
 // info string is exactly `mermaid`. This module finds those nodes and returns,
 // for each, the raw mermaid SOURCE (the fence body, between the open/close
 // markers) and the DOCUMENT RANGE of the whole fence (so the render shell can
@@ -27,7 +27,7 @@ export interface MermaidBlock {
 }
 
 /**
- * The fenced-code info string we treat as a diagram. CONTEXT.md "Diagram":
+ * The fenced-code info string we treat as a diagram. docs/GLOSSARY.md "Diagram":
  * a fenced code block whose info is `mermaid`. Matched case-insensitively and
  * trimmed (mirrors how markdown info strings are read elsewhere).
  */

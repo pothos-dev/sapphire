@@ -19,7 +19,7 @@ import { resolveLink } from '$lib/links';
 // syntax tree, because CodeMirror decorations cannot await IPC.
 //
 // Links remain fully clickable and navigable — this is styling only, never a
-// block (broken links are tolerated per the OKF spec, CONTEXT.md).
+// block (broken links are tolerated per the OKF spec, docs/GLOSSARY.md).
 //
 // Freshness: the decoration re-runs on doc changes AND when the host dispatches
 // `refreshBrokenLinks` (fired on the `file-changed` watcher event and on

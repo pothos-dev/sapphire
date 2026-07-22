@@ -1,7 +1,7 @@
 ## What to build
 
 Full keyboard navigation inside the Explorer, with the **Focused item** decoupled from the
-open **Concept** (see `CONTEXT.md`).
+open **Concept** (see `docs/GLOSSARY.md`).
 
 - The Explorer gets a **Focused item** (a tree row) that is *independent* of the open Concept.
   Arrowing moves the Focused item without opening anything; the row matching `editor.path`

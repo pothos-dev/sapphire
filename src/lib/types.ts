@@ -1,6 +1,6 @@
 // Shared TypeScript types crossing the IPC seam.
 // Shapes must match the Rust serde structs (serde rename_all = "camelCase").
-// See ARCHITECTURE.md and CONTEXT.md.
+// See ARCHITECTURE.md and docs/GLOSSARY.md.
 
 import type { EditorMode } from '$lib/editor/cm';
 import type { StoredLayout } from '$lib/state/layoutPersist';
@@ -18,7 +18,7 @@ export type TreeNode = {
 
 /**
  * A Concept: a single `.md` file in the Bundle. Carries YAML frontmatter
- * (required `type`) and a free-form markdown body. (CONTEXT.md)
+ * (required `type`) and a free-form markdown body. (docs/GLOSSARY.md)
  *
  * Slice 1 only needs the raw markdown over the seam; richer parsed forms
  * (parsed frontmatter, links) arrive with the index slices. We define the

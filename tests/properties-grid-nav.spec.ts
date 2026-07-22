@@ -4,7 +4,7 @@ import { test, expect, type Page } from '@playwright/test';
  * Slice: properties-grid-navigation.
  *
  * The Properties Section is a spreadsheet-style 2-column grid (key | value) with
- * two modes (CONTEXT.md "Focused item"; ADR 0003):
+ * two modes (docs/GLOSSARY.md "Focused item"; ADR 0003):
  *   - NAV mode  — the cell WRAPPER holds focus (spotlight ring); arrows navigate
  *                 (clamp at edges), the inner <input> is NOT focused.
  *   - EDIT mode — the cell's <input> is focused; ordinary text editing.

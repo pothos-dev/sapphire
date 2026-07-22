@@ -4,7 +4,7 @@ import { test, expect, type Page } from '@playwright/test';
  * Slice: explorer-keyboard-nav.
  *
  * Full keyboard navigation inside the Explorer, with the Focused item (the
- * keyboard cursor — a tree row) decoupled from the open Concept (CONTEXT.md).
+ * keyboard cursor — a tree row) decoupled from the open Concept (docs/GLOSSARY.md).
  *
  * Drives the unmodified arrow/hjkl/Enter/Home/End keys over the visible rows,
  * asserts clamp-at-the-ends (no wrap), expand/collapse/descend/jump-to-parent,

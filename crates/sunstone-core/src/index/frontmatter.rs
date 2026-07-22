@@ -4,7 +4,7 @@
 //! distinct top-level keys) and exposes the block-finding / stripping helpers
 //! the link extractor reuses. The Properties panel owns verbatim
 //! round-tripping; broken/invalid frontmatter is tolerated, never blocked
-//! (CONTEXT.md).
+//! (docs/GLOSSARY.md).
 
 /// The frontmatter fields the index cares about, parsed from a Concept's leading
 /// YAML block.
@@ -21,7 +21,7 @@ pub(super) struct ParsedFrontmatter {
 /// Parse the leading YAML frontmatter block (delimited by `---`) and extract
 /// `type` (scalar), `tags` (flat list), and the distinct top-level keys.
 /// Tolerates missing/invalid frontmatter: returns a default (all-empty)
-/// `ParsedFrontmatter` rather than erroring (CONTEXT.md — broken Concepts are
+/// `ParsedFrontmatter` rather than erroring (docs/GLOSSARY.md — broken Concepts are
 /// never blocked).
 pub(super) fn parse_frontmatter(content: &str) -> ParsedFrontmatter {
     let Some(block) = frontmatter_block(content) else {

@@ -1,6 +1,6 @@
 //! Global config/state store in the OS app-data directory.
 //!
-//! Sunstone NEVER writes config or session state into the Bundle (CONTEXT.md:
+//! Sunstone NEVER writes config or session state into the Bundle (docs/GLOSSARY.md:
 //! the "no `.obsidian` equivalent" rule). Instead it keeps a single JSON file in
 //! the OS config directory — `dirs::config_dir()/sunstone/state.json` (e.g.
 //! `~/.config/sunstone/state.json` on Linux) — holding:

@@ -189,7 +189,7 @@ export interface Backend {
   // --- Per-Bundle session state (slice: config-theme-state-store) ---
   // A reusable read/write seam for persisting per-Bundle UI state in the OS
   // config folder, keyed (in the backend) by the Bundle's absolute path. NEVER
-  // written into the Bundle (CONTEXT.md). Slices add fields to `BundleState`
+  // written into the Bundle (docs/GLOSSARY.md). Slices add fields to `BundleState`
   // and round-trip them through this same pair (slice 13: `recentFiles`).
 
   /**

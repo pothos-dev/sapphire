@@ -1,7 +1,7 @@
 // Explorer keyboard-navigation state (slice: explorer-keyboard-nav).
 //
 // Owns the Explorer's Focused item — the keyboard cursor, a tree row — which is
-// INDEPENDENT of the open Concept (CONTEXT.md "Focused item"): arrowing moves
+// INDEPENDENT of the open Concept (docs/GLOSSARY.md "Focused item"): arrowing moves
 // the Focused item without opening anything; only Enter opens. The open Concept
 // keeps its filled-accent marker; the Focused item shows the spotlight ring.
 //

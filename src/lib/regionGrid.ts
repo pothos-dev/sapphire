@@ -1,6 +1,6 @@
 // Region grid geometry + directional-movement math (pure; no DOM/state).
 //
-// The six app Regions form a fixed 3×2 grid (see CONTEXT.md "Region" and the
+// The six app Regions form a fixed 3×2 grid (see docs/GLOSSARY.md "Region" and the
 // region-focus-backbone ticket):
 //
 //        col 0 (left)   col 1 (editor)   col 2 (right)
@@ -19,7 +19,7 @@
 //    were last in for the destination column (the caller supplies + updates the
 //    per-column memory).
 
-/** A Region's identity. Orthogonal to Pane/Section (CONTEXT.md). */
+/** A Region's identity. Orthogonal to Pane/Section (docs/GLOSSARY.md). */
 export type RegionId =
   | 'explorer'
   | 'tags'

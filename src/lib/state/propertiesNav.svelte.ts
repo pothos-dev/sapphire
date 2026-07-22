@@ -1,7 +1,7 @@
 // Properties grid keyboard-navigation state (slice: properties-grid-navigation).
 //
 // The Properties Section is a spreadsheet-style 2-column grid (key | value) with
-// one row per frontmatter Property (CONTEXT.md "Focused item"; ADR 0003). The
+// one row per frontmatter Property (docs/GLOSSARY.md "Focused item"; ADR 0003). The
 // Focused item is a CELL, and the Region has THREE MODES:
 //   - NAV mode   — the cell WRAPPER holds focus (spotlight ring); arrows navigate,
 //                  the inner <input> is NOT focused.

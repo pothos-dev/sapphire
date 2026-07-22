@@ -6,8 +6,8 @@ then read the deeper docs:
 
 - **`ARCHITECTURE.md`** — the implementation contract: stack, repository layout,
   the IPC seam, Rust/editor/state conventions. Read it before touching code.
-- **`CONTEXT.md`** — domain language (Bundle, Concept, Wikilink, Region, …). Use
-  these terms; avoid the listed synonyms.
+- **`docs/GLOSSARY.md`** — domain language (Bundle, Concept, Wikilink, Region, …).
+  Use these terms; avoid the listed synonyms.
 - **`docs/adr/`** — architecture decisions. `docs/tickets/` — slice workflow.
 
 ## Verifying changes

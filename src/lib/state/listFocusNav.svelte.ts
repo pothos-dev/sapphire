@@ -1,7 +1,7 @@
 // Flat-list keyboard-navigation state for the Outline and Backlinks Regions
 // (slice: outline-backlinks-keyboard-nav).
 //
-// Both Regions are flat, read-only, navigate-and-open lists (CONTEXT.md
+// Both Regions are flat, read-only, navigate-and-open lists (docs/GLOSSARY.md
 // "Outline" / "Backlinks"). Each owns a Focused item — the keyboard cursor, a
 // roving-tabindex list item — moved by the arrow/jk keys and activated by Enter.
 // Unlike the Explorer the Focused item here is a plain list index over the

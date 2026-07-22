@@ -41,7 +41,7 @@
     onopen: (path: string) => void;
     /**
      * Open a Concept AND move focus to the Editor — used by keyboard Enter on a
-     * concept leaf (CONTEXT.md: opening from a Region moves focus to the
+     * concept leaf (docs/GLOSSARY.md: opening from a Region moves focus to the
      * Editor). Defaults to `onopen` when not supplied.
      */
     onopenFocus?: (path: string) => void;

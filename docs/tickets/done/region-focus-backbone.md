@@ -1,7 +1,7 @@
 ## What to build
 
 The keyboard-focus backbone for the whole app: a notion of the **active Region** and
-directional movement between Regions. See `CONTEXT.md` for **Region** and **Focused item**.
+directional movement between Regions. See `docs/GLOSSARY.md` for **Region** and **Focused item**.
 
 The six Regions form a 3×2 grid:
 

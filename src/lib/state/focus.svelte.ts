@@ -1,7 +1,7 @@
 // App-wide keyboard-focus backbone (slice: region-focus-backbone).
 //
 // Owns the notion of the ACTIVE Region and directional movement between the six
-// Regions of the 3×2 grid (see CONTEXT.md "Region" / "Focused item" and
+// Regions of the 3×2 grid (see docs/GLOSSARY.md "Region" / "Focused item" and
 // `$lib/regionGrid` for the grid geometry + movement math).
 //
 // DESIGN — DOM focus is the single source of truth:

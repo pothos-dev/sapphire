@@ -32,7 +32,7 @@ use links::extract_links;
 /// outbound internal links (bundle-relative target paths).
 #[derive(Debug, Clone, Default)]
 pub struct ConceptEntry {
-    /// `type` from the frontmatter, if present (CONTEXT.md: required, but we
+    /// `type` from the frontmatter, if present (docs/GLOSSARY.md: required, but we
     /// tolerate it missing/empty — broken Concepts are never blocked).
     pub concept_type: Option<String>,
     /// `tags` from the frontmatter (flat list); empty when absent.

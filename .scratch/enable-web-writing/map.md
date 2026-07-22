@@ -27,7 +27,7 @@ can implement web writing without further design choices.
 
 ## Notes
 
-- **Domain:** read `CONTEXT.md` (Bundle, Concept, Wikilink, Region, …) and use those
+- **Domain:** read `docs/GLOSSARY.md` (Bundle, Concept, Wikilink, Region, …) and use those
   terms. `ARCHITECTURE.md` is the implementation contract — the **IPC seam**
   (`src/lib/ipc/backend.ts` + `tauri.ts` / `fake.ts` / `http.ts`) is central: every
   write method already exists on the `Backend` interface; the web just rejects them.
