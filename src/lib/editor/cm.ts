@@ -845,17 +845,42 @@ export function setEditorConcept(
     return;
   }
 
-  const docChanged = view.state.doc.toString() !== body;
+  const current = view.state.doc.toString();
+  const docChanged = current !== body;
   const fmChanged =
     serializeFrontmatter(view.state.field(frontmatterField)) !== serializeFrontmatter(props);
   if (!docChanged && !fmChanged) return;
+  // Apply a MINIMAL change (common prefix/suffix trimmed) rather than a whole-doc
+  // replace, so CodeMirror maps the selection/cursor through it. This matters for
+  // multi-pane sync: when a SECOND tile shows the same Concept, an edit in the
+  // first tile pushes new content here — a minimal change keeps the untouched
+  // tile's caret in place instead of collapsing it to the doc end.
   view.dispatch({
-    changes: docChanged
-      ? { from: 0, to: view.state.doc.length, insert: body }
-      : undefined,
+    changes: docChanged ? minimalDocChange(current, body) : undefined,
     effects: fmChanged ? [setFrontmatter.of(props)] : [],
     annotations: programmatic.of(true),
   });
+}
+
+/**
+ * The single `{from,to,insert}` change covering the difference between two
+ * strings (common prefix + suffix trimmed). Keeps a programmatic doc replacement
+ * localized so CodeMirror maps the cursor through it instead of jumping it.
+ */
+function minimalDocChange(
+  oldStr: string,
+  newStr: string,
+): { from: number; to: number; insert: string } {
+  let start = 0;
+  const max = Math.min(oldStr.length, newStr.length);
+  while (start < max && oldStr[start] === newStr[start]) start++;
+  let endOld = oldStr.length;
+  let endNew = newStr.length;
+  while (endOld > start && endNew > start && oldStr[endOld - 1] === newStr[endNew - 1]) {
+    endOld--;
+    endNew--;
+  }
+  return { from: start, to: endOld, insert: newStr.slice(start, endNew) };
 }
 
 /**

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { EditorView } from '@codemirror/view';
   import { backend } from '$lib/ipc';
   import { bundle } from '$lib/state/bundle.svelte';
   import { editor } from '$lib/state/editor.svelte';
@@ -8,67 +7,18 @@
   import { session } from '$lib/state/session.svelte';
   import { suggestions } from '$lib/state/suggestions.svelte';
   import { theme } from '$lib/state/theme.svelte';
-  import type { TreeNode, FileHistory } from '$lib/types';
-  import {
-    buildEditor,
-    buildReviewEditor,
-    setReviewText,
-    setEditorConcept,
-    setEditorMode,
-    setEditorMermaidTheme,
-    dispatchFrontmatter,
-    refreshBrokenLinkDecorations,
-    reconfigureWikiLinks,
-    scrollToLine,
-    openSearch,
-    annotate,
-    annotateActionFor,
-    toggleBold,
-    toggleItalic,
-    toggleStrikethrough,
-    toggleInlineCode,
-    insertOrEditLink,
-    linkActionFor,
-    copySelection,
-    cutSelection,
-    pasteFromClipboard,
-    selectionForAnnotate,
-    addAnnotationWithComment,
-    updateAnnotationComment,
-    removeAnnotationAt,
-    pendingAnchorRenames,
-    commitAnchorBaseline,
-    type EditorMode,
-    type CommentEditRequest,
-  } from '$lib/editor/cm';
-  import { rewriteAnchorsIn } from '$lib/anchorRewrite';
-  import { diffToCriticMarkup } from '$lib/diff/diffToCriticMarkup';
-  import { reviewAvailability } from '$lib/editor/review';
-  import { reviewStep, maxStep } from '$lib/editor/reviewStepper';
-  import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
-  import {
-    splitFrontmatter,
-    parseProperties,
-    frontmatterLineCount,
-    type Property,
-  } from '$lib/frontmatter';
-  import { resolveLink } from '$lib/links';
-  import { findHeadingLine } from '$lib/outline';
-  import { isReservedFile, RESERVED_FILES, type ReservedKind } from '$lib/reserved';
+  import type { TreeNode } from '$lib/types';
+  import { RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import Tree from '$lib/components/Tree.svelte';
   import TreeCrud from '$lib/components/TreeCrud.svelte';
-  import ContextMenu from '$lib/components/ContextMenu.svelte';
-  import AnnotationPopup from '$lib/components/AnnotationPopup.svelte';
   import QuickNav from '$lib/components/QuickNav.svelte';
   import SearchPanel from '$lib/components/SearchPanel.svelte';
-  import Properties from '$lib/components/Properties.svelte';
   import Backlinks from '$lib/components/Backlinks.svelte';
   import Outline from '$lib/components/Outline.svelte';
   import TagBrowser from '$lib/components/TagBrowser.svelte';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import NavBar from '$lib/components/NavBar.svelte';
-  import PaneHeader from '$lib/components/PaneHeader.svelte';
-  import { paneTitle } from '$lib/paneTitle';
+  import Pane from '$lib/components/Pane.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
@@ -82,569 +32,94 @@
   } from '$lib/treeNav';
   import { outlineNav, backlinksNav } from '$lib/state/listFocusNav.svelte';
   import { propertiesNav } from '$lib/state/propertiesNav.svelte';
-  import { region } from '$lib/region';
   import { directionForKey } from '$lib/regionGrid';
+  import {
+    resizeColumns as layoutResizeColumns,
+    resizeTiles as layoutResizeTiles,
+    MIN_WEIGHT,
+  } from '$lib/paneLayout';
 
-  // Sidebar accordions (VSCode-style): the left Sidebar holds the Bundle tree
-  // (Explorer) + Tags; the right Sidebar holds Backlinks (Outline arrives in a
-  // later slice). Each expanded Section body is capped to its share of the
-  // viewport — the cap is driven by `--expanded-count`, computed PER SIDEBAR so
-  // each accordion divides its own height (see SidebarSection.svelte).
-  //
-  // All collapse state is persisted per-Bundle in the session store
-  // (persist-sidebar-collapse-state / right-sidebar-move-backlinks): the
-  // whole-sidebar collapse plus each Section's expanded flag survive a reload.
-  // Reads come from the store's runes and toggles funnel through its setters,
-  // which are gated on `restored` (a toggle firing mid-restore is a no-op
-  // persistence-wise, so it can't clobber stored state — exactly how
-  // `setExpanded` is guarded). Left Sections default to expanded for a fresh
-  // Bundle; the right Sidebar starts COLLAPSED.
-  // Right-Sidebar expanded count: only meaningful while the right Sidebar is
-  // open. Sums its expanded Sections (Outline + Backlinks) so each body's cap
-  // divides this sidebar's height independently of the left one.
-  // Counts use the EFFECTIVE-visible getters (`*Visible` = persisted-open OR
-  // transiently revealed) so a transient auto-reveal divides the accordion
-  // height correctly while it is being peeked (slice: transient-region-auto-reveal).
+  // The tiling workspace (row of columns of Panes) behind the editor facade. App
+  // renders its layout + drives split/close/resize/active; the facade stays the
+  // "active Pane" surface Outline/Backlinks/quick-nav/etc. read from.
+  const workspace = editor.workspace;
+
+  // Right-Sidebar expanded count (Outline + Backlinks), see the note below.
   const rightExpandedCount = $derived(
     session.rightSidebarVisible
       ? (session.outlineVisible ? 1 : 0) + (session.backlinksVisible ? 1 : 0)
       : 0,
   );
 
-  let editorParent = $state<HTMLDivElement | null>(null);
   let appRoot = $state<HTMLDivElement | null>(null);
-  let view: EditorView | null = null;
-
-  // The editor's right-click annotate menu (position + which action applies), or
-  // null when closed. Like the Explorer's context menu it is an OVERLAY, so the
-  // global Escape peel closes it via the focus store's overlay stack.
-  type EditorMenuItem = { id: string; label: string; separated?: boolean };
-  let editorMenu = $state<{
-    x: number;
-    y: number;
-    items: EditorMenuItem[];
-    // The range "Add comment" would wrap, captured at menu-open so it survives
-    // the click (a menu focus change could otherwise clear the DOM selection).
-    annotateRange?: { from: number; to: number };
-  } | null>(null);
-  let editorMenuOverlayId: number | null = null;
-  $effect(() => {
-    if (editorMenu && editorMenuOverlayId === null) {
-      editorMenuOverlayId = focus.pushOverlay(() => (editorMenu = null));
-    } else if (!editorMenu && editorMenuOverlayId !== null) {
-      focus.removeOverlay(editorMenuOverlayId);
-      editorMenuOverlayId = null;
-    }
-  });
-
-  // The annotation authoring popup (feat/criticmarkup-annotations): a floating
-  // text input for a note, opened by the "Add comment" menu item (add mode) and
-  // by clicking a comment gutter icon (edit mode — works in reading mode too, the
-  // preferred way to annotate). Like the context menu it is an OVERLAY, so the
-  // global Escape peel closes it via the focus store's overlay stack.
-  type AnnotationPopupState = {
-    x: number;
-    y: number;
-    mode: 'add' | 'edit';
-    text: string;
-    // add: the selection range to wrap. edit: a stable position inside the
-    // annotation so the note can be re-found after re-parsing.
-    from?: number;
-    to?: number;
-    anchor?: number;
-  };
-  let annotationPopup = $state<AnnotationPopupState | null>(null);
-  let annotationPopupOverlayId: number | null = null;
-  $effect(() => {
-    if (annotationPopup && annotationPopupOverlayId === null) {
-      annotationPopupOverlayId = focus.pushOverlay(() => (annotationPopup = null));
-    } else if (!annotationPopup && annotationPopupOverlayId !== null) {
-      focus.removeOverlay(annotationPopupOverlayId);
-      annotationPopupOverlayId = null;
-    }
-  });
-
-  // A comment gutter icon was clicked (from the CriticMarkup extension): open the
-  // popup in edit mode over that note. Routed through `buildEditor`'s
-  // `onCommentEdit`.
-  function openCommentPopup(req: CommentEditRequest): void {
-    annotationPopup = { x: req.x, y: req.y, mode: 'edit', text: req.text, anchor: req.anchor };
-  }
-
-  // Commit the popup: wrap the captured selection (add) or update the note under
-  // the anchor (edit), then close. All dispatches are programmatic so they apply
-  // in reading mode too and autosave via the editor's change listener.
-  function onAnnotationSave(text: string): void {
-    const p = annotationPopup;
-    if (!view || !p) return;
-    if (p.mode === 'add') {
-      if (p.from != null && p.to != null && text.trim() !== '') {
-        addAnnotationWithComment(view, p.from, p.to, text);
-      }
-    } else if (p.anchor != null) {
-      updateAnnotationComment(view, p.anchor, text);
-    }
-    annotationPopup = null;
-  }
-
-  // Remove the annotation under the popup's anchor (edit mode's Remove button).
-  function onAnnotationRemove(): void {
-    if (view && annotationPopup?.anchor != null) removeAnnotationAt(view, annotationPopup.anchor);
-    annotationPopup = null;
-  }
-
-  /**
-   * Open the editor formatting context menu at the cursor. In an editable mode
-   * it replaces the native menu with our formatting actions; in reading view
-   * (read-only) it leaves the native menu alone. Items are built dynamically:
-   * inline-format toggles only when there is a non-empty selection to wrap; a
-   * link item always (label from `linkActionFor`); the annotate item only when
-   * an annotate action applies (`annotateActionFor`).
-   */
-  function openEditorMenu(e: MouseEvent): void {
-    if (!view) return;
-    const readOnly = view.state.readOnly;
-    // The range annotate would wrap: the CM selection, or — in reading mode where
-    // CM doesn't sync the non-editable DOM selection — the browser selection.
-    const range = selectionForAnnotate(view);
-    const annAction = annotateActionFor(view);
-
-    // Reading view: the only editing affordance is annotating (the preferred way
-    // to comment). With nothing to annotate, keep the native menu.
-    if (readOnly) {
-      if (!annAction) return;
-      e.preventDefault();
-      editorMenu = {
-        x: e.clientX,
-        y: e.clientY,
-        items: [{ id: 'annotate', label: annAction === 'add' ? 'Add comment' : 'Remove comment' }],
-        annotateRange: annAction === 'add' ? range : undefined,
-      };
-      return;
-    }
-
-    e.preventDefault();
-    const items: EditorMenuItem[] = [];
-    const hasSelection = range.from !== range.to;
-    // Clipboard group (always leads). Cut/Copy need a selection; Paste is always
-    // offered. CodeMirror still handles the Ctrl/Cmd+C/X/V keys too.
-    if (hasSelection) {
-      items.push({ id: 'cut', label: 'Cut' });
-      items.push({ id: 'copy', label: 'Copy' });
-    }
-    items.push({ id: 'paste', label: 'Paste' });
-    // Inline-format group (only with a selection to wrap).
-    if (hasSelection) {
-      items.push({ id: 'bold', label: 'Bold', separated: true });
-      items.push({ id: 'italic', label: 'Italic' });
-      items.push({ id: 'strike', label: 'Strikethrough' });
-      items.push({ id: 'code', label: 'Inline code' });
-    }
-    const linkAction = linkActionFor(view);
-    items.push({
-      id: 'link',
-      label: linkAction === 'edit' ? 'Edit link' : 'Insert link',
-      // Its own group — the clipboard group (and formatting, if any) precede it.
-      separated: true,
-    });
-    if (annAction) {
-      items.push({
-        id: 'annotate',
-        label: annAction === 'add' ? 'Add comment' : 'Remove comment',
-        separated: true,
-      });
-    }
-
-    editorMenu = {
-      x: e.clientX,
-      y: e.clientY,
-      items,
-      annotateRange: annAction === 'add' ? range : undefined,
-    };
-  }
-
-  // Dispatch a chosen editor-menu action to its CodeMirror helper.
-  function onEditorMenuSelect(id: string): void {
-    if (!view) return;
-    switch (id) {
-      case 'cut':
-        void cutSelection(view);
-        break;
-      case 'copy':
-        void copySelection(view);
-        break;
-      case 'paste':
-        void pasteFromClipboard(view);
-        break;
-      case 'bold':
-        toggleBold(view);
-        break;
-      case 'italic':
-        toggleItalic(view);
-        break;
-      case 'strike':
-        toggleStrikethrough(view);
-        break;
-      case 'code':
-        toggleInlineCode(view);
-        break;
-      case 'link':
-        insertOrEditLink(view);
-        break;
-      case 'annotate': {
-        // "Add comment": open the note popup over the captured selection (the
-        // preferred, syntax-free path). "Remove comment": strip it directly.
-        const range = editorMenu?.annotateRange;
-        if (range) {
-          annotationPopup = {
-            x: editorMenu?.x ?? 0,
-            y: editorMenu?.y ?? 0,
-            mode: 'add',
-            text: '',
-            from: range.from,
-            to: range.to,
-          };
-        } else {
-          annotate(view);
-        }
-        break;
-      }
-    }
-  }
-  // Disposer for the Editor Region's focus-backbone registration. The Editor's
-  // entry point is the CodeMirror view itself (registered once it is built),
-  // unlike the other Regions which use the `use:region` action on a container.
+  // The editor-area container: the single 'editor' Region (spanning every tile).
+  // The active Pane is where focus lands when the Region is entered.
+  let editorArea = $state<HTMLDivElement | null>(null);
   let unregisterEditor: (() => void) | null = null;
 
-  // The open Concept's frontmatter, mirrored out of the editor's frontmatter
-  // field (the single source of truth — ADR 0003) so the Properties panel can
-  // render it. Updated by the editor's `onFrontmatterChange` callback.
-  let frontmatterProps = $state<Property[]>([]);
-
-  // The editor's tri-state view mode (Obsidian parity: Source / Live / Reading).
-  // Seeds `buildEditor`'s `initialMode`; thereafter the toggle calls
-  // `setEditorMode`, which reconfigures the view in place (no rebuild). The mode
-  // persists across Concept switches (the editor remembers it per view) and
-  // across relaunches (session.editorMode, persist-editor-mode) — seeded from the
-  // session store on startup and written back on every toggle. The display list
-  // of modes lives in NavBar.svelte (its only consumer).
-  let editorMode = $state<EditorMode>(session.editorMode);
-  function changeEditorMode(mode: EditorMode): void {
-    editorMode = mode;
-    session.setEditorMode(mode);
-    if (view) {
-      setEditorMode(view, mode);
-      view.focus();
-    }
-  }
-
-  // The active Pane's header label: prefer the frontmatter `title`, else the
-  // filename stem (pure `paneTitle` helper). Drives the PaneHeader's title. This
-  // is still single-pane — the header describes `editor.path` (the one Pane).
-  const currentPaneTitle = $derived(paneTitle(editor.path, frontmatterProps));
-
-  // --- Per-Pane header affordances (slice: per-tile-header) -----------------
-  // Close clears the active Pane to its empty state (flushing pending autosave);
-  // Split Right / Split Down are wired but INERT until ticket 03 grows the
-  // workspace to more than one Pane.
-  function closePane(): void {
-    void editor.close();
-  }
-  function splitRight(): void {
-    // TODO(ticket-03): add a Pane to the right of the active one in the tiling
-    // layout and attach it to the same DocumentRegistry. No-op until then.
-  }
-  function splitDown(): void {
-    // TODO(ticket-03): add a Pane below the active one in the tiling layout. No-op.
-  }
+  // One imperative handle per live Pane component, keyed by Pane id (bound in the
+  // layout `{#each}`). App delegates active-Pane editor concerns to the handle for
+  // `workspace.activeId` — focus, outline scroll, undo/redo, find, review, and the
+  // slug-anchor save hook.
+  let paneRefs = $state<Record<string, ReturnType<typeof Pane>>>({});
+  const activePaneRef = $derived(paneRefs[workspace.activeId]);
 
   // Global Properties show/hide toggle (NavBar). PLACEHOLDER: ticket 05 wires the
-  // per-tile Properties behaviour off this state. For now it only flips a flag so
-  // the control reads/toggles; it deliberately does NOT hide the current
-  // Properties panel (that panel keeps its own per-Concept collapse).
+  // per-tile Properties behaviour off this state. For now it only flips a flag.
   let propertiesPanelShown = $state(true);
   function toggleProperties(): void {
     propertiesPanelShown = !propertiesPanelShown;
   }
 
-  // --- Review changes: working-tree ↔ HEAD (review-toggle) -----------------
-  // A dedicated toggle (NavBar, SEPARATE from the mode control) flips the open
-  // Concept into a READ-ONLY review view showing what changed since the last
-  // commit. Entering reconstructs — IN MEMORY ONLY — a CriticMarkup diff of the
-  // `HEAD` content (via `fileAtRev`) against the current working-tree buffer
-  // (`editor.content`), run through ticket 03's differ, and renders it in a
-  // separate read-only CodeMirror view (ticket 01's marks). That review buffer
-  // is NEVER wired to `editor.edit`/autosave, so the marked text can never reach
-  // disk; the normal editor keeps its untouched working-tree content behind it.
-  let reviewActive = $state(false);
-  let reviewParent = $state<HTMLDivElement | null>(null);
-  let reviewView: EditorView | null = null;
-  // The diff text to render while review is active (null when inactive).
-  let reviewText = $state<string | null>(null);
-  // The open Concept's git history, loaded on Concept switch. Drives the
-  // toggle's enabled state + tooltip via the pure `reviewAvailability` helper.
-  let reviewHistory = $state<FileHistory | null>(null);
-  const reviewAvail = $derived(reviewAvailability(reviewHistory));
-  // --- History stepper (issue 05) ---------------------------------------------
-  // The review view walks BACKWARD through the open Concept's commit history, one
-  // pair at a time: position 0 = working tree ↔ HEAD (04's default), position k =
-  // HEAD~(k-1) ↔ HEAD~k. The pure `reviewStepper` helper turns the position + the
-  // commit list into the (oldRev, newRev, label, newer-commit, bounds) to render;
-  // `renderReviewStep` fetches both sides (working tree at position 0) and re-runs
-  // the differ. Reset to 0 on Concept switch (below) and on each fresh enter.
-  let reviewPosition = $state(0);
-  // The commit list backing the stepper (empty unless the history resolved `ok`).
-  const reviewCommits = $derived(
-    reviewHistory?.status === 'ok' ? reviewHistory.commits : [],
-  );
-  // The current comparison: bar label + newer-side commit + button-bounding flags.
-  const reviewStepInfo = $derived(reviewStep(reviewCommits, reviewPosition));
-
-  // Load the git history for the open Concept so the toggle can enable/disable
-  // itself. Switching Concepts also EXITS any active review (the diff was built
-  // for the previous Concept), and a null path (nothing open) resets both.
-  $effect(() => {
-    const path = editor.path;
-    // Exit any active review on Concept switch (the diff was for the previous
-    // Concept). Written unconditionally — assigning the same value is a no-op,
-    // and NOT reading `reviewActive` keeps it out of this effect's deps.
-    reviewActive = false;
-    reviewText = null;
-    reviewHistory = null;
-    reviewPosition = 0;
-    if (path === null) return;
-    let cancelled = false;
-    void backend.fileHistory(path).then((h) => {
-      if (!cancelled) reviewHistory = h;
-    });
-    return () => {
-      cancelled = true;
-    };
-  });
-
-  // Build / tear down the read-only review view as `reviewActive` flips. Built
-  // only once `reviewParent` is mounted (its `{#if reviewActive}` block) and the
-  // diff text is ready. Destroying it discards the in-memory review buffer
-  // entirely — nothing is ever written back.
-  $effect(() => {
-    if (reviewActive && reviewParent && reviewText !== null && !reviewView) {
-      // `buildReviewEditor` seeds `data-theme` from the app root; the theme
-      // effect below keeps it in sync on a live theme flip.
-      reviewView = buildReviewEditor(reviewParent, reviewText);
-      reviewView.focus();
-    } else if (!reviewActive && reviewView) {
-      reviewView.destroy();
-      reviewView = null;
-    }
-  });
-
-  // Render the comparison at stepper `pos` into `reviewText`: fetch the OLDER
-  // side from git (`fileAtRev`) and the NEWER side (the live working-tree buffer
-  // at position 0, else the newer commit's content), then run ticket 03's differ.
-  // Reads `editor.content` synchronously so entering/stepping never triggers a
-  // save. Guards against a Concept switch mid-await, and returns false (leaving
-  // the current buffer untouched) when a side can't be read. When the review view
-  // is already mounted it also pushes the new diff in place (no rebuild).
-  async function renderReviewStep(pos: number): Promise<boolean> {
-    const path = editor.path;
-    if (path === null) return false;
-    const step = reviewStep(reviewCommits, pos);
-    const oldSide = await backend.fileAtRev(path, step.oldRev);
-    if (oldSide.status !== 'ok') return false;
-    let newContent: string;
-    if (step.newRev === null) {
-      newContent = editor.content;
-    } else {
-      const newSide = await backend.fileAtRev(path, step.newRev);
-      if (newSide.status !== 'ok') return false;
-      newContent = newSide.content;
-    }
-    // A Concept switch (or review exit) while awaiting invalidates this diff.
-    if (editor.path !== path) return false;
-    reviewText = diffToCriticMarkup(oldSide.content, newContent);
-    // Update an already-mounted review buffer in place; the build effect creates
-    // it on the initial enter (when `reviewView` is still null).
-    if (reviewView) setReviewText(reviewView, reviewText);
-    return true;
-  }
-
-  // Enter review at position 0 (working tree ↔ HEAD): diff and show the marks
-  // read-only. No-op when unavailable (no reviewable history) or when a side
-  // cannot be read.
-  async function enterReview(): Promise<void> {
-    const path = editor.path;
-    if (path === null || reviewActive || !reviewAvail.enabled) return;
-    reviewPosition = 0;
-    if (!(await renderReviewStep(0))) return;
-    // Guard against a Concept switch while awaiting the async reads.
-    if (editor.path !== path) return;
-    reviewActive = true;
-  }
-
-  // Step the review comparison by `delta` (+1 = one commit OLDER, -1 = one NEWER,
-  // toward the working tree), bounded by the ends of history. Re-renders the diff
-  // for the new position in place. No-op outside review or at a bound.
-  function stepReview(delta: number): void {
-    if (!reviewActive) return;
-    const next = reviewPosition + delta;
-    if (next < 0 || next > maxStep(reviewCommits)) return;
-    reviewPosition = next;
-    void renderReviewStep(next);
-  }
-
-  // Exit review: drop the diff and return to normal editing at the working-tree
-  // version (unchanged). The build effect destroys the review view; refocus the
-  // normal editor once it is shown again.
-  function exitReview(): void {
-    if (!reviewActive) return;
-    reviewActive = false;
-    reviewText = null;
-    queueMicrotask(() => view?.focus());
-  }
-
-  function toggleReview(): void {
-    if (reviewActive) exitReview();
-    else void enterReview();
-  }
-
-  // The Properties panel's raw collapse state, bound out of the component so the
-  // Region registration below can treat a collapsed panel as not-visible and
-  // transiently reveal it on directional focus (properties-auto-reveal).
-  let propertiesCollapsed = $state(false);
-
-  // Unified undo/redo (unified-body-frontmatter-undo): one CodeMirror history
-  // spans body + frontmatter. These mirror `undoDepth`/`redoDepth` so the
-  // PaneHeader's undo/redo buttons can enable/disable reactively (they moved out
-  // of the Properties panel — slice: per-tile-header). They are NOT derived
-  // from `view.state` (the view isn't reactive); instead `syncHistoryDepths` is
-  // called from the editor's update listener (every transaction) and after any
-  // programmatic undo/redo we trigger.
-  let canUndo = $state(false);
-  let canRedo = $state(false);
-  function syncHistoryDepths() {
-    canUndo = view ? undoDepth(view.state) > 0 : false;
-    canRedo = view ? redoDepth(view.state) > 0 : false;
-  }
-  function doUndo() {
-    if (!view) return;
-    undo(view);
-    view.focus();
-    syncHistoryDepths();
-  }
-  function doRedo() {
-    if (!view) return;
-    redo(view);
-    view.focus();
-    syncHistoryDepths();
-  }
-
-  // Quick-nav palette (Ctrl+K). `quickNavOpen` toggles the overlay; the Concept
-  // path list is refreshed from the index whenever it changes so newly-created
-  // Concepts are matchable immediately.
+  // Quick-nav palette (Ctrl+K) + full-text search (Ctrl+Shift+F) overlays.
   let quickNavOpen = $state(false);
-  // Whether the quick-nav palette is in tag drill-down mode. Bound out of the
-  // component so the global Escape peel DEFERS to it — one Escape steps out of
-  // the tag before the next closes the palette (escape-peel-restore-opener).
   let quickNavTagActive = $state(false);
-  // Full-text search panel (Ctrl+Shift+F). When a result is chosen we open the
-  // Concept and stash the target line so the editor scrolls to it once the new
-  // document has been loaded into the CodeMirror view.
   let searchOpen = $state(false);
-  let pendingScrollLine: number | null = null;
-  // A `[[target#heading]]` wikilink stashes its anchor here; once the target
-  // Concept's document is in the view we resolve the heading to a line and
-  // scroll to it (best-effort — cleared if the heading is missing). ADR-0004.
-  let pendingScrollAnchor: string | null = null;
 
-  // Index-derived autocomplete sources (Concept paths, `type`/key/tag values)
-  // live in the `suggestions` store. Refresh them all whenever the index changes
-  // (file-changed bumps `indexStore.version`) so newly-introduced
-  // paths/types/keys/tags appear in suggestions immediately.
+  // Index-derived autocomplete sources: refresh whenever the index changes.
   $effect(() => {
     void indexStore.version;
     suggestions.refresh();
   });
 
-  // The Tags Section is hidden entirely when the Bundle carries no tags
-  // (hide-tags-section-when-empty) — an always-present empty Tags Section is
-  // noise. `suggestions.tags` is reactive on the index `version` signal, so the
-  // Section appears/disappears live as the first tag is added / last tag
-  // removed. The persisted `tagsOpen` flag is left untouched while hidden
-  // (gated render, no setter call), so it is preserved across hide/show. The
-  // hidden Section is excluded from `expandedCount` (above) so the remaining
-  // left-Sidebar Sections share height correctly.
-  // `tagsPresent` = the Bundle carries at least one tag → the Tags Section is
-  // PRESENT (rendered at all). Distinct from `session.tagsVisible` (effective
-  // expanded). An absent Tags Section is skipped by movement and never revealed.
+  // The Tags Section is hidden entirely when the Bundle carries no tags.
   const tagsPresent = $derived(suggestions.tags.length > 0);
-  // Left-Sidebar expanded count for the `--expanded-count` CSS var: count the
-  // Explorer when effectively visible, and Tags only when it is BOTH present
-  // (tags exist) and effectively visible — a hidden Tags Section must not steal
-  // a share of the height. Uses the `*Visible` getters so a transient reveal is
-  // counted while it is being peeked.
   const expandedCount = $derived(
     (session.explorerVisible ? 1 : 0) + (tagsPresent && session.tagsVisible ? 1 : 0),
   );
 
-  // When a NEW Concept is created from the tree it opens focused on the `type`
-  // field (the one the user must fill for OKF validity). This holds the path we
-  // want focused; the Properties panel focuses `type` while it matches the open
-  // Concept, then we clear it so ordinary navigation doesn't steal focus.
+  // New-Concept create focuses the `type` field: the path we want focused. The
+  // active Pane's Properties focuses `type` while it matches its open Concept.
   let focusTypeForPath = $state<string | null>(null);
-  const focusTypeNow = $derived(
-    focusTypeForPath !== null && focusTypeForPath === editor.path,
-  );
-
-  // --- Export as PDF (export-pdf button / Ctrl+P) --------------------------
-  // The desktop reading view is CodeMirror, which VIRTUALIZES its content — so
-  // it can't be printed directly. Instead we open a SEPARATE print/PDF preview
-  // window (`backend.openPrintWindow`) that renders the open Concept to static,
-  // server-quality HTML and offers reader controls (font size, margins) plus
-  // Print / Save-as-PDF — so the PDF can be inspected before saving. NO-OP when
-  // no Concept is open.
-  async function exportPdf(): Promise<void> {
-    const path = editor.path;
-    if (path === null) return;
-    await backend.openPrintWindow(path);
-  }
 
   onMount(() => {
-    // Slug-anchor rewriting: after each autosave, reconcile any heading-slug
-    // change by rewriting inbound anchors (see `onEditorSaved`).
-    editor.onSaved = onEditorSaved;
+    // Slug-anchor rewriting: after each autosave, reconcile heading-slug changes
+    // by rewriting inbound anchors. The edit happened in the focused (active)
+    // Pane, so route the save hook to it (its view holds the anchor baseline).
+    editor.onSaved = (path) => activePaneRef?.handleSaved(path);
 
-    // Apply the OS-driven theme and keep it live.
     const stopTheme = theme.start();
-
-    // Mirror DOM focus into the `focus` store so the active Region can be styled
-    // reactively and directional movement knows where it is (region-focus-backbone).
     const stopFocus = focus.start();
-
-    // Transient auto-reveal (slice: transient-region-auto-reveal): when focus
-    // TRULY lands in a DIFFERENT Region, snap every transiently-revealed
-    // collapsible back to its persisted state — except the reveal keeping the
-    // just-entered Region shown (focusing a freshly-revealed Region fires the
-    // very focusin that runs this, so we must not undo its own reveal). The
-    // store fires this only on a region→different-region focusin, NOT when focus
-    // goes to an overlay (focusedRegion → null), so a QuickNav/Search
-    // open-then-cancel that returns focus to the peeked Region keeps it open.
     focus.onLeaveRegion = (entered) => session.clearTransientRevealsExcept(entered);
 
-    // Load the Bundle, then restore persisted per-Bundle session state:
-    // expanded folders + last-open Concept. Both must wait for their data
-    // (the tree, the session) before applying.
+    // Register the single 'editor' Region on the editor-area container (spanning
+    // all tiles). Its entry point focuses the ACTIVE Pane's view; present/visible
+    // whenever a Concept is open.
+    if (editorArea) {
+      unregisterEditor = focus.register('editor', {
+        container: editorArea,
+        focus: () => activePaneRef?.focusView() ?? false,
+        isPresent: () => editor.path !== null,
+        isVisible: () => editor.path !== null,
+      });
+    }
+
     void (async () => {
       await Promise.all([bundle.load(), session.load()]);
 
-      // Restore the persisted editor mode (persist-editor-mode). Seed the rune so
-      // any LATER `buildEditor` uses it as `initialMode`, and — since the view is
-      // built early with an empty doc, before this load resolves — reconfigure the
-      // existing view in place so the restored Concept lands in the saved mode.
-      editorMode = session.editorMode;
-      if (view) setEditorMode(view, editorMode);
+      // Restore the persisted editor mode onto the initial (active) Pane.
+      activePaneRef?.setMode(session.editorMode);
 
-      // Seed the default-open folders (depth < 2) for a FRESH Bundle (no stored
-      // session). Otherwise honour exactly what was restored.
       if (
         bundle.tree &&
         session.expandedFolders.size === 0 &&
@@ -653,35 +128,23 @@
         for (const p of defaultOpenFolders(bundle.tree, 2)) session.setExpanded(p, true);
       }
 
-      // Restore the last-open Concept, then mark restoration complete so the
-      // persistence effect/seeded defaults begin saving (gated until now so a
-      // transient `editor.path === null` mid-restore cannot wipe stored state).
       if (session.lastOpenConcept) {
         await editor.open(session.lastOpenConcept);
+        activePaneRef?.setMode(session.editorMode);
       }
       session.endRestore();
 
-      // Land the keyboard cursor in the Explorer on first paint (see the
-      // function's note — it no-ops if focus has already moved somewhere).
       focusExplorerInitial();
     })();
 
-    // Seed the broken-link existence cache from the Bundle index.
     void indexStore.refresh();
 
-    // Subscribe to filesystem changes from the backend watcher. On any change:
-    // refresh the tree (add/remove/rename), reload the open Concept if it
-    // changed, and refresh the index's existing-path set so broken-link styling
-    // restyles created/removed targets. Sapphire's own autosave writes are
-    // suppressed by the backend, so they never arrive here (no reload loop).
     const unsubscribe = backend.onFileChanged((change) => {
       void bundle.load();
       void editor.onExternalChange(change.kind, change.paths);
       void indexStore.refresh();
     });
 
-    // Quick-nav palette: Ctrl+K (Cmd+K on macOS) toggles it. Checked before the
-    // Alt-only history shortcuts below so it doesn't collide with them.
     const onKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -689,58 +152,47 @@
         return;
       }
 
-      // Full-text search: Ctrl+Shift+F (Cmd+Shift+F on macOS). Requires Shift so
-      // it doesn't collide with the (Cmd/Ctrl)+F editor find or other shortcuts.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         searchOpen = !searchOpen;
         return;
       }
 
-      // Export as PDF: Ctrl/Cmd+P. Intercept so it opens our clean print/PDF
-      // preview window (not the OS print dialog over the virtualized editor).
-      // Only when a Concept is open; otherwise let the browser handle it.
+      // Export as PDF: Ctrl/Cmd+P opens the clean print/PDF preview for the active
+      // Concept. Only when a Concept is open; otherwise let the browser handle it.
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'p') {
-        if (editor.path === null) return; // nothing open: don't hijack print.
+        if (editor.path === null) return;
         e.preventDefault();
-        void exportPdf();
+        void backend.openPrintWindow(editor.path);
         return;
       }
 
-      // In-Concept Find: Ctrl/Cmd+F (no Shift). App owns this binding so it grabs
-      // focus from anywhere; we intercept, focus the editor, and open the
-      // built-in find panel via the editor's exposed `openSearch`. NO-OP when no
-      // Concept is open (no view / no path) — there is nothing to find in.
+      // In-Concept Find: Ctrl/Cmd+F. Focus the active Pane's editor + open its
+      // find panel. NO-OP when no Concept is open.
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
-        if (!view || editor.path === null) return; // no Concept open: no-op.
+        if (editor.path === null) return;
         e.preventDefault();
-        view.focus();
-        openSearch(view);
+        activePaneRef?.enterFind();
         return;
       }
 
-      // Unified undo/redo (unified-body-frontmatter-undo): route Ctrl/Cmd+Z,
-      // Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y to the editor's history so undo works
-      // even when focus is in a Properties <input> (outside the CodeMirror DOM).
-      // When focus IS inside the editor we do nothing here and let CM's own
-      // historyKeymap handle it natively (no double-handling).
+      // Unified undo/redo: route Ctrl/Cmd+Z/Shift+Z/Y to the active Pane's history
+      // unless focus is already inside a CodeMirror editor (CM handles it natively).
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         const key = e.key.toLowerCase();
         const isUndo = key === 'z' && !e.shiftKey;
         const isRedo = (key === 'z' && e.shiftKey) || key === 'y';
         if (isUndo || isRedo) {
-          const inEditor = !!view && view.dom.contains(document.activeElement);
-          if (inEditor) return; // CM's keymap handles it.
+          const inEditor = !!(document.activeElement as HTMLElement | null)?.closest('.cm-editor');
+          if (inEditor) return;
           e.preventDefault();
-          if (isUndo) doUndo();
-          else doRedo();
+          if (isUndo) activePaneRef?.undoActive();
+          else activePaneRef?.redoActive();
           return;
         }
       }
 
-      // Browser-style history shortcuts moved to Ctrl+Alt+Left/Right
-      // (Obsidian-style) so plain Alt+Left/Right is free for Region movement
-      // (region-focus-backbone). Ctrl+Alt+arrow only — no Shift/Meta.
+      // Browser-style history: Ctrl+Alt+Left/Right on the active Pane.
       if (e.ctrlKey && e.altKey && !e.metaKey && !e.shiftKey) {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
@@ -753,41 +205,25 @@
         }
       }
 
-      // Review mode owns Escape first: one press exits the read-only review view
-      // and returns to normal editing at the working-tree version (review-toggle).
+      // Review mode owns Escape first: exit the active Pane's review view.
       if (
         e.key === 'Escape' &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey &&
         !e.shiftKey &&
-        reviewActive
+        activePaneRef?.isReviewActive()
       ) {
         e.preventDefault();
-        exitReview();
+        activePaneRef.exitReview();
         return;
       }
 
-      // Escape: the UNIFIED peel (slice: escape-peel-restore-opener). One layer
-      // per press, innermost first — in-field edit → overlay → Region → Editor.
-      // The decision lives in `focus.escape`; here we only compute whether an
-      // INNERMOST LOCAL peel owns this press (layer 1), and let the store resolve
-      // the rest (overlay stack → Region → Editor).
+      // Escape: the UNIFIED peel — one layer per press, innermost first.
       if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-        // Layer-1 (local) peels the global handler must NOT steal:
-        //  - Properties in a deeper mode: a list value cell has three depths —
-        //    text-edit (`edit`) → chip sub-nav (`chips`) → grid nav (`nav`). The
-        //    inner modes peel locally (Properties / PropertyRow); only `nav`
-        //    bubbles to the Region peel.
-        //  - CodeMirror's Find: while the editor holds focus, CM's own keymap
-        //    handles Escape (closing the Find panel, ADR-noted), so we defer.
-        //    The Editor with nothing open is layer 4 (no-op) — deferring there is
-        //    harmless (CM no-ops too).
         const propertiesPeel =
           focus.focusedRegion === 'properties' && propertiesNav.mode !== 'nav';
         const editorPeel = focus.focusedRegion === 'editor';
-        // Quick-nav tag drill-down: Escape steps back to the normal search
-        // (handled locally in QuickNav) before the palette itself closes.
         const quickNavTagPeel = quickNavOpen && quickNavTagActive;
         const localPeelActive = propertiesPeel || editorPeel || quickNavTagPeel;
         if (focus.escape(localPeelActive)) e.preventDefault();
@@ -801,14 +237,8 @@
         focus.moveFocus(dir);
       }
     };
-    // Capture phase so the palette shortcut wins even when focus is inside the
-    // CodeMirror editor (whose keymap would otherwise swallow the event).
     window.addEventListener('keydown', onKeydown, true);
 
-    // Mouse back/forward (the thumb buttons) drive history navigation, mirroring
-    // Ctrl+Alt+Left/Right. `button === 3` is Back, `button === 4` is Forward.
-    // We handle `mouseup` and preventDefault on `mousedown` so the webview never
-    // also tries its own native navigation.
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 3 || e.button === 4) e.preventDefault();
     };
@@ -834,161 +264,97 @@
       focus.onLeaveRegion = null;
       unregisterEditor?.();
       unregisterEditor = null;
-      view?.destroy();
-      view = null;
-      reviewView?.destroy();
-      reviewView = null;
     };
   });
 
-  // Apply the resolved theme as `data-theme` on the app root, so both the app
-  // UI and the atomic-editor (cm.ts reads the inherited attribute) are themed
-  // consistently. Re-runs when the OS scheme (or future mode) changes.
+  // Apply the resolved theme as `data-theme` on the app root (each Pane's view
+  // mirrors it onto its own CodeMirror root).
   $effect(() => {
     const resolved = theme.resolved;
     if (appRoot) appRoot.setAttribute('data-theme', resolved);
-    // The atomic-editor reads `data-theme` on the CodeMirror root; keep it in
-    // sync with the app theme so the editor is themed identically.
-    if (view) view.dom.setAttribute('data-theme', resolved);
-    // The read-only review buffer (when active) is themed identically.
-    if (reviewView) reviewView.dom.setAttribute('data-theme', resolved);
   });
 
-  // Mermaid theme-sync (ADR-0005): a rendered Diagram is a baked SVG inside a
-  // CodeMirror StateField, outside Svelte reactivity, so the `data-theme` flip
-  // above cannot recolour it. Dispatch a theme-changed StateEffect into the
-  // editor when `theme.resolved` changes; the mermaid field rebuilds on it and
-  // re-renders existing diagrams in the new mermaid theme. Sibling to the
-  // `data-theme` effect above so both react to the same `theme.resolved` flip.
-  $effect(() => {
-    const resolved = theme.resolved;
-    if (view) setEditorMermaidTheme(view, resolved);
-  });
-
-  // Persist the last-open Concept whenever navigation changes it (tree click,
-  // link, back/forward all funnel through `editor.path`).
+  // Persist the last-open Concept whenever active-Pane navigation changes it.
   $effect(() => {
     const path = editor.path;
     if (session.restored) {
       session.setLastOpenConcept(path);
-      // Record every opened Concept in the per-Bundle recent-files list (used by
-      // the quick-nav palette). Back/forward also funnel through `editor.path`,
-      // so revisiting bumps a Concept back to the front (dedup in the store).
       if (path !== null) session.pushRecentFile(path);
     }
   });
 
-  // Build / update the CodeMirror view whenever the open Concept content changes.
-  // The editor holds only the BODY; the frontmatter is split off into the
-  // editor's frontmatter field (ADR 0003). On a self-edit the recombined content
-  // matches what the view already holds, so `setEditorConcept` is a no-op.
-  $effect(() => {
-    const content = editor.content;
-    if (!editorParent) return;
-
-    const { body } = splitFrontmatter(content);
-    const props = parseProperties(content);
-
-    if (!view) {
-      view = buildEditor({
-        parent: editorParent,
-        doc: body,
-        frontmatter: props,
-        path: editor.path,
-        initialMode: editorMode,
-        onChange: (full) => editor.edit(full),
-        onFrontmatterChange: (p) => (frontmatterProps = p),
-        onBlur: () => void editor.flush(),
-        onHistory: syncHistoryDepths,
-        onLinkClick: handleLinkClick,
-        onCommentEdit: openCommentPopup,
-        brokenLinkContext: {
-          currentPath: () => editor.path ?? '',
-          exists: (path) => indexStore.exists(path),
-        },
-        wikiLinkContext: {
-          currentPath: () => editor.path ?? '',
-          allPaths: () => indexStore.pathList(),
-          exists: (path) => indexStore.exists(path),
-          open: handleWikiLinkOpen,
-        },
-      });
-      frontmatterProps = props;
-      syncHistoryDepths();
-      // Register the Editor Region with the focus backbone. Its entry point is
-      // the CodeMirror view (home base for Escape + the grid's centre column).
-      // Visible only when a Concept is open (the editor-host is hidden otherwise).
-      unregisterEditor = focus.register('editor', {
-        container: view.dom,
-        focus: () => {
-          view?.focus();
-          return true;
-        },
-        // The Editor is never collapse-hidden: present (and shown) iff a Concept
-        // is open. No `reveal` — there is nothing to un-collapse.
-        isPresent: () => editor.path !== null,
-        isVisible: () => editor.path !== null,
-      });
-    } else {
-      // No-op when body + frontmatter are unchanged (guards against feedback
-      // from edits); updates the field on Concept switch / external reload. A
-      // path change triggers a state rebuild (fresh, empty history) so undo
-      // cannot cross the Concept boundary.
-      setEditorConcept(view, body, props, editor.path);
-    }
-
-    // Full-text search: after the matching Concept's document is in the view,
-    // scroll to (and place the cursor on) the matched line, then clear the
-    // request so ordinary edits don't re-scroll. Runs in this effect because it
-    // must happen AFTER the doc replacement above.
-    if (pendingScrollLine !== null && view) {
-      scrollToLine(view, pendingScrollLine);
-      pendingScrollLine = null;
-    }
-
-    // Wikilink anchor (`[[target#heading]]`): after the target document is in
-    // the view, scroll to the matching heading via the same Outline mechanism.
-    // Best-effort — clear regardless so a missing heading doesn't re-trigger.
-    if (pendingScrollAnchor !== null && view) {
-      const line = findHeadingLine(editor.content, pendingScrollAnchor);
-      if (line !== null) scrollToOutlineLine(line);
-      pendingScrollAnchor = null;
-    }
-  });
-
-  // Keep broken-link styling fresh: re-run the decoration whenever the index's
-  // existing-path set changes (file-changed → indexStore.version bumps) or the
-  // open Concept switches (relative links resolve against a new base path).
-  $effect(() => {
-    // Track both reactive deps so the effect re-runs on either change.
-    void indexStore.version;
-    void editor.path;
-    if (view) {
-      refreshBrokenLinkDecorations(view);
-      // Same signal clears the wikilink resolve-cache: reconfiguring the
-      // Compartment recreates the wikiLinks StateField so stale resolutions
-      // (created/removed targets) re-resolve. (ADR-0004.)
-      reconfigureWikiLinks(view);
-    }
-  });
-
   function openConcept(path: string) {
-    // Plain navigation cancels any pending "focus type" request from a create.
     focusTypeForPath = null;
     void editor.open(path);
   }
 
-  // The Explorer's tree-pane element (the `explorer` Region container). Used to
-  // drive DOM focus onto the Focused-item row as the keyboard cursor moves, so
-  // the region backbone's sticky last-item memory and the active-Region mirror
-  // both track it.
+  // Close a tile, then land keyboard focus in the neighbour that inherited the
+  // active slot (workspace.closePane picks it). Closing the last tile clears the
+  // Pane to the empty state (no view to focus — focusEditorWhenReady no-ops).
+  async function closeTileAndFocus(id: string) {
+    await workspace.closePane(id);
+    focusEditorWhenReady();
+  }
+
+  // --- Column / tile divider drags (pure size math in `paneLayout.ts`) --------
+  // Each drag captures the layout snapshot at pointer-down and applies the total
+  // pointer delta (as a fraction of the container axis) from that base, so the
+  // clamp is idempotent — dragging past a neighbour's minimum stops cleanly and
+  // reversing recovers. Assigning `workspace.layout` keeps every column keyed by
+  // id, so the live CodeMirror views survive the re-render (only weights change).
+  function onColumnDividerDown(e: PointerEvent, boundaryIndex: number) {
+    if (e.button !== 0 || !editorArea) return;
+    e.preventDefault();
+    const width = Math.max(editorArea.getBoundingClientRect().width, 1);
+    const startX = e.clientX;
+    const base = workspace.layout;
+    const el = e.currentTarget as HTMLElement;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* best-effort: window listeners below catch the moves regardless */
+    }
+    const move = (ev: PointerEvent) => {
+      const delta = (ev.clientX - startX) / width;
+      workspace.layout = layoutResizeColumns(base, boundaryIndex, delta, MIN_WEIGHT);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  function onTileDividerDown(e: PointerEvent, columnIndex: number, boundaryIndex: number) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const columnEl = el.parentElement;
+    if (!columnEl) return;
+    const height = Math.max(columnEl.getBoundingClientRect().height, 1);
+    const startY = e.clientY;
+    const base = workspace.layout;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* best-effort: window listeners below catch the moves regardless */
+    }
+    const move = (ev: PointerEvent) => {
+      const delta = (ev.clientY - startY) / height;
+      workspace.layout = layoutResizeTiles(base, columnIndex, boundaryIndex, delta, MIN_WEIGHT);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  // --- Explorer keyboard nav + CRUD (unchanged from single-pane) --------------
   let treePane = $state<HTMLDivElement | null>(null);
 
-  // Within-Region keyboard navigation for the Explorer (explorer-keyboard-nav).
-  // Cross-Region movement (Alt+dir) + Escape→Editor stay in the global capture
-  // handler in onMount; THIS handles the unmodified arrow/hjkl/Enter/Home/End
-  // keys LOCALLY on the tree-pane. The store moves the Focused item (a tree row)
-  // independently of the open Concept; an effect below mirrors it into DOM focus.
   function onTreeKeydown(e: KeyboardEvent) {
     const handled = explorerNav.handleKeydown(e, bundle.tree, {
       isExpanded: (p) => session.isExpanded(p),
@@ -999,18 +365,12 @@
       e.preventDefault();
       return;
     }
-    // CRUD letter keys (slice: explorer-crud-keybindings): r/F2, d/Delete, a,
-    // A (Shift+a), m fire the existing TreeCrud dialogs on the Focused item.
-    // Never fire while typing in a text input (the dialogs' own fields sit
-    // OUTSIDE this tree-pane handler, but guard defensively all the same).
     if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) {
       return;
     }
     const crudHandled = explorerNav.handleCrudKeydown(e, {
       rename: (p) => treeCrud?.requestRename(p),
       remove: (p) => {
-        // Pre-resolve the neighbour to land on AFTER the delete, while the tree
-        // is still current (the row vanishes once the delete commits).
         const rows = flattenVisible(bundle.tree, (q) => session.isExpanded(q));
         pendingDeleteNeighbor = neighborAfterRemoval(rows, p);
         treeCrud?.requestDelete(p);
@@ -1022,22 +382,10 @@
     if (crudHandled) e.preventDefault();
   }
 
-  // The Focused-item row to restore to when a keyboard-triggered CRUD dialog is
-  // cancelled (the Explorer's cursor at open time), and the neighbour to land on
-  // after a delete commits (resolved before the row vanishes). See the TreeCrud
-  // `oncommit`/`oncancel` wiring below.
   let pendingDeleteNeighbor = $state<string | null>(null);
 
-  // Return focus to the Explorer with `path` as the Focused item — used after a
-  // CRUD dialog commits (the affected node becomes the cursor) so create/rename/
-  // move/delete all end with the keyboard back in the tree on a sensible row.
   function refocusExplorerAt(path: string | null) {
     if (path !== null) explorerNav.setFocused(path);
-    // The affected row may not be in the DOM yet — a create/rename/move awaits a
-    // backend round-trip and a `bundle.load()`, whose reactive re-render lands a
-    // frame or two later. Retry across a few animation frames until the row
-    // exists, then focus it: focusing a row inside the Explorer container makes
-    // it the active Region (the focus mirror picks it up) and the Focused item.
     let tries = 0;
     const tryFocus = () => {
       const target = explorerNav.focusedPath;
@@ -1054,17 +402,11 @@
     requestAnimationFrame(tryFocus);
   }
 
-  // On first load, start keyboard focus in the Explorer so the app opens WITH a
-  // Focused item rather than with focus nowhere (focusedRegion === null). Picks
-  // the first visible row and focuses it once it has rendered. Bails the moment
-  // anything else already holds focus (a fast click into another Region, a
-  // restore flow that focused the Editor) so it can never steal focus from an
-  // interaction the user has already started. Runs once from onMount.
   function focusExplorerInitial() {
     let tries = 0;
     const attempt = () => {
       const active = document.activeElement;
-      if (active && active !== document.body) return; // something already has focus
+      if (active && active !== document.body) return;
       const root = bundle.tree;
       if (treePane && root) {
         const rows = flattenVisible(root, (q) => session.isExpanded(q));
@@ -1095,33 +437,22 @@
   }
 
   function onCrudCancel() {
-    // Restore focus to the Explorer at the row that was focused when the dialog
-    // opened (the current `focusedPath` is unchanged by opening a dialog).
     refocusExplorerAt(explorerNav.focusedPath);
     pendingDeleteNeighbor = null;
   }
 
-  // Enter on a file row: open the Concept AND move focus to the Editor (the
-  // Focused item and the open Concept coincide here, then diverge if the user
-  // arrows back into the tree). Routes through the same `editor.open` navigation
-  // path as a click, then focuses the CodeMirror view once it has the document.
   function openConceptFromTree(path: string) {
     openConcept(path);
-    // Focus the Editor after the open settles. `editor.open` is async and the
-    // view updates reactively; a microtask defer lets the build/update effect
-    // run first so `view` points at the new Concept before we focus it.
-    queueMicrotask(() => view?.focus());
+    focusEditorWhenReady();
   }
 
-  // Focus the CodeMirror view once it exists. Used when opening a Concept from a
-  // Region with NOTHING open yet (e.g. Enter on a Tags concept leaf on a fresh
-  // load): `view` is null until the build effect runs, so a single microtask is
-  // too early. Retry across a few animation frames until the view is built.
+  // Focus the active Pane's CodeMirror view once it exists (retry across frames,
+  // since the view (re)builds reactively and may be null the next microtask).
   function focusEditorWhenReady() {
     let tries = 0;
     const tryFocus = () => {
-      if (view) {
-        view.focus();
+      if (activePaneRef?.hasView()) {
+        activePaneRef.focusView();
       } else if (tries++ < 10) {
         requestAnimationFrame(tryFocus);
       }
@@ -1129,11 +460,7 @@
     requestAnimationFrame(tryFocus);
   }
 
-  // Mirror the Focused-item path into DOM focus: when the keyboard cursor moves
-  // (arrowing, Home/End, parent-jump), focus the matching row element so the
-  // region backbone records it as the Explorer's remembered item and the
-  // active-Region highlight tracks it. Only acts while the Explorer holds focus
-  // (so a click elsewhere or a programmatic path change can't steal focus).
+  // Mirror the Explorer Focused-item path into DOM focus while it holds focus.
   $effect(() => {
     const path = explorerNav.focusedPath;
     if (path === null || !treePane) return;
@@ -1144,19 +471,10 @@
     if (row && document.activeElement !== row) row.focus();
   });
 
-  // --- Outline & Backlinks within-Region keyboard navigation
-  // (outline-backlinks-keyboard-nav). Same shape as the Explorer above: a LOCAL
-  // onkeydown on each Region container routes the unmodified arrow/jk/Enter/Home/
-  // End keys to a flat-list nav store (`$lib/state/listFocusNav`), and an effect
-  // mirrors the store's Focused index into DOM focus while that Region is active.
-  // Cross-Region movement (Alt+dir) + Escape→Editor stay in the global handler.
+  // --- Outline & Backlinks within-Region keyboard navigation ------------------
   let outlineHost = $state<HTMLDivElement | null>(null);
   let backlinksHost = $state<HTMLDivElement | null>(null);
 
-  // Outline Enter: scroll the Editor to the heading (same path as a click) AND
-  // move focus to the Editor. The entry's full-document line rides on its
-  // rendered button's `data-line`, so we read it from the DOM rather than
-  // re-deriving the heading list here.
   function onOutlineKeydown(e: KeyboardEvent) {
     if (!outlineHost) return;
     const count = outlineHost.querySelectorAll('[data-testid="outline-entry"]').length;
@@ -1165,15 +483,12 @@
       const line = entry ? Number(entry.dataset.line) : NaN;
       if (Number.isFinite(line)) {
         scrollToOutlineLine(line);
-        queueMicrotask(() => view?.focus());
+        queueMicrotask(() => activePaneRef?.focusView());
       }
     });
     if (handled) e.preventDefault();
   }
 
-  // Backlinks Enter: open the linked Concept (routes through navigation/history,
-  // focus → Editor), exactly like clicking it. The source path rides on the
-  // rendered button's `data-path`.
   function onBacklinksKeydown(e: KeyboardEvent) {
     if (!backlinksHost) return;
     const count = backlinksHost.querySelectorAll('[data-testid="backlink"]').length;
@@ -1182,15 +497,12 @@
       const source = entry?.dataset.path;
       if (source) {
         openConcept(source);
-        queueMicrotask(() => view?.focus());
+        queueMicrotask(() => activePaneRef?.focusView());
       }
     });
     if (handled) e.preventDefault();
   }
 
-  // Mirror the Outline Focused index into DOM focus while the Outline holds
-  // focus, so the region backbone records its remembered item and the active-
-  // Region highlight tracks it. Mirrors the Explorer effect above.
   $effect(() => {
     const index = outlineNav.focusedIndex;
     if (index === null || !outlineHost) return;
@@ -1199,7 +511,6 @@
     if (entry && document.activeElement !== entry) entry.focus();
   });
 
-  // Mirror the Backlinks Focused index into DOM focus while Backlinks holds focus.
   $effect(() => {
     const index = backlinksNav.focusedIndex;
     if (index === null || !backlinksHost) return;
@@ -1208,159 +519,27 @@
     if (entry && document.activeElement !== entry) entry.focus();
   });
 
-  // Open a full-text search result: navigate to the Concept (through history),
-  // then scroll the editor to the matched line. We stash the line and let the
-  // editor-build $effect apply the scroll once the new document is loaded, so
-  // the scroll lands AFTER the doc replacement. Re-running search on the same
-  // open Concept (path unchanged) still scrolls: `editor.open` is a no-op then,
-  // so apply the scroll directly to the current view.
+  // Open a full-text search result in the active Pane, scrolling to the match.
   function openSearchResult(path: string, line: number) {
     focusTypeForPath = null;
-    if (editor.path === path) {
-      if (view) scrollToLine(view, line);
-    } else {
-      pendingScrollLine = line;
-      void editor.open(path);
-    }
+    activePaneRef?.openWithScrollLine(path, line);
   }
 
-  // Outline navigation (outline-section): scroll the editor to a heading's line
-  // when its Outline entry is clicked. The Outline tracks line numbers against
-  // the FULL document (frontmatter included) so the entry is unambiguous, but
-  // the CodeMirror view holds only the BODY (frontmatter is split off, ADR
-  // 0003). So convert the full-document line to a body-relative line by
-  // subtracting the frontmatter block's line count before scrolling.
+  // Scroll the active Pane's editor to an Outline heading's full-document line.
   function scrollToOutlineLine(line: number) {
-    if (!view) return;
-    scrollToLine(view, line - frontmatterLineCount(editor.content));
+    activePaneRef?.scrollToDocLine(line);
   }
 
-  // OKF link navigation (slice 5). A rendered-link click in the live preview is
-  // routed here: external links open in a browser tab (preserving prior
-  // behavior); bundle-absolute / relative links resolve against the open
-  // Concept's path and navigate the single editor pane (pushing history).
-  function handleLinkClick(href: string) {
-    const open = editor.path ?? '';
-    const target = resolveLink(open, href);
-    if (target.kind === 'external') {
-      window.open(target.href, '_blank', 'noopener,noreferrer');
-    } else if (target.kind === 'internal') {
-      // Same-Concept link with an anchor → scroll immediately; otherwise open the
-      // target and (if anchored) scroll once it loads (same path as wikilinks).
-      handleWikiLinkOpen(target.path, target.anchor);
-    } else if (href.trim().startsWith('#')) {
-      // Pure same-page anchor (`[toc](#section)`): scroll to the heading (slug).
-      const line = findHeadingLine(editor.content, href.trim().slice(1));
-      if (line !== null) scrollToOutlineLine(line);
-    }
-  }
-
-  // Wikilink navigation (ADR-0004). The editor's wikilink adapter resolves a
-  // clicked `[[name]]` to a bundle path (name-based) and routes here. We open
-  // the target Concept in-app (same single-pane history as markdown links); if
-  // it carried a `#heading` anchor we stash it so the editor-build effect can
-  // scroll to that heading once the target document is loaded. A same-Concept
-  // anchor jump (path unchanged) scrolls immediately.
-  function handleWikiLinkOpen(path: string, anchor: string | null) {
-    focusTypeForPath = null;
-    if (path === (editor.path ?? '')) {
-      if (anchor !== null && view) {
-        const line = findHeadingLine(editor.content, anchor);
-        if (line !== null) scrollToOutlineLine(line);
-      }
-      return;
-    }
-    pendingScrollAnchor = anchor;
-    void editor.open(path);
-  }
-
-  // Slug-anchor rewriting (slice: slug-anchor-rewrite). Fired after each autosave
-  // of the open Concept. The editor's `anchorTracking` field remembers each
-  // heading's identity across edits; `pendingAnchorRenames` tells us which
-  // headings' GitHub slugs changed since the last baseline. For each such rename
-  // we:
-  //   1. rewrite SAME-FILE anchors (`[[#old]]`, `[[self#old]]`) IN THE BUFFER via
-  //      a minimal change, so the open Concept stays consistent without a disk
-  //      round-trip / reload (which would jump the cursor);
-  //   2. rewrite CROSS-FILE inbound anchors through the backend, surfacing the
-  //      same unobtrusive toast as rename/move;
-  //   3. re-baseline the tracker to the new heading slugs.
-  function onEditorSaved(path: string) {
-    if (!view) return;
-    const renames = pendingAnchorRenames(view);
-    if (renames.length === 0) return;
-    const allPaths = indexStore.pathList();
-
-    // 1. Same-file anchors, in-buffer. Apply as a minimal (prefix/suffix-trimmed)
-    //    change so the selection maps through it and the cursor does not jump.
-    const body = view.state.doc.toString();
-    const { content: newBody } = rewriteAnchorsIn(path, body, path, renames, allPaths);
-    const change = minimalChange(body, newBody);
-    if (change) view.dispatch({ changes: change });
-
-    // 2. Cross-file inbound anchors, via the backend (target excluded there).
-    void backend.rewriteAnchors(path, renames).then((summary) => {
-      treeActions.noteRewrite(summary);
-    });
-
-    // 3. Re-baseline so the next save diffs against the current heading slugs.
-    commitAnchorBaseline(view);
-  }
-
-  // The single {from,to,insert} edit covering the difference between two strings
-  // (common prefix + suffix trimmed). Returns null when they are equal. Keeps an
-  // in-buffer rewrite localized so CodeMirror maps the cursor through it.
-  function minimalChange(
-    oldStr: string,
-    newStr: string,
-  ): { from: number; to: number; insert: string } | null {
-    if (oldStr === newStr) return null;
-    let start = 0;
-    const max = Math.min(oldStr.length, newStr.length);
-    while (start < max && oldStr[start] === newStr[start]) start++;
-    let endOld = oldStr.length;
-    let endNew = newStr.length;
-    while (endOld > start && endNew > start && oldStr[endOld - 1] === newStr[endNew - 1]) {
-      endOld--;
-      endNew--;
-    }
-    return { from: start, to: endOld, insert: newStr.slice(start, endNew) };
-  }
-
-  // A frontmatter property edit: dispatch the new properties into the editor's
-  // frontmatter field. The editor's change listener recombines `serialize(props)
-  // + body` and routes it through `editor.edit` (autosave); we then flush so
-  // frontmatter edits persist immediately (matching the prior behavior).
-  function onPropertiesChange(props: Property[]) {
-    if (!view) return;
-    // Dispatch as a discrete, isolated history step so each committed
-    // frontmatter action is its own undo step and never coalesces with body
-    // typing (unified-body-frontmatter-undo).
-    dispatchFrontmatter(view, props);
-    void editor.flush();
-  }
-
-  // --- Tree CRUD: context menu + dialogs (slice: tree-crud) ---
-  // The menu + dialogs live in TreeCrud.svelte; App keeps a reference so the
-  // tree rows / root affordances can open the menu via its exported `openMenu`,
-  // and binds `focusTypeForPath` so create-concept/create-reserved can drive the
-  // focus-the-type request App owns (see the focus-type comment above).
+  // --- Tree CRUD: context menu + dialogs --------------------------------------
   let treeCrud = $state<ReturnType<typeof TreeCrud> | null>(null);
   function openMenu(node: TreeNode, x: number, y: number) {
     treeCrud?.openMenu(node, x, y);
   }
 
-  // The Bundle root is rendered here directly (not via <Tree/>), so its own
-  // reserved-file handling lives here: strip reserved files from the root leaf
-  // listing and surface them as affordances on a root header row (slice:
-  // reserved-files — index.md can appear at ANY level, including the root).
   const rootOrdinary = $derived(bundle.tree ? ordinaryChildren(bundle.tree) : []);
   const rootReservedSorted = $derived(bundle.tree ? reservedChildren(bundle.tree) : []);
   const ROOT_RESERVED_GLYPH: Record<ReservedKind, string> = { index: '☰', log: '🕑' };
 
-  // Auto-dismiss the link-rewrite notice a few seconds after it appears. Keyed
-  // on the notice `id` so each new move restarts the timer (and re-shows even an
-  // identical message). Kept unobtrusive — it never blocks interaction.
   $effect(() => {
     const notice = treeActions.notice;
     if (notice === null) return;
@@ -1381,10 +560,6 @@
     data-testid="side-bar"
     style="--expanded-count: {expandedCount}"
   >
-    <!-- Fixed-width inner, anchored to the sidebar's right edge (the aside uses
-         `justify-content: flex-end`). When the aside's width animates to 0 the
-         inner keeps its width and slides out to the left, clipped by the aside's
-         `overflow: hidden` — a clean slide rather than a content squish. -->
     <div class="side-bar-inner">
     <SidebarSection
       title="Explorer"
@@ -1393,20 +568,13 @@
       testid="explorer-section"
       region={{
         id: 'explorer',
-        // Always present (the Explorer holds the Bundle tree even when empty).
         isPresent: () => true,
-        // Shown when the left Sidebar AND the Explorer Section are effectively
-        // open (persisted or transiently revealed).
         isVisible: () => session.leftSidebarVisible && session.explorerVisible,
-        // Reveal opens whichever collapse hid it (the Sidebar and/or Section).
         reveal: () => session.revealLeftSection('explorer'),
       }}
     >
       {#snippet actions()}
         {#if rootReservedSorted.length > 0}
-          <!-- Bundle-root reserved files (index.md / log.md) surface as icon
-               buttons on the Explorer header rather than as tree rows, so the
-               root listing shows only ordinary Concepts and folders. -->
           <div class="root-reserved" data-testid="root-reserved">
             {#each rootReservedSorted as r (r.path)}
               <button
@@ -1423,10 +591,6 @@
           </div>
         {/if}
       {/snippet}
-      <!-- The pane (not just the row list) is the Bundle-root drop zone, so the
-           empty space below the rows is droppable. Folder/file rows stopPropagation
-           on their own drags, so any drag event reaching here is over bare space
-           and resolves to "move to the Bundle root". -->
       <div
         class="tree-pane"
         class:drop-target={treeDnd.dropTarget === ''}
@@ -1465,7 +629,6 @@
         class="tree-root"
         data-testid="tree"
         oncontextmenu={(e) => {
-          // Right-click on empty tree space targets the Bundle root.
           if (e.target === e.currentTarget && bundle.tree) {
             e.preventDefault();
             openMenu(bundle.tree, e.clientX, e.clientY);
@@ -1491,11 +654,6 @@
       </div>
     </SidebarSection>
 
-    <!-- Tags lives in the left Sidebar (Backlinks moved to the right Sidebar).
-         It refreshes via the shared index `version` signal (bumped on every
-         file-changed) — the same mechanism the broken-link cache uses, so no
-         bespoke refresh path. Selecting an entry routes through `openConcept`
-         (editor navigation) for back/forward history. -->
     {#if tagsPresent}
       <SidebarSection
         title="Tags"
@@ -1504,9 +662,6 @@
         testid="tags-section"
         region={{
           id: 'tags',
-          // Present only when the Bundle carries tags (else skipped, never
-          // revealed). The `{#if tagsPresent}` gate above already unmounts the
-          // Region when absent, but the predicate keeps the contract explicit.
           isPresent: () => tagsPresent,
           isVisible: () => tagsPresent && session.leftSidebarVisible && session.tagsVisible,
           reveal: () => session.revealLeftSection('tags'),
@@ -1517,12 +672,6 @@
           selected={editor.path}
           onopen={openConcept}
           onopenFocus={(p) => {
-            // Keyboard Enter on a concept leaf: open AND move focus to the
-            // Editor (CONTEXT.md). `editor.open` is async and the view is
-            // (re)built in a reactive effect a frame or two later — and when
-            // NO Concept was open yet, `view` is still null at the next
-            // microtask. So retry focusing across a few frames until the view
-            // exists, mirroring the Explorer's post-CRUD refocus.
             openConcept(p);
             focusEditorWhenReady();
           }}
@@ -1541,141 +690,67 @@
       onToggleRight={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
       onToggleProperties={toggleProperties}
     />
-    <!-- Per-Pane header: carries every logically per-Pane control for the active
-         Concept (title, close, split, view mode, undo/redo, review, export,
-         history). Still single-pane — it describes `editor.path`. -->
-    <PaneHeader
-      title={currentPaneTitle}
-      hasOpenConcept={editor.path !== null}
-      canGoBack={editor.canGoBack}
-      canGoForward={editor.canGoForward}
-      {editorMode}
-      {canUndo}
-      {canRedo}
-      {reviewActive}
-      reviewEnabled={reviewAvail.enabled}
-      reviewTooltip={reviewAvail.tooltip}
-      onBack={() => void editor.back()}
-      onForward={() => void editor.forward()}
-      onClose={closePane}
-      onSplitRight={splitRight}
-      onSplitDown={splitDown}
-      onSetMode={changeEditorMode}
-      onUndo={doUndo}
-      onRedo={doRedo}
-      onToggleReview={toggleReview}
-      onExportPdf={exportPdf}
-    />
-    {#if editor.error}
-      <p class="status error">{editor.error}</p>
-    {/if}
-    {#if !editor.path && !editor.error}
-      <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
-    {/if}
-    {#if editor.path && !isReservedFile(editor.path)}
-      <div
-        class="region-host properties-host"
-        class:region-active={focus.focusedRegion === 'properties'}
-        data-region="properties"
-        use:region={{
-          id: 'properties',
-          // Properties is chrome inside the Editor pane: PRESENT iff a non-reserved
-          // Concept is open (absent → skipped, never revealed). It is also
-          // COLLAPSIBLE (the header chevron), so — like the Sidebar Sections — a
-          // collapsed panel is present-but-not-visible: directional focus into it
-          // transiently reveals the body and lands focus in the grid
-          // (properties-auto-reveal).
-          isPresent: () => editor.path !== null && !isReservedFile(editor.path),
-          isVisible: () =>
-            editor.path !== null &&
-            !isReservedFile(editor.path) &&
-            (!propertiesCollapsed || session.propertiesRevealed),
-          reveal: () => session.revealProperties(),
-        }}
-      >
-        <Properties
-          properties={frontmatterProps}
-          path={editor.path}
-          types={suggestions.types}
-          keys={suggestions.keys}
-          tags={suggestions.tags}
-          focusType={focusTypeNow}
-          onchange={onPropertiesChange}
-          bind:collapsed={propertiesCollapsed}
-        />
-      </div>
-    {/if}
-    <!-- The editor-host is CodeMirror's mount point (CM owns the inner ARIA); the
-         contextmenu handler only opens the annotate menu. Hidden while review is
-         active so the read-only review buffer takes its place (the normal editor
-         stays alive with its untouched working-tree content behind it). -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- The editor area: a ROW OF COLUMNS, each a vertical STACK of tiled Panes,
+         with draggable dividers between columns and between tiles. It is the
+         single 'editor' Region; the active Pane is where focus lands on entry.
+         (Sizing math lives in the pure `paneLayout.ts`; this just renders it.) -->
     <div
-      class="editor-host"
-      class:hidden={!editor.path || reviewActive}
+      class="editor-area"
       class:region-active={focus.focusedRegion === 'editor'}
       data-region="editor"
-      data-testid="editor"
-      bind:this={editorParent}
-      oncontextmenu={openEditorMenu}
-    ></div>
-    <!-- Read-only review buffer (working-tree ↔ HEAD). A SEPARATE CodeMirror
-         view, mounted only while review is active, showing the in-memory diff
-         with ticket 01's marks. It has no autosave wiring, so its text can never
-         reach disk. -->
-    {#if reviewActive}
-      <!-- History stepper (issue 05): walk backward through the open Concept's
-           commit history, one pair at a time. `← older` steps back a commit,
-           `newer →` steps toward the working tree; both disable at the ends. The
-           bar shows the current comparison and — for a committed newer side — its
-           short hash, subject and relative date. -->
-      <div class="review-stepper" data-testid="review-stepper">
-        <button
-          type="button"
-          class="nav-btn"
-          data-testid="review-older"
-          title="Compare the previous (older) commit pair"
-          aria-label="Older change"
-          disabled={!reviewStepInfo.canOlder}
-          onclick={() => stepReview(1)}>← older</button
-        >
-        <div class="review-stepper-meta">
-          <span class="review-comparison" data-testid="review-stepper-label"
-            >{reviewStepInfo.label}</span
-          >
-          {#if reviewStepInfo.newer}
-            <span class="review-hash" data-testid="review-stepper-hash"
-              >{reviewStepInfo.newer.hash}</span
-            >
-            <span class="review-subject" data-testid="review-stepper-subject"
-              >{reviewStepInfo.newer.subject}</span
-            >
-            <span class="review-date" data-testid="review-stepper-date"
-              >{reviewStepInfo.newer.relativeDate}</span
-            >
-          {/if}
+      data-testid="editor-area"
+      bind:this={editorArea}
+    >
+      {#each workspace.layout.columns as col, ci (col.id)}
+        <div class="editor-column" style="flex-grow: {col.weight}">
+          {#each col.tiles as tile, ti (tile.id)}
+            {@const pane = workspace.paneById(tile.id)}
+            {#if pane}
+              <div class="editor-tile" style="flex-grow: {tile.weight}">
+                <Pane
+                  bind:this={paneRefs[tile.id]}
+                  {pane}
+                  active={tile.id === workspace.activeId}
+                  {focusTypeForPath}
+                  onActivate={() => workspace.setActive(tile.id)}
+                  onSplitRight={() => {
+                    workspace.setActive(tile.id);
+                    workspace.splitRight();
+                  }}
+                  onSplitDown={() => {
+                    workspace.setActive(tile.id);
+                    workspace.splitDown();
+                  }}
+                  onClose={() => void closeTileAndFocus(tile.id)}
+                />
+              </div>
+            {/if}
+            {#if ti < col.tiles.length - 1}
+              <div
+                class="tile-divider"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize tiles"
+                data-testid="tile-divider"
+                onpointerdown={(e) => onTileDividerDown(e, ci, ti)}
+              ></div>
+            {/if}
+          {/each}
         </div>
-        <button
-          type="button"
-          class="nav-btn"
-          data-testid="review-newer"
-          title="Compare the next (newer) commit pair"
-          aria-label="Newer change"
-          disabled={!reviewStepInfo.canNewer}
-          onclick={() => stepReview(-1)}>newer →</button
-        >
-      </div>
-      <div class="editor-host review-host" data-testid="review-editor" bind:this={reviewParent}></div>
-    {/if}
+        {#if ci < workspace.layout.columns.length - 1}
+          <div
+            class="column-divider"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize columns"
+            data-testid="column-divider"
+            onpointerdown={(e) => onColumnDividerDown(e, ci)}
+          ></div>
+        {/if}
+      {/each}
+    </div>
   </main>
 
-  <!-- Right Sidebar: a second accordion mirroring the left one, anchored so its
-       fixed-width inner stays flush to the LEFT and slides out to the RIGHT edge
-       when the aside's width animates to 0 (the aside uses default
-       `justify-content: flex-start` and clips with `overflow: hidden`). It holds
-       the Outline + Backlinks Sections and starts COLLAPSED. Its
-       `--expanded-count` is its own (Outline + Backlinks), so the body cap
-       divides this sidebar's height independently of the left one. -->
   <aside
     class="side-bar right-side-bar"
     class:collapsed={!session.rightSidebarVisible}
@@ -1691,7 +766,6 @@
         testid="outline-section"
         region={{
           id: 'outline',
-          // Present iff a Concept is open (absent → skipped, never revealed).
           isPresent: () => editor.path !== null,
           isVisible: () =>
             session.rightSidebarVisible && session.outlineVisible && editor.path !== null,
@@ -1714,7 +788,6 @@
         testid="backlinks-section"
         region={{
           id: 'backlinks',
-          // Present iff a Concept is open (absent → skipped, never revealed).
           isPresent: () => editor.path !== null,
           isVisible: () =>
             session.rightSidebarVisible && session.backlinksVisible && editor.path !== null,
@@ -1741,10 +814,6 @@
     conceptsForTag={(tag) => backend.conceptsByTag(tag)}
     bind:tagActive={quickNavTagActive}
     onopen={(p) => {
-      // COMMIT: opening a Concept moves focus to the Editor (the action target),
-      // NOT back to the opener Region (escape-peel-restore-opener). Mirrors
-      // Enter-on-a-tree-row; retry-focus across frames since the view (re)builds
-      // reactively and may be null when opening from a fresh load.
       openConcept(p);
       focusEditorWhenReady();
     }}
@@ -1754,8 +823,6 @@
   <SearchPanel
     open={searchOpen}
     onopen={(path, line) => {
-      // COMMIT: jumping to a result opens the Concept and moves focus to the
-      // Editor (the action target), not back to the opener Region.
       openSearchResult(path, line);
       focusEditorWhenReady();
     }}
@@ -1774,41 +841,9 @@
       {treeActions.notice.message}
     </div>
   {/if}
-
-  {#if editorMenu}
-    <ContextMenu
-      x={editorMenu.x}
-      y={editorMenu.y}
-      items={editorMenu.items}
-      onselect={onEditorMenuSelect}
-      onclose={() => (editorMenu = null)}
-    />
-  {/if}
-
-  {#if annotationPopup}
-    <AnnotationPopup
-      x={annotationPopup.x}
-      y={annotationPopup.y}
-      mode={annotationPopup.mode}
-      initialText={annotationPopup.text}
-      onsave={onAnnotationSave}
-      onremove={annotationPopup.mode === 'edit' ? onAnnotationRemove : undefined}
-      onclose={() => (annotationPopup = null)}
-    />
-  {/if}
 </div>
 
 <style>
-  /* Theme is driven by `data-theme` on the app root (set by the theme store,
-     state/theme.svelte.ts — OS-driven default). The attribute selects the token
-     block in app.css; the app UI and atomic-editor both read from it, so they
-     stay consistent. Base resets + the body typeface live in app.css. */
-  /* Three tracks: left Sidebar | editor pane | right Sidebar. The outer `auto`
-     tracks follow each sidebar's own width. Collapsing animates that width to 0
-     (see `.side-bar`); the `auto` track shrinks with it and the `1fr` editor
-     pane expands to fill the gap. We animate `width` rather than
-     `grid-template-columns` because the latter doesn't interpolate in the
-     WebKitGTK webview Tauri uses on Linux. */
   .app {
     display: grid;
     grid-template-columns: auto 1fr auto;
@@ -1818,9 +853,6 @@
     background: var(--bg);
   }
 
-  /* Left sidebar: a fixed-width box clipping a vertical stack of collapsible
-     accordion sections. The inner stack (`.side-bar-inner`) holds the flex
-     column; the aside itself is just the animated, clipping frame. */
   .side-bar {
     width: 280px;
     height: 100vh;
@@ -1837,9 +869,6 @@
     border-right-width: 0;
   }
 
-  /* Right Sidebar: mirrors the left one but borders on its LEFT edge and anchors
-     its inner stack to the LEFT (flex-start, the default) so the content slides
-     out to the right edge as the aside's width animates to 0. */
   .right-side-bar {
     justify-content: flex-start;
     border-right: none;
@@ -1857,61 +886,31 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    /* Anchor the first Section to the top and the last to the bottom; the free
-       space collects between them. When the Sections' combined height fills the
-       viewport the gap closes to zero and they meet in the middle (the capped,
-       shrinkable bodies guarantee they always fit, so nothing overflows the top).
-       With a single Section present it stays flush to the top (space-between
-       leaves a lone item at flex-start). */
     justify-content: space-between;
     overflow: hidden;
     font-size: 0.9rem;
   }
 
-  /* Padding wrapper for the tree inside the Explorer section body. */
   .tree-pane {
     padding: 0.5rem;
     font-size: 14px;
   }
 
-  /* Active-Region affordance (region-focus-backbone): the Region currently
-     holding keyboard focus gets a SUBTLE BRIGHTER background on its container
-     (`--region-active`, a faint white lift) — never a dimming wash, so the
-     Focused item's own ring stays legible against it rather than blending into
-     a darkened backdrop. Deliberately no ring/border around the Region — the
-     Focused item's `:focus-visible` ring stays the prominent spotlight. Driven
-     by the `focusedRegion` rune (state/focus.svelte.ts), which mirrors DOM
-     focus. The Region containers focused via `use:region` carry tabindex=-1 as
-     a fallback entry point; suppress the default outline on them so only the
-     subtle background reads as the Region affordance. */
+  /* Active-Region affordance: a subtle brighter background on the active Region's
+     container (see region-focus-backbone). */
   .region-active {
     background: var(--region-active);
   }
 
-  /* Properties paints its own opaque "sunken well" background (Properties.svelte),
-     which fully covers its host and so hides the lift above. Layer the SAME
-     translucent lift over that well when the Region is active, so the metadata
-     editor highlights on focus like every other Region. */
-  .properties-host.region-active :global(.properties) {
-    background:
-      linear-gradient(var(--region-active), var(--region-active)), var(--bg-sunken);
-  }
-
   .region-host:focus,
-  .tree-pane:focus,
-  .editor-host:focus {
+  .tree-pane:focus {
     outline: none;
   }
 
-  /* A plain block wrapper that hosts a Region container (Tags / Properties /
-     Outline / Backlinks) so the active-Region background paints behind the
-     whole Section body. */
   .region-host {
     display: block;
   }
 
-  /* Whole-pane highlight while a row is dragged over empty space (drop = move to
-     the Bundle root). */
   .tree-pane.drop-target {
     box-shadow: inset 0 0 0 1px var(--accent-ring);
     border-radius: var(--radius-sm);
@@ -1925,112 +924,84 @@
     min-width: 0;
   }
 
-  .editor-host {
+  /* The tiling editor area: a horizontal row of columns. */
+  .editor-area {
     flex: 1 1 auto;
     min-height: 0;
-    overflow: auto;
-  }
-
-  .editor-host.hidden {
-    display: none;
-  }
-
-  /* History-stepper bar (issue 05): a compact strip above the read-only review
-     buffer. `← older` / `newer →` flank a centred label showing the current
-     comparison and, for a committed newer side, its short hash / subject /
-     relative date. Kept visually quiet — it is review chrome, not the content. */
-  .review-stepper {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: none;
-    padding: 0.35rem 0.75rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-elevated);
-    font-size: 0.8rem;
+    flex-direction: row;
+    overflow: hidden;
   }
 
-  .review-stepper-meta {
-    flex: 1 1 auto;
+  /* A column: a vertical stack of tiles. `flex-grow` carries its weight; a shared
+     `flex-basis: 0` makes the grow ratios the exact size ratios. */
+  .editor-column {
+    flex: 1 1 0;
     min-width: 0;
     display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    justify-content: center;
+    flex-direction: column;
     overflow: hidden;
-    white-space: nowrap;
   }
 
-  .review-comparison {
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .review-hash {
-    font-family: var(--font-mono, ui-monospace, monospace);
-    color: var(--accent);
-  }
-
-  .review-subject {
-    color: var(--text);
+  .editor-tile {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
 
-  .review-date {
-    color: var(--text-muted);
+  /* Draggable dividers between columns / between tiles. A comfortable hit-strip
+     (a few px) drawn transparent, with a centred hairline via a pseudo so the
+     visible seam stays 1px while the whole strip is grabbable. The cursor signals
+     the drag axis; hovering brightens the hairline to the accent. */
+  .column-divider,
+  .tile-divider {
     flex: none;
+    position: relative;
+    background: transparent;
+    touch-action: none;
   }
 
-  /* The stepper buttons: same chrome as the NavBar's `.nav-btn`, but scoped here
-     (Svelte styles don't cross components) and sized for a text label. */
-  .review-stepper .nav-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    height: 1.7rem;
-    padding: 0 0.55rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-size: 0.78rem;
-    line-height: 1;
-    cursor: pointer;
+  .column-divider {
+    width: 7px;
+    cursor: col-resize;
+  }
+
+  .tile-divider {
+    height: 7px;
+    cursor: row-resize;
+  }
+
+  .column-divider::after,
+  .tile-divider::after {
+    content: '';
+    position: absolute;
+    background: var(--border);
     transition: background 0.12s ease;
   }
 
-  .review-stepper .nav-btn:hover:not(:disabled) {
-    background: var(--hover);
+  .column-divider::after {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
   }
 
-  .review-stepper .nav-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
+  .tile-divider::after {
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    transform: translateY(-50%);
   }
 
-  .editor-host :global(.cm-editor) {
-    height: 100%;
+  .column-divider:hover::after,
+  .tile-divider:hover::after {
+    background: var(--accent);
   }
 
-  /* Breathing room on both sides of the editor column. The atomic-editor
-     package injects `.cm-content { padding: 0 }` via a CodeMirror theme
-     (specificity `(0,2,0)` — a generated wrapper class scoping `.cm-content`).
-     We match `.cm-editor .cm-content` (specificity `(0,3,0)`) so this
-     `padding-inline` longhand wins over the theme's `padding` shorthand.
-
-     A `max-width` caps the reading measure so `EditorView.lineWrapping`
-     breaks lines at a comfortable width; `margin-inline: auto` centres the
-     column in wider panes for visual flow. */
-  .editor-host :global(.cm-editor .cm-content) {
-    max-width: var(--reader-max-width, 48rem);
-    margin-inline: auto;
-    padding-inline: 1.5rem;
-  }
-
-  .placeholder,
   .status {
     padding: 1rem;
     color: var(--text-muted);
@@ -2040,8 +1011,6 @@
     color: var(--danger);
   }
 
-  /* Unobtrusive bottom-centre toast: confirms auto-rewritten links after a
-     move without blocking interaction. Auto-dismisses (see the $effect). */
   .toast {
     position: fixed;
     bottom: 1.25rem;
@@ -2058,8 +1027,6 @@
     pointer-events: none;
   }
 
-  /* Bundle-root reserved files live in the Explorer header (see SidebarSection
-     `actions`): compact, icon-only buttons. */
   .root-reserved {
     display: flex;
     align-items: center;

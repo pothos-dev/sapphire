@@ -15,7 +15,7 @@ replaces the **active** pane and pushes **that pane's** history. Mouse-driven on
 
 **Blocked by:** 01 — Document/Pane state split; 02 — Per-tile header.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Editor area renders a row of columns, each a vertical stack of tiled panes;
       rows need not align across columns.

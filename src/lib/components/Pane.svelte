@@ -1,0 +1,862 @@
+<script lang="ts">
+  // A single tiled Pane (slice: multi-concept-tiling). Owns ONE CodeMirror view
+  // and every logically per-Pane editor concern for its Concept: the per-tile
+  // header, the live-preview view mode, autosave, undo/redo, the review-diff
+  // toggle + history stepper, PDF export, the formatting context menu +
+  // annotation popup, link / wikilink click navigation (within THIS Pane, pushing
+  // THIS Pane's history), broken-link decorations, mermaid theme-sync, and the
+  // Properties panel (rendered only for the ACTIVE Pane — Properties tracks the
+  // active Concept for this slice).
+  //
+  // App.svelte owns the tiling layout and the single 'editor' Region; it renders
+  // one <Pane> per tile and delegates active-Pane editor concerns here via a few
+  // exported methods (focusView, scrollToDocLine, undo/redo, review + find, the
+  // slug-anchor save hook). The same Concept open in two tiles shares one
+  // Document (the registry dedupes by path); each Pane's build effect re-syncs its
+  // view to the shared buffer via a minimal change, so an edit in one tile shows
+  // in the other without jumping the untouched tile's caret.
+  import { onDestroy } from 'svelte';
+  import { EditorView } from '@codemirror/view';
+  import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
+  import { backend } from '$lib/ipc';
+  import { indexStore } from '$lib/state/index.svelte';
+  import { session } from '$lib/state/session.svelte';
+  import { suggestions } from '$lib/state/suggestions.svelte';
+  import { theme } from '$lib/state/theme.svelte';
+  import { focus } from '$lib/state/focus.svelte';
+  import { treeActions } from '$lib/state/treeActions.svelte';
+  import type { Pane } from '$lib/state/workspace.svelte';
+  import type { FileHistory } from '$lib/types';
+  import {
+    buildEditor,
+    buildReviewEditor,
+    setReviewText,
+    setEditorConcept,
+    setEditorMode,
+    setEditorMermaidTheme,
+    dispatchFrontmatter,
+    refreshBrokenLinkDecorations,
+    reconfigureWikiLinks,
+    scrollToLine,
+    openSearch,
+    annotate,
+    annotateActionFor,
+    toggleBold,
+    toggleItalic,
+    toggleStrikethrough,
+    toggleInlineCode,
+    insertOrEditLink,
+    linkActionFor,
+    copySelection,
+    cutSelection,
+    pasteFromClipboard,
+    selectionForAnnotate,
+    addAnnotationWithComment,
+    updateAnnotationComment,
+    removeAnnotationAt,
+    pendingAnchorRenames,
+    commitAnchorBaseline,
+    type EditorMode,
+    type CommentEditRequest,
+  } from '$lib/editor/cm';
+  import { rewriteAnchorsIn } from '$lib/anchorRewrite';
+  import { diffToCriticMarkup } from '$lib/diff/diffToCriticMarkup';
+  import { reviewAvailability } from '$lib/editor/review';
+  import { reviewStep, maxStep } from '$lib/editor/reviewStepper';
+  import {
+    splitFrontmatter,
+    parseProperties,
+    frontmatterLineCount,
+    type Property,
+  } from '$lib/frontmatter';
+  import { resolveLink } from '$lib/links';
+  import { findHeadingLine } from '$lib/outline';
+  import { isReservedFile } from '$lib/reserved';
+  import { paneTitle } from '$lib/paneTitle';
+  import { region } from '$lib/region';
+  import PaneHeader from '$lib/components/PaneHeader.svelte';
+  import Properties from '$lib/components/Properties.svelte';
+  import ContextMenu from '$lib/components/ContextMenu.svelte';
+  import AnnotationPopup from '$lib/components/AnnotationPopup.svelte';
+
+  interface Props {
+    /** The Pane state object (active Concept, history, shared Document). */
+    pane: Pane;
+    /** Whether this tile is the focused/active Pane (gates the Properties panel). */
+    active: boolean;
+    /** App's pending "focus the type field" request path (new-Concept create). */
+    focusTypeForPath: string | null;
+    /** Ask App to make this tile the active Pane (on focusin / header intent). */
+    onActivate: () => void;
+    /** Split this Pane's Concept into a new column to the right. */
+    onSplitRight: () => void;
+    /** Split this Pane's Concept into a new tile below. */
+    onSplitDown: () => void;
+    /** Close this tile. */
+    onClose: () => void;
+  }
+
+  let { pane, active, focusTypeForPath, onActivate, onSplitRight, onSplitDown, onClose }: Props =
+    $props();
+
+  let editorParent = $state<HTMLDivElement | null>(null);
+  let view: EditorView | null = null;
+
+  // The open Concept's frontmatter, mirrored out of the editor's frontmatter
+  // field (the single source of truth — ADR 0003) so this Pane's Properties panel
+  // and header title can render it.
+  let frontmatterProps = $state<Property[]>([]);
+
+  // This Pane's tri-state view mode. Seeded from the persisted session default;
+  // toggling writes back to the session (the global default for new Panes /
+  // relaunch) but panes can otherwise diverge.
+  let editorMode = $state<EditorMode>(session.editorMode);
+  function changeEditorMode(mode: EditorMode): void {
+    editorMode = mode;
+    session.setEditorMode(mode);
+    if (view) {
+      setEditorMode(view, mode);
+      view.focus();
+    }
+  }
+
+  const currentPaneTitle = $derived(paneTitle(pane.activePath, frontmatterProps));
+
+  // --- Unified undo/redo over the Pane's single body+frontmatter history -------
+  let canUndo = $state(false);
+  let canRedo = $state(false);
+  function syncHistoryDepths() {
+    canUndo = view ? undoDepth(view.state) > 0 : false;
+    canRedo = view ? redoDepth(view.state) > 0 : false;
+  }
+  function doUndo() {
+    if (!view) return;
+    undo(view);
+    view.focus();
+    syncHistoryDepths();
+  }
+  function doRedo() {
+    if (!view) return;
+    redo(view);
+    view.focus();
+    syncHistoryDepths();
+  }
+
+  // --- Properties panel (active Pane only) -------------------------------------
+  let propertiesCollapsed = $state(false);
+  const focusTypeNow = $derived(focusTypeForPath !== null && focusTypeForPath === pane.activePath);
+  function onPropertiesChange(props: Property[]) {
+    if (!view) return;
+    dispatchFrontmatter(view, props);
+    void pane.flush();
+  }
+
+  // --- Editor formatting context menu ------------------------------------------
+  type EditorMenuItem = { id: string; label: string; separated?: boolean };
+  let editorMenu = $state<{
+    x: number;
+    y: number;
+    items: EditorMenuItem[];
+    annotateRange?: { from: number; to: number };
+  } | null>(null);
+  let editorMenuOverlayId: number | null = null;
+  $effect(() => {
+    if (editorMenu && editorMenuOverlayId === null) {
+      editorMenuOverlayId = focus.pushOverlay(() => (editorMenu = null));
+    } else if (!editorMenu && editorMenuOverlayId !== null) {
+      focus.removeOverlay(editorMenuOverlayId);
+      editorMenuOverlayId = null;
+    }
+  });
+
+  type AnnotationPopupState = {
+    x: number;
+    y: number;
+    mode: 'add' | 'edit';
+    text: string;
+    from?: number;
+    to?: number;
+    anchor?: number;
+  };
+  let annotationPopup = $state<AnnotationPopupState | null>(null);
+  let annotationPopupOverlayId: number | null = null;
+  $effect(() => {
+    if (annotationPopup && annotationPopupOverlayId === null) {
+      annotationPopupOverlayId = focus.pushOverlay(() => (annotationPopup = null));
+    } else if (!annotationPopup && annotationPopupOverlayId !== null) {
+      focus.removeOverlay(annotationPopupOverlayId);
+      annotationPopupOverlayId = null;
+    }
+  });
+
+  function openCommentPopup(req: CommentEditRequest): void {
+    annotationPopup = { x: req.x, y: req.y, mode: 'edit', text: req.text, anchor: req.anchor };
+  }
+
+  function onAnnotationSave(text: string): void {
+    const p = annotationPopup;
+    if (!view || !p) return;
+    if (p.mode === 'add') {
+      if (p.from != null && p.to != null && text.trim() !== '') {
+        addAnnotationWithComment(view, p.from, p.to, text);
+      }
+    } else if (p.anchor != null) {
+      updateAnnotationComment(view, p.anchor, text);
+    }
+    annotationPopup = null;
+  }
+
+  function onAnnotationRemove(): void {
+    if (view && annotationPopup?.anchor != null) removeAnnotationAt(view, annotationPopup.anchor);
+    annotationPopup = null;
+  }
+
+  function openEditorMenu(e: MouseEvent): void {
+    if (!view) return;
+    const readOnly = view.state.readOnly;
+    const range = selectionForAnnotate(view);
+    const annAction = annotateActionFor(view);
+
+    if (readOnly) {
+      if (!annAction) return;
+      e.preventDefault();
+      editorMenu = {
+        x: e.clientX,
+        y: e.clientY,
+        items: [{ id: 'annotate', label: annAction === 'add' ? 'Add comment' : 'Remove comment' }],
+        annotateRange: annAction === 'add' ? range : undefined,
+      };
+      return;
+    }
+
+    e.preventDefault();
+    const items: EditorMenuItem[] = [];
+    const hasSelection = range.from !== range.to;
+    if (hasSelection) {
+      items.push({ id: 'cut', label: 'Cut' });
+      items.push({ id: 'copy', label: 'Copy' });
+    }
+    items.push({ id: 'paste', label: 'Paste' });
+    if (hasSelection) {
+      items.push({ id: 'bold', label: 'Bold', separated: true });
+      items.push({ id: 'italic', label: 'Italic' });
+      items.push({ id: 'strike', label: 'Strikethrough' });
+      items.push({ id: 'code', label: 'Inline code' });
+    }
+    const linkAction = linkActionFor(view);
+    items.push({
+      id: 'link',
+      label: linkAction === 'edit' ? 'Edit link' : 'Insert link',
+      separated: true,
+    });
+    if (annAction) {
+      items.push({
+        id: 'annotate',
+        label: annAction === 'add' ? 'Add comment' : 'Remove comment',
+        separated: true,
+      });
+    }
+
+    editorMenu = {
+      x: e.clientX,
+      y: e.clientY,
+      items,
+      annotateRange: annAction === 'add' ? range : undefined,
+    };
+  }
+
+  function onEditorMenuSelect(id: string): void {
+    if (!view) return;
+    switch (id) {
+      case 'cut':
+        void cutSelection(view);
+        break;
+      case 'copy':
+        void copySelection(view);
+        break;
+      case 'paste':
+        void pasteFromClipboard(view);
+        break;
+      case 'bold':
+        toggleBold(view);
+        break;
+      case 'italic':
+        toggleItalic(view);
+        break;
+      case 'strike':
+        toggleStrikethrough(view);
+        break;
+      case 'code':
+        toggleInlineCode(view);
+        break;
+      case 'link':
+        insertOrEditLink(view);
+        break;
+      case 'annotate': {
+        const range = editorMenu?.annotateRange;
+        if (range) {
+          annotationPopup = {
+            x: editorMenu?.x ?? 0,
+            y: editorMenu?.y ?? 0,
+            mode: 'add',
+            text: '',
+            from: range.from,
+            to: range.to,
+          };
+        } else {
+          annotate(view);
+        }
+        break;
+      }
+    }
+  }
+
+  // --- Review changes: working-tree ↔ HEAD (per Pane) --------------------------
+  let reviewActive = $state(false);
+  let reviewParent = $state<HTMLDivElement | null>(null);
+  let reviewView: EditorView | null = null;
+  let reviewText = $state<string | null>(null);
+  let reviewHistory = $state<FileHistory | null>(null);
+  const reviewAvail = $derived(reviewAvailability(reviewHistory));
+  let reviewPosition = $state(0);
+  const reviewCommits = $derived(reviewHistory?.status === 'ok' ? reviewHistory.commits : []);
+  const reviewStepInfo = $derived(reviewStep(reviewCommits, reviewPosition));
+
+  // Load the git history for the open Concept; switching Concepts exits review.
+  $effect(() => {
+    const path = pane.activePath;
+    reviewActive = false;
+    reviewText = null;
+    reviewHistory = null;
+    reviewPosition = 0;
+    if (path === null) return;
+    let cancelled = false;
+    void backend.fileHistory(path).then((h) => {
+      if (!cancelled) reviewHistory = h;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  // Build / tear down the read-only review view as `reviewActive` flips.
+  $effect(() => {
+    if (reviewActive && reviewParent && reviewText !== null && !reviewView) {
+      reviewView = buildReviewEditor(reviewParent, reviewText);
+      reviewView.dom.setAttribute('data-theme', theme.resolved);
+      reviewView.focus();
+    } else if (!reviewActive && reviewView) {
+      reviewView.destroy();
+      reviewView = null;
+    }
+  });
+
+  async function renderReviewStep(pos: number): Promise<boolean> {
+    const path = pane.activePath;
+    if (path === null) return false;
+    const step = reviewStep(reviewCommits, pos);
+    const oldSide = await backend.fileAtRev(path, step.oldRev);
+    if (oldSide.status !== 'ok') return false;
+    let newContent: string;
+    if (step.newRev === null) {
+      newContent = pane.content;
+    } else {
+      const newSide = await backend.fileAtRev(path, step.newRev);
+      if (newSide.status !== 'ok') return false;
+      newContent = newSide.content;
+    }
+    if (pane.activePath !== path) return false;
+    reviewText = diffToCriticMarkup(oldSide.content, newContent);
+    if (reviewView) setReviewText(reviewView, reviewText);
+    return true;
+  }
+
+  async function enterReview(): Promise<void> {
+    const path = pane.activePath;
+    if (path === null || reviewActive || !reviewAvail.enabled) return;
+    reviewPosition = 0;
+    if (!(await renderReviewStep(0))) return;
+    if (pane.activePath !== path) return;
+    reviewActive = true;
+  }
+
+  function stepReview(delta: number): void {
+    if (!reviewActive) return;
+    const next = reviewPosition + delta;
+    if (next < 0 || next > maxStep(reviewCommits)) return;
+    reviewPosition = next;
+    void renderReviewStep(next);
+  }
+
+  function doExitReview(): void {
+    if (!reviewActive) return;
+    reviewActive = false;
+    reviewText = null;
+    queueMicrotask(() => view?.focus());
+  }
+
+  function toggleReview(): void {
+    if (reviewActive) doExitReview();
+    else void enterReview();
+  }
+
+  async function exportPdf(): Promise<void> {
+    const path = pane.activePath;
+    if (path === null) return;
+    await backend.openPrintWindow(path);
+  }
+
+  // --- Link / wikilink navigation (navigates THIS Pane, pushes its history) ----
+  let pendingScrollLine: number | null = null;
+  let pendingScrollAnchor: string | null = null;
+
+  function scrollToOutlineLine(line: number) {
+    if (!view) return;
+    scrollToLine(view, line - frontmatterLineCount(pane.content));
+  }
+
+  function handleLinkClick(href: string) {
+    const open = pane.activePath ?? '';
+    const target = resolveLink(open, href);
+    if (target.kind === 'external') {
+      window.open(target.href, '_blank', 'noopener,noreferrer');
+    } else if (target.kind === 'internal') {
+      handleWikiLinkOpen(target.path, target.anchor);
+    } else if (href.trim().startsWith('#')) {
+      const line = findHeadingLine(pane.content, href.trim().slice(1));
+      if (line !== null) scrollToOutlineLine(line);
+    }
+  }
+
+  function handleWikiLinkOpen(path: string, anchor: string | null) {
+    if (path === (pane.activePath ?? '')) {
+      if (anchor !== null && view) {
+        const line = findHeadingLine(pane.content, anchor);
+        if (line !== null) scrollToOutlineLine(line);
+      }
+      return;
+    }
+    pendingScrollAnchor = anchor;
+    void pane.open(path);
+  }
+
+  // Slug-anchor rewriting after an autosave of this Pane's Concept.
+  function handleSaved(savedPath: string): void {
+    if (!view || pane.activePath !== savedPath) return;
+    const renames = pendingAnchorRenames(view);
+    if (renames.length === 0) return;
+    const allPaths = indexStore.pathList();
+    const body = view.state.doc.toString();
+    const { content: newBody } = rewriteAnchorsIn(savedPath, body, savedPath, renames, allPaths);
+    const change = minimalChange(body, newBody);
+    if (change) view.dispatch({ changes: change });
+    void backend.rewriteAnchors(savedPath, renames).then((summary) => {
+      treeActions.noteRewrite(summary);
+    });
+    commitAnchorBaseline(view);
+  }
+
+  function minimalChange(
+    oldStr: string,
+    newStr: string,
+  ): { from: number; to: number; insert: string } | null {
+    if (oldStr === newStr) return null;
+    let start = 0;
+    const max = Math.min(oldStr.length, newStr.length);
+    while (start < max && oldStr[start] === newStr[start]) start++;
+    let endOld = oldStr.length;
+    let endNew = newStr.length;
+    while (endOld > start && endNew > start && oldStr[endOld - 1] === newStr[endNew - 1]) {
+      endOld--;
+      endNew--;
+    }
+    return { from: start, to: endOld, insert: newStr.slice(start, endNew) };
+  }
+
+  // --- Build / update this Pane's CodeMirror view ------------------------------
+  $effect(() => {
+    const content = pane.content;
+    if (!editorParent) return;
+
+    const { body } = splitFrontmatter(content);
+    const props = parseProperties(content);
+
+    if (!view) {
+      view = buildEditor({
+        parent: editorParent,
+        doc: body,
+        frontmatter: props,
+        path: pane.activePath,
+        initialMode: editorMode,
+        onChange: (full) => pane.edit(full),
+        onFrontmatterChange: (p) => (frontmatterProps = p),
+        onBlur: () => void pane.flush(),
+        onHistory: syncHistoryDepths,
+        onLinkClick: handleLinkClick,
+        onCommentEdit: openCommentPopup,
+        brokenLinkContext: {
+          currentPath: () => pane.activePath ?? '',
+          exists: (p) => indexStore.exists(p),
+        },
+        wikiLinkContext: {
+          currentPath: () => pane.activePath ?? '',
+          allPaths: () => indexStore.pathList(),
+          exists: (p) => indexStore.exists(p),
+          open: handleWikiLinkOpen,
+        },
+      });
+      frontmatterProps = props;
+      view.dom.setAttribute('data-theme', theme.resolved);
+      syncHistoryDepths();
+    } else {
+      setEditorConcept(view, body, props, pane.activePath);
+    }
+
+    if (pendingScrollLine !== null && view) {
+      scrollToLine(view, pendingScrollLine);
+      pendingScrollLine = null;
+    }
+    if (pendingScrollAnchor !== null && view) {
+      const line = findHeadingLine(pane.content, pendingScrollAnchor);
+      if (line !== null) scrollToOutlineLine(line);
+      pendingScrollAnchor = null;
+    }
+  });
+
+  // Keep broken-link styling + wikilink resolution fresh.
+  $effect(() => {
+    void indexStore.version;
+    void pane.activePath;
+    if (view) {
+      refreshBrokenLinkDecorations(view);
+      reconfigureWikiLinks(view);
+    }
+  });
+
+  // Theme: mirror `data-theme` onto this Pane's view(s).
+  $effect(() => {
+    const resolved = theme.resolved;
+    if (view) view.dom.setAttribute('data-theme', resolved);
+    if (reviewView) reviewView.dom.setAttribute('data-theme', resolved);
+  });
+
+  // Mermaid theme-sync (ADR-0005).
+  $effect(() => {
+    const resolved = theme.resolved;
+    if (view) setEditorMermaidTheme(view, resolved);
+  });
+
+  onDestroy(() => {
+    if (editorMenuOverlayId !== null) focus.removeOverlay(editorMenuOverlayId);
+    if (annotationPopupOverlayId !== null) focus.removeOverlay(annotationPopupOverlayId);
+    view?.destroy();
+    view = null;
+    reviewView?.destroy();
+    reviewView = null;
+  });
+
+  // --- Exported API used by App for the ACTIVE Pane ----------------------------
+  export function focusView(): boolean {
+    if (!view) return false;
+    view.focus();
+    return true;
+  }
+  export function hasView(): boolean {
+    return view !== null;
+  }
+  export function scrollToDocLine(fullDocLine: number): void {
+    scrollToOutlineLine(fullDocLine);
+  }
+  /** Open `path` in this Pane and scroll to `line` once loaded (search result). */
+  export function openWithScrollLine(path: string, line: number): void {
+    if (pane.activePath === path) {
+      if (view) scrollToLine(view, line);
+    } else {
+      pendingScrollLine = line;
+      void pane.open(path);
+    }
+  }
+  export function enterFind(): void {
+    if (!view) return;
+    view.focus();
+    openSearch(view);
+  }
+  export function undoActive(): void {
+    doUndo();
+  }
+  export function redoActive(): void {
+    doRedo();
+  }
+  export function isReviewActive(): boolean {
+    return reviewActive;
+  }
+  export function exitReview(): void {
+    doExitReview();
+  }
+  export { handleSaved };
+  /** Adopt the persisted view mode (startup restore of the initial Pane). */
+  export function setMode(mode: EditorMode): void {
+    editorMode = mode;
+    if (view) setEditorMode(view, mode);
+  }
+</script>
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="pane"
+  class:pane-active={active}
+  data-testid="pane"
+  onfocusin={onActivate}
+  onpointerdown={onActivate}
+>
+  <PaneHeader
+    title={currentPaneTitle}
+    hasOpenConcept={pane.activePath !== null}
+    canGoBack={pane.canGoBack}
+    canGoForward={pane.canGoForward}
+    {editorMode}
+    {canUndo}
+    {canRedo}
+    {reviewActive}
+    reviewEnabled={reviewAvail.enabled}
+    reviewTooltip={reviewAvail.tooltip}
+    onBack={() => void pane.back()}
+    onForward={() => void pane.forward()}
+    onClose={onClose}
+    onSplitRight={onSplitRight}
+    onSplitDown={onSplitDown}
+    onSetMode={changeEditorMode}
+    onUndo={doUndo}
+    onRedo={doRedo}
+    onToggleReview={toggleReview}
+    onExportPdf={exportPdf}
+  />
+
+  {#if pane.error}
+    <p class="status error">{pane.error}</p>
+  {/if}
+  {#if !pane.activePath && !pane.error}
+    <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
+  {/if}
+
+  {#if active && pane.activePath && !isReservedFile(pane.activePath)}
+    <div
+      class="region-host properties-host"
+      class:region-active={focus.focusedRegion === 'properties'}
+      data-region="properties"
+      use:region={{
+        id: 'properties',
+        isPresent: () => pane.activePath !== null && !isReservedFile(pane.activePath),
+        isVisible: () =>
+          pane.activePath !== null &&
+          !isReservedFile(pane.activePath) &&
+          (!propertiesCollapsed || session.propertiesRevealed),
+        reveal: () => session.revealProperties(),
+      }}
+    >
+      <Properties
+        properties={frontmatterProps}
+        path={pane.activePath}
+        types={suggestions.types}
+        keys={suggestions.keys}
+        tags={suggestions.tags}
+        focusType={focusTypeNow}
+        onchange={onPropertiesChange}
+        bind:collapsed={propertiesCollapsed}
+      />
+    </div>
+  {/if}
+
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="editor-host"
+    class:hidden={!pane.activePath || reviewActive}
+    data-testid="editor"
+    bind:this={editorParent}
+    oncontextmenu={openEditorMenu}
+  ></div>
+
+  {#if reviewActive}
+    <div class="review-stepper" data-testid="review-stepper">
+      <button
+        type="button"
+        class="nav-btn"
+        data-testid="review-older"
+        title="Compare the previous (older) commit pair"
+        aria-label="Older change"
+        disabled={!reviewStepInfo.canOlder}
+        onclick={() => stepReview(1)}>← older</button
+      >
+      <div class="review-stepper-meta">
+        <span class="review-comparison" data-testid="review-stepper-label">{reviewStepInfo.label}</span>
+        {#if reviewStepInfo.newer}
+          <span class="review-hash" data-testid="review-stepper-hash">{reviewStepInfo.newer.hash}</span>
+          <span class="review-subject" data-testid="review-stepper-subject">{reviewStepInfo.newer.subject}</span>
+          <span class="review-date" data-testid="review-stepper-date">{reviewStepInfo.newer.relativeDate}</span>
+        {/if}
+      </div>
+      <button
+        type="button"
+        class="nav-btn"
+        data-testid="review-newer"
+        title="Compare the next (newer) commit pair"
+        aria-label="Newer change"
+        disabled={!reviewStepInfo.canNewer}
+        onclick={() => stepReview(-1)}>newer →</button
+      >
+    </div>
+    <div class="editor-host review-host" data-testid="review-editor" bind:this={reviewParent}></div>
+  {/if}
+</div>
+
+{#if editorMenu}
+  <ContextMenu
+    x={editorMenu.x}
+    y={editorMenu.y}
+    items={editorMenu.items}
+    onselect={onEditorMenuSelect}
+    onclose={() => (editorMenu = null)}
+  />
+{/if}
+
+{#if annotationPopup}
+  <AnnotationPopup
+    x={annotationPopup.x}
+    y={annotationPopup.y}
+    mode={annotationPopup.mode}
+    initialText={annotationPopup.text}
+    onsave={onAnnotationSave}
+    onremove={annotationPopup.mode === 'edit' ? onAnnotationRemove : undefined}
+    onclose={() => (annotationPopup = null)}
+  />
+{/if}
+
+<style>
+  .pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .region-active {
+    background: var(--region-active);
+  }
+
+  .properties-host.region-active :global(.properties) {
+    background:
+      linear-gradient(var(--region-active), var(--region-active)), var(--bg-sunken);
+  }
+
+  .region-host {
+    display: block;
+  }
+
+  .region-host:focus,
+  .editor-host:focus {
+    outline: none;
+  }
+
+  .editor-host {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .editor-host.hidden {
+    display: none;
+  }
+
+  .editor-host :global(.cm-editor) {
+    height: 100%;
+  }
+
+  .editor-host :global(.cm-editor .cm-content) {
+    max-width: var(--reader-max-width, 48rem);
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+
+  .placeholder,
+  .status {
+    padding: 1rem;
+    color: var(--text-muted);
+  }
+
+  .status.error {
+    color: var(--danger);
+  }
+
+  .review-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: none;
+    padding: 0.35rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elevated);
+    font-size: 0.8rem;
+  }
+
+  .review-stepper-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    justify-content: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .review-comparison {
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .review-hash {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: var(--accent);
+  }
+
+  .review-subject {
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .review-date {
+    color: var(--text-muted);
+    flex: none;
+  }
+
+  .review-stepper .nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    height: 1.7rem;
+    padding: 0 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+
+  .review-stepper .nav-btn:hover:not(:disabled) {
+    background: var(--hover);
+  }
+
+  .review-stepper .nav-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+</style>

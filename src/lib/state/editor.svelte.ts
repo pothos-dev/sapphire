@@ -18,6 +18,17 @@ import type { Pane } from '$lib/state/workspace.svelte';
 class EditorStore {
   #workspace = new Workspace();
 
+  /**
+   * The tiling workspace behind the facade. App.svelte reads this to render the
+   * layout tree (row of columns of Panes) and to drive split/close/resize/active
+   * — everything that operates on MORE than the single active Pane. The facade
+   * getters/methods below stay the "active Pane" surface every existing call site
+   * relies on, so they keep working unchanged.
+   */
+  get workspace(): Workspace {
+    return this.#workspace;
+  }
+
   get #pane(): Pane {
     return this.#workspace.activePane;
   }
@@ -105,14 +116,14 @@ class EditorStore {
     return this.#pane.flush();
   }
 
-  /** Follow the open Concept + history across a rename/move. */
+  /** Follow the open Concept + history across a rename/move (ALL Panes). */
   followRename(from: string, to: string): string | null {
-    return this.#pane.followRename(from, to);
+    return this.#workspace.followRename(from, to);
   }
 
-  /** React to an external filesystem change on the open Concept. */
+  /** React to an external filesystem change on the open Concept (ALL Panes). */
   onExternalChange(kind: string, paths: string[]): Promise<void> {
-    return this.#pane.onExternalChange(kind, paths);
+    return this.#workspace.onExternalChange(kind, paths);
   }
 }
 

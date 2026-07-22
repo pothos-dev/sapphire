@@ -10,6 +10,23 @@ import {
   remapHistory,
   type NavHistory,
 } from '$lib/state/navHistory';
+import {
+  singlePaneLayout,
+  allTileIds,
+  splitRight as layoutSplitRight,
+  splitDown as layoutSplitDown,
+  closeTile as layoutCloseTile,
+  resizeColumns as layoutResizeColumns,
+  resizeTiles as layoutResizeTiles,
+  MIN_WEIGHT,
+  type Layout,
+} from '$lib/paneLayout';
+
+/** Monotonic Pane-id source: ids are opaque, stable, and never reused. */
+let paneIdCounter = 0;
+function nextPaneId(): string {
+  return `pane-${++paneIdCounter}`;
+}
 
 /**
  * A Pane is a *view onto* Concepts: it holds the active Concept, this Pane's
@@ -25,13 +42,16 @@ import {
 export class Pane {
   #registry: DocumentRegistry;
 
+  /** Opaque, stable id — the layout tree addresses this Pane by it. */
+  readonly id: string;
   /** bundle-relative path of the active Concept, or null if none. */
   activePath = $state<string | null>(null);
   /** This Pane's navigation history (immutable value; see navHistory.ts). */
   #history = $state<NavHistory>(EMPTY_HISTORY);
 
-  constructor(registry: DocumentRegistry) {
+  constructor(registry: DocumentRegistry, id: string = nextPaneId()) {
     this.#registry = registry;
+    this.id = id;
   }
 
   /** The Document backing the active Concept, or null when nothing is open. */
@@ -83,6 +103,19 @@ export class Pane {
     if (path === this.activePath) return;
     await this.#loadInto(path);
     if (this.activePath !== path) return; // load did not settle here; skip history
+    this.#history = pushEntry(this.#history, path);
+  }
+
+  /**
+   * Attach this Pane to a Concept that is ALREADY open in another Pane, WITHOUT
+   * reloading it from disk. Used by Split Right / Split Down: the source Pane's
+   * Document is live in the shared registry (and may carry unsaved edits), so a
+   * `load()` would clobber the buffer. We just point at the same path — the
+   * getter resolves to the same shared Document — and push a history entry so the
+   * clone starts with its own one-entry history.
+   */
+  adopt(path: string): void {
+    this.activePath = path;
     this.#history = pushEntry(this.#history, path);
   }
 
@@ -175,15 +208,129 @@ export class Pane {
 }
 
 /**
- * The workspace holds the Panes and the shared Document pool. For this slice it
- * holds EXACTLY ONE Pane, so the app behaves byte-identically to the previous
- * single `editor` singleton; later slices grow this to a tiling layout of Panes
- * over the same registry.
+ * The workspace holds the Panes, the shared Document pool, and the TILING LAYOUT
+ * — a row of columns, each a vertical stack of tiles (see `paneLayout.ts`). A
+ * Pane is addressable by its id; the layout references those ids. Panes attach to
+ * Documents via the shared registry, so the SAME Concept open in two tiles shares
+ * one live buffer (an edit/autosave in one reflects in the others).
+ *
+ * `activeId` names the focused tile; `activePane` is the Pane the `editor` facade
+ * (and thus Outline / Backlinks / Properties) tracks. Splitting clones the active
+ * Pane's Concept into a new tile (adopting the shared Document without a reload);
+ * closing a tile focuses a neighbour, and closing the last tile clears it to the
+ * empty state (keeping the Pane + its history — Back can still re-open).
  */
 export class Workspace {
   #registry = new DocumentRegistry();
-  /** The single active Pane (until tiling adds more). */
-  activePane: Pane = new Pane(this.#registry);
+  #panes = new Map<string, Pane>();
+
+  /** The tiling layout (a row of columns of tiles), by Pane id. */
+  layout = $state<Layout>({ columns: [] });
+  /** The focused tile's Pane id. */
+  activeId = $state<string>('');
+
+  constructor() {
+    const pane = this.#create();
+    this.layout = singlePaneLayout(pane.id);
+    this.activeId = pane.id;
+  }
+
+  #create(): Pane {
+    const pane = new Pane(this.#registry);
+    this.#panes.set(pane.id, pane);
+    return pane;
+  }
+
+  /** The focused Pane (always a live Pane — the layout never has zero tiles). */
+  get activePane(): Pane {
+    const pane = this.#panes.get(this.activeId);
+    // Defensive: fall back to any pane if the active id ever dangles.
+    return pane ?? this.#panes.values().next().value!;
+  }
+
+  /** Look up a Pane by id (used by the layout renderer). */
+  paneById(id: string): Pane | undefined {
+    return this.#panes.get(id);
+  }
+
+  /** Make the tile `id` the focused/active Pane. No-op for an unknown id. */
+  setActive(id: string): void {
+    if (this.#panes.has(id)) this.activeId = id;
+  }
+
+  /**
+   * Split Right: clone the active Pane's Concept into a NEW COLUMN to the right,
+   * and focus it. The clone adopts the shared Document (no reload). An empty
+   * active Pane yields an empty new tile.
+   */
+  splitRight(): void {
+    const source = this.activePane;
+    const pane = this.#create();
+    if (source.activePath !== null) pane.adopt(source.activePath);
+    this.layout = layoutSplitRight(this.layout, source.id, pane.id);
+    this.activeId = pane.id;
+  }
+
+  /**
+   * Split Down: clone the active Pane's Concept into a NEW TILE below it in the
+   * current column, and focus it.
+   */
+  splitDown(): void {
+    const source = this.activePane;
+    const pane = this.#create();
+    if (source.activePath !== null) pane.adopt(source.activePath);
+    this.layout = layoutSplitDown(this.layout, source.id, pane.id);
+    this.activeId = pane.id;
+  }
+
+  /**
+   * Close the tile `id`. The LAST remaining tile is cleared to its empty state
+   * (Pane + history preserved — matching the single-Pane close), rather than
+   * removed. A non-last tile is removed, its space redistributed, and a
+   * neighbour focused if the closed tile was active.
+   */
+  async closePane(id: string): Promise<void> {
+    const pane = this.#panes.get(id);
+    if (!pane) return;
+    if (allTileIds(this.layout).length <= 1) {
+      await pane.close();
+      return;
+    }
+    await pane.flush();
+    const { layout, focusId } = layoutCloseTile(this.layout, id);
+    this.#panes.delete(id);
+    this.layout = layout;
+    if (this.activeId === id && focusId !== null) this.activeId = focusId;
+  }
+
+  /** Drag the boundary between columns `index` and `index + 1` by `delta`. */
+  resizeColumns(index: number, delta: number): void {
+    this.layout = layoutResizeColumns(this.layout, index, delta, MIN_WEIGHT);
+  }
+
+  /** Drag the boundary between tiles `index`/`index + 1` in a column by `delta`. */
+  resizeTiles(columnIndex: number, index: number, delta: number): void {
+    this.layout = layoutResizeTiles(this.layout, columnIndex, index, delta, MIN_WEIGHT);
+  }
+
+  /**
+   * Follow a rename/move across EVERY Pane (each rewrites its own active path +
+   * history; the shared registry is re-keyed once). Returns the ACTIVE Pane's new
+   * path when anything was affected, else null — the surface App/treeActions use.
+   */
+  followRename(from: string, to: string): string | null {
+    let activeResult: string | null = null;
+    for (const pane of this.#panes.values()) {
+      const r = pane.followRename(from, to);
+      if (pane.id === this.activeId) activeResult = r;
+    }
+    return activeResult;
+  }
+
+  /** Broadcast an external filesystem change to EVERY Pane. */
+  async onExternalChange(kind: string, paths: string[]): Promise<void> {
+    await Promise.all([...this.#panes.values()].map((p) => p.onExternalChange(kind, paths)));
+  }
 
   /** Set the post-save hook on every Document in the pool. */
   setOnSaved(cb: ((path: string) => void) | null): void {

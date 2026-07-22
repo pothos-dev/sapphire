@@ -257,7 +257,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.5rem 0.4rem;
+    /* Wrap the controls onto a second row in narrow tiles (tiling) rather than
+       letting them overflow and overlap the title/close affordances. Wide panes
+       stay on one line, so single-pane layout is unchanged. */
+    flex-wrap: wrap;
     flex: none;
     padding: 0.3rem 0.6rem;
     border-bottom: 1px solid var(--border);
