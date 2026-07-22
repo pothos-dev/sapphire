@@ -283,4 +283,15 @@ export interface Backend {
    * `window.print()`. Desktop-only; the fake/HTTP impls resolve to `null`.
    */
   savePdf(defaultName: string): Promise<string | null>;
+
+  // --- External links (slice: open-external-links) ---
+
+  /**
+   * Open an external (scheme) URL — `http(s)://`, `mailto:`, `tel:` — in the
+   * user's default application (browser/mail client), NOT in-app. The desktop
+   * WebKitGTK webview swallows `window.open`, so the real impl routes through
+   * the Tauri opener plugin; the fake/HTTP impls (running in a real browser)
+   * open a new tab. `resolveLink` classifies which hrefs are external.
+   */
+  openExternal(url: string): Promise<void>;
 }

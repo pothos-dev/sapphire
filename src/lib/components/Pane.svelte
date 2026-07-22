@@ -425,7 +425,7 @@
     const open = pane.activePath ?? '';
     const target = resolveLink(open, href);
     if (target.kind === 'external') {
-      window.open(target.href, '_blank', 'noopener,noreferrer');
+      void backend.openExternal(target.href);
     } else if (target.kind === 'internal') {
       handleWikiLinkOpen(target.path, target.anchor);
     } else if (href.trim().startsWith('#')) {

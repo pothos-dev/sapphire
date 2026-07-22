@@ -443,6 +443,12 @@ export const fakeBackend: Backend = {
   async savePdf(_defaultName: string): Promise<string | null> {
     return null;
   },
+
+  // Running in a real browser (dev / Playwright): a plain new-tab open matches
+  // the desktop "open in default app" behaviour closely enough.
+  async openExternal(url: string): Promise<void> {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  },
 };
 
 /**

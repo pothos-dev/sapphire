@@ -16,6 +16,7 @@ import {
 import { indentOnInput } from '@codemirror/language';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { backend } from '$lib/ipc';
 import { joinConcept, serializeFrontmatter, type Property } from '$lib/frontmatter';
 import {
   inlinePreview,
@@ -205,7 +206,10 @@ function defaultLinkClick(url: string): void {
   // External links: open in a new tab. Relative / OKF links are left for
   // slice 5; opening them as URLs here would be wrong, so we no-op.
   if (/^https?:\/\//i.test(url)) {
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Route through the backend seam: WebKitGTK swallows `window.open`, so the
+    // desktop impl hands the URL to the OS's default browser via the opener
+    // plugin (the fake/HTTP impls open a new tab).
+    void backend.openExternal(url);
   }
   // else: relative/OKF link — TODO(slice 5): resolve + navigate in-app.
 }

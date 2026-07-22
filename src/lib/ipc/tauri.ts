@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Backend } from './backend';
 import type {
   TreeNode,
@@ -171,5 +172,11 @@ export const tauriBackend: Backend = {
   // per-platform webview PDF export live in Rust (`save_pdf`).
   savePdf(defaultName: string): Promise<string | null> {
     return invoke<string | null>('save_pdf', { defaultName });
+  },
+
+  // WebKitGTK ignores `window.open`; hand the URL to the OS via the opener
+  // plugin (its `opener:default` scope covers http(s)/mailto/tel).
+  openExternal(url: string): Promise<void> {
+    return openUrl(url);
   },
 };

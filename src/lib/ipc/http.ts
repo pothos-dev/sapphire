@@ -216,4 +216,10 @@ export const httpBackend: Backend = {
   async savePdf(_defaultName: string): Promise<string | null> {
     return null;
   },
+
+  // On the web the app already runs in the browser, so a new tab IS the default
+  // application; open it directly.
+  async openExternal(url: string): Promise<void> {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  },
 };
