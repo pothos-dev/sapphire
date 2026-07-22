@@ -108,6 +108,15 @@ pub fn render_body(
     //    everything, so `render.unsafe_` stays false and no other raw HTML leaks.
     let (body, critic_repls) = critic_to_sentinels(body);
 
+    // 0b. Replace citation markers with sentinels too (citation-superscripts):
+    //     inline `[n]` following a word becomes a superscript link to the `[n]`
+    //     row of the citation table; that row's own `[n]` becomes the (literal,
+    //     NOT superscript) jump target. Same sentinel technique as CriticMarkup
+    //     (a distinct PUA pair), so `render.unsafe_` stays off. Consuming the
+    //     brackets here also stops comrak from parsing `[6][7]` as a stray
+    //     reference link (which is what made the middle number look highlighted).
+    let (body, citation_repls) = citations_to_sentinels(&body);
+
     // 1. Rewrite `[[wikilinks]]` to markdown links carrying a resolution marker
     //    URL, so comrak parses them as ordinary links we finish uniformly below.
     let prepared = wikilink::replace_wikilinks(&body, |raw| {
@@ -152,6 +161,8 @@ pub fn render_body(
     // Finally, substitute the CriticMarkup sentinels comrak carried through
     // (untouched, since they are private-use unicode) with our critic HTML tags.
     let html = substitute_critic_sentinels(&html, &critic_repls);
+    // Substitute the citation sentinels with their superscript-link / anchor HTML.
+    let html = substitute_citation_sentinels(&html, &citation_repls);
 
     RenderPayload {
         html,
@@ -474,6 +485,118 @@ fn substitute_critic_sentinels(html: &str, repls: &[String]) -> String {
         return html.to_string();
     }
     let re = Regex::new("\u{E000}(\\d+)\u{E001}").unwrap();
+    re.replace_all(html, |caps: &regex::Captures| {
+        caps[1]
+            .parse::<usize>()
+            .ok()
+            .and_then(|id| repls.get(id))
+            .cloned()
+            .unwrap_or_default()
+    })
+    .into_owned()
+}
+
+// --- Citation references (citation-superscripts) ----------------------------
+//
+// Mirrors the pure TS rules in `src/lib/citations.ts` so the exported PDF / web
+// render matches the live editor:
+//   - an inline `[n]` that FOLLOWS a word (preceded by a non-whitespace char
+//     that is not `[`, and not trailed by `]`/`(`/`:`) → a superscript link to
+//     the citation-table row;
+//   - a line-start `[n]` (the table rows) → the literal `[n]` jump TARGET
+//     carrying `id="cite-n"` (NOT superscript — a superscript row head reads
+//     wrong);
+//   - anything else → left untouched.
+// A distinct PUA sentinel pair (from the CriticMarkup one) keeps the two
+// substitution passes independent.
+
+const CITE_OPEN: char = '\u{E002}';
+const CITE_CLOSE: char = '\u{E003}';
+
+/// Superscript link standing in for an inline `[n]` reference.
+fn citation_ref_html(num: &str) -> String {
+    format!(r##"<sup class="citation-ref"><a href="#cite-{num}">{num}</a></sup>"##)
+}
+
+/// Literal, anchored `[n]` for a citation-table row (the jump target).
+fn citation_def_html(num: &str) -> String {
+    format!(r#"<a id="cite-{num}" class="citation-def">[{num}]</a>"#)
+}
+
+/// Rewrite citation markers in `body` to sentinel tokens, returning the prepared
+/// body plus the replacement HTML for each sentinel id.
+fn citations_to_sentinels(body: &str) -> (String, Vec<String>) {
+    let chars: Vec<char> = body.chars().collect();
+    let n = chars.len();
+    let mut out = String::with_capacity(body.len());
+    let mut repls: Vec<String> = Vec::new();
+
+    let sentinel = |out: &mut String, repls: &mut Vec<String>, html: String| {
+        let id = repls.len();
+        repls.push(html);
+        out.push(CITE_OPEN);
+        out.push_str(&id.to_string());
+        out.push(CITE_CLOSE);
+    };
+
+    let mut i = 0;
+    while i < n {
+        if chars[i] == '[' {
+            // Match `[` <digits> `]`.
+            let mut j = i + 1;
+            while j < n && chars[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j > i + 1 && j < n && chars[j] == ']' {
+                let num: String = chars[i + 1..j].iter().collect();
+                let before = if i > 0 { Some(chars[i - 1]) } else { None };
+                let after = if j + 1 < n { Some(chars[j + 1]) } else { None };
+
+                // Line-start `[n]` (only whitespace back to the newline) = table row.
+                let mut k = i;
+                let mut at_line_start = true;
+                while k > 0 {
+                    let c = chars[k - 1];
+                    if c == '\n' {
+                        break;
+                    }
+                    if !c.is_whitespace() {
+                        at_line_start = false;
+                        break;
+                    }
+                    k -= 1;
+                }
+
+                if at_line_start {
+                    sentinel(&mut out, &mut repls, citation_def_html(&num));
+                    i = j + 1;
+                    continue;
+                }
+
+                // Reference: follows a word, and no disambiguating trailer.
+                let trailer_ok = !matches!(after, Some(']') | Some('(') | Some(':'));
+                let follows_word = matches!(before, Some(b) if !b.is_whitespace() && b != '[');
+                if trailer_ok && follows_word {
+                    sentinel(&mut out, &mut repls, citation_ref_html(&num));
+                    i = j + 1;
+                    continue;
+                }
+                // Neither: fall through and emit the `[` literally.
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+
+    (out, repls)
+}
+
+/// Substitute the citation sentinels (`\u{E002}<id>\u{E003}`) with their HTML.
+fn substitute_citation_sentinels(html: &str, repls: &[String]) -> String {
+    if repls.is_empty() {
+        return html.to_string();
+    }
+    let re = Regex::new("\u{E002}(\\d+)\u{E003}").unwrap();
     re.replace_all(html, |caps: &regex::Captures| {
         caps[1]
             .parse::<usize>()
@@ -890,5 +1013,38 @@ mod tests {
         assert!(p.html.contains("graph TD"));
         // A fenced code block is not a heading → excluded from the outline.
         assert!(p.outline.is_empty());
+    }
+
+    #[test]
+    fn inline_citation_becomes_superscript_link() {
+        let p = render("deepen umami and body.[6][7][8]\n", "a.md", &["a.md"]);
+        // Each reference is its own superscript link to the matching row.
+        assert!(p
+            .html
+            .contains(r##"<sup class="citation-ref"><a href="#cite-6">6</a></sup>"##));
+        assert!(p.html.contains(r##"href="#cite-7">7<"##));
+        assert!(p.html.contains(r##"href="#cite-8">8<"##));
+        // The stray reference-link brackets are gone (no literal `[7]`).
+        assert!(!p.html.contains("[7]"));
+    }
+
+    #[test]
+    fn citation_table_row_is_literal_anchor_not_superscript() {
+        let p = render("body.[6]\n\n[6] Kokumi source. https://x.y\n", "a.md", &["a.md"]);
+        // The table row keeps literal `[6]` and carries the jump-target id.
+        assert!(p
+            .html
+            .contains(r#"<a id="cite-6" class="citation-def">[6]</a>"#));
+        // …and is NOT wrapped in a superscript.
+        assert!(!p.html.contains(r##"<sup class="citation-ref"><a href="#cite-6">6</a></sup> Kokumi"##));
+    }
+
+    #[test]
+    fn bracketed_number_not_following_a_word_is_left_alone() {
+        // Space-preceded `[6]` is neither a reference nor a table row: untouched.
+        let p = render("a paragraph [6] mid-sentence\n", "a.md", &["a.md"]);
+        assert!(p.html.contains("[6]"));
+        assert!(!p.html.contains("citation-ref"));
+        assert!(!p.html.contains("citation-def"));
     }
 }

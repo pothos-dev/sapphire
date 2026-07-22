@@ -74,6 +74,32 @@
   cursor: help;
 }
 
+/* --- Citations (citation-superscripts) --------------------------------------
+   The shared Rust renderer emits, for `[n]` that follows a word, a superscript
+   link to the citation table; and, for the table's own line-start `[n]`, a
+   literal anchor (jump target). Mirrors the live editor's `.cm-citation-ref`. */
+.rendered sup.citation-ref {
+  font-size: 0.72em;
+  line-height: 0;
+}
+
+.rendered sup.citation-ref a {
+  color: var(--accent, #2d6cdf);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.rendered sup.citation-ref a:hover {
+  text-decoration: underline;
+}
+
+/* Citation-table row head: a plain, non-superscript anchor target. */
+.rendered a.citation-def {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+
 /* --- CriticMarkup track-changes + annotations -------------------------------
    The shared Rust renderer emits these inline in the Concept body:
      <ins class="critic-add">    addition

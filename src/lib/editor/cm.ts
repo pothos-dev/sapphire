@@ -39,6 +39,7 @@ import { brokenLinks, brokenLinkTheme, type BrokenLinkContext } from './broken-l
 import { mermaidBlocks } from './mermaid';
 import type { ResolvedTheme } from './mermaidBlocks';
 import { wikiLinksExtension, wikiLinkTheme, type WikiLinkContext } from './wiki-links';
+import { citations, citationTheme } from './citations';
 import { criticMarkupAnnotations, criticMarkupTheme, type OnCommentEdit } from './criticMarkupView';
 import {
   parseCriticMarks,
@@ -265,6 +266,13 @@ function modeExtensions(
     // `theme` bakes the diagram colours; a flip reconfigures this Compartment.
     mermaidBlocks(reading, theme),
     inlinePreview({ onLinkClick, alwaysRender: reading }),
+    // Citation references: inline `[n]` following a word render as superscript
+    // links that jump to the `[n] …` row of the citation table (citation-
+    // superscripts). Non-`edit` only (source mode keeps raw `[n]`); `reading`
+    // always renders, hybrid reveals the token under the cursor. Placed after
+    // inlinePreview so the replace decoration overrides the stray reference-link
+    // syntax colour on the middle number.
+    citations(reading),
     // CriticMarkup annotations (highlight background, hidden delimiters/comment,
     // gutter icon + hover note). Non-`edit` modes only — `edit` returned early
     // above so source mode keeps raw `{==...==}` visible, consistent with how
@@ -635,6 +643,9 @@ function editorExtensions(
     // CriticMarkup annotation styling. A static theme, harmless in all modes
     // (the decorations themselves are only active outside `edit`).
     criticMarkupTheme,
+    // Citation superscript-link + jump-target styling (static; the decorations
+    // are mode-gated in `modeExtensions`).
+    citationTheme,
     // Heading-identity tracking for slug-anchor rewriting (slug-anchor-rewrite):
     // baselines the open Concept's heading slugs and follows each heading across
     // edits so the host can rewrite inbound anchors when a heading is renamed.

@@ -17,6 +17,7 @@ import type { RenderPayload, OutlineHeading } from '$lib/types';
 import { splitFrontmatter } from '$lib/frontmatter';
 import { slugifyHeadings } from '$lib/slug';
 import { parseCriticMarks, type CriticMark } from '$lib/editor/criticMarkup';
+import { findCitationRefs } from '$lib/citations';
 import { parseFrontmatterFields } from './frontmatter';
 
 /** Render a Concept's raw markdown to the fake `RenderPayload`. */
@@ -46,7 +47,9 @@ export function renderConcept(content: string): RenderPayload {
       continue;
     }
     if (line.trim() === '') continue;
-    htmlParts.push(`<p>${renderInline(line)}</p>`);
+    // Paragraph lines can begin with a citation-table row (`[n] …`), so pass
+    // the line-start flag through for citation definition detection.
+    htmlParts.push(`<p>${renderInline(line, true)}</p>`);
   }
 
   return { html: htmlParts.join('\n'), frontmatter, outline };
@@ -63,16 +66,44 @@ function headingMatch(line: string): { level: number; text: string } | null {
  * HTML; text between marks is HTML-escaped. Marks are found with the shared
  * pure scanner so the fake and the editor agree on what a mark is.
  */
-function renderInline(text: string): string {
+function renderInline(text: string, lineStart = false): string {
   const marks = parseCriticMarks(text);
   let out = '';
   let pos = 0;
   for (const mark of marks) {
-    out += escapeHtml(text.slice(pos, mark.from));
+    out += renderTextWithCitations(text.slice(pos, mark.from), lineStart && pos === 0);
     out += renderMark(mark);
     pos = mark.to;
   }
-  out += escapeHtml(text.slice(pos));
+  out += renderTextWithCitations(text.slice(pos), lineStart && pos === 0);
+  return out;
+}
+
+/**
+ * Escape a run of plain text, rendering citations to the SAME markup the Rust
+ * renderer emits (`citations_to_sentinels`): a leading `[n]` (only when this run
+ * is at the line start) becomes the literal `[n]` jump target; every inline
+ * `[n]` following a word becomes a superscript link. Mirrors `$lib/citations`.
+ */
+function renderTextWithCitations(seg: string, atLineStart: boolean): string {
+  let out = '';
+  let cursor = 0;
+  if (atLineStart) {
+    const def = /^([ \t]*)\[(\d+)\]/.exec(seg);
+    if (def) {
+      out += escapeHtml(def[1]);
+      out += `<a id="cite-${def[2]}" class="citation-def">[${def[2]}]</a>`;
+      cursor = def[0].length;
+    }
+  }
+  const rest = seg.slice(cursor);
+  let p = 0;
+  for (const ref of findCitationRefs(rest)) {
+    out += escapeHtml(rest.slice(p, ref.from));
+    out += `<sup class="citation-ref"><a href="#cite-${ref.num}">${ref.num}</a></sup>`;
+    p = ref.to;
+  }
+  out += escapeHtml(rest.slice(p));
   return out;
 }
 
