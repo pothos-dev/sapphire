@@ -164,3 +164,10 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
   domain **Pane** (a top-level app-shell region). Resolved: the cell is now the **`Tile`**
   class (state) + **`TileSlot`** (geometry); `Pane` is reserved for the domain region. See
   [Editor layout](/editor-layout.md#how-the-code-models-a-tile).
+- The code names per-user UI state (`BundleState`, `saveBundleState`, `loadBundleState`,
+  `/api/bundle-state`) after the **Bundle**, but it is **not** part of the Bundle: it is
+  last-open Concept, expanded folders, sidebar flags, and window geometry — held per user
+  and never committed. The misnomer is sharper now that the **Bundle** is the git-committed
+  content the web write path commits. Resolved term: **View state** — per-user, client-held
+  (desktop: OS config dir; web: the browser, e.g. `localStorage`), never written into the
+  Bundle. _Avoid_: "Bundle state". (Code not yet renamed — flagged for a later rename slice.)

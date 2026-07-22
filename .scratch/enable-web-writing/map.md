@@ -83,29 +83,51 @@ can implement web writing without further design choices.
   `suggestions`/`theme`/`treeActions` stores, so the island constructs a **single-Tile** workspace
   state + stubs desktop-only affordances (region/tile-split). `cm.ts` drives unchanged, only the
   `http` backend swapped behind the seam. One Concept at a time (matches ≤1 dirty buffer).
+- [Server write-route surface](issues/07-server-write-route-surface.md) — **RESTful-per-method**
+  write routes mirroring the seam 1:1 (`PUT /api/concept`=overwrite, `POST /api/concept`=create,
+  `POST /api/folder|rename|move`, `DELETE /api/concept?path=`, `POST /api/rewrite-anchors`); each
+  **write-then-commits immediately** (no server-side pending Save) under **one global write lock**
+  on a blocking thread. Auth = **`AuthedUser` axum extractor** verifying the hook-minted JWT
+  (reads stay open); the `/api` hook forwards method+body+`Bearer` on writes. Commit **primitive**
+  extends core `git.rs` (reuse `run_git`); all **orchestration is server-side**; core writers stay
+  commitless. `rewriteAnchors` is **editor-driven by necessity** (backend can't infer heading
+  renames from content) and **amends the preceding `edit … via web` commit** iff HEAD subject+author
+  match, else fresh `relink … via web` (safe — local-only, no push). **Self-write suppression already
+  wired** in the shared watcher; write path just `note_self_write`s every written path.
+  `saveBundleState` **off the surface** (it's *View state*, browser-held — glossary mismatch flagged).
+  Write **error classifier** separate from reads: 400 bad-path / 409 exists / 404 missing / 500
+  server / 401 from the extractor.
 
 ## Not yet specified
 
 <!-- in-scope fog; graduates into tickets as the foundational decisions resolve -->
 
-- **`http.ts` write implementation** — mirror the resolved server write routes on the
-  seam (drop the `READ_ONLY` rejections). Shape fixed by *Server write-route surface*.
-- **Tree CRUD + link/anchor rewrite over HTTP** — create/rename/move/delete and the
-  `rename`/`rewriteAnchors` link-rewrite machinery, faithfully server-side with
-  commits. Depends on the write-route surface + git model.
-- **Concurrency UX** — stale-buffer detection, SSE self-write suppression (the server
-  now writes, so it must suppress its own echo like the desktop watcher does), and the
-  last-write-wins warn/reload flow. Depends on the write routes + editor shell.
+Two fog items graduated into decision tickets when *Server write-route surface* (07)
+resolved:
+
+- **[08 — Web write concurrency UX](issues/08-web-write-concurrency-ux.md)** (open,
+  blocked by 06, 07) — client-side last-write-wins: stale-buffer detection over SSE,
+  warn/reload flow (clean vs dirty), navigate-away-with-dirty-buffer, the
+  structural-op-while-dirty confirm dialog UX.
+- **[09 — Web write test strategy](issues/09-web-write-test-strategy.md)** (open, blocked
+  by 07) — what `fake.ts` must model (commits?), which gate proves which behaviour, auth
+  in tests, and guarding the desktop↔web commit asymmetry in shared specs.
+
+Still genuinely foggy (operator-dependent, not yet sharp enough to ticket):
+
 - **Deployment / ops** — self-hosted always-on server, Bundle-as-git-repo assumptions,
-  env/config, how the Node SSR process and the axum server are run together. Depends on
-  the git model.
-- **Web write test strategy** — how Playwright exercises writing against the fake/http
-  backend and how the fake backend models commits.
-- **`/api` proxy body/identity forwarding** — the `hooks.server.ts` proxy forwards no
-  cookie/body/auth and only GET-shaped reads today; write routes need it to forward POST
-  bodies **and mint+attach the HS256 JWT** (per ticket 04). Auth model now decided; the
-  concrete forwarding shape folds into *Server write-route surface* (ticket 07). (axum
-  `0.0.0.0`→loopback is now optional defense-in-depth, not required — axum verifies the JWT.)
+  how the Node SSR process and the axum server are run together, and provisioning the
+  **JWT shared secret + OIDC provider** (ticket 04's Dex-fronts-known-users shape).
+
+**Now fully specified → build / handoff** (no decisions left — *not* decision tickets;
+implementation work spec'd by tickets 07 + 04 + 05):
+
+- **`http.ts` write implementation** — mirror ticket 07's route table on the seam, drop
+  the `READ_ONLY` rejections.
+- **Server write routes + Tree CRUD over HTTP** — implement ticket 07's table
+  (`bundle`/`rewrite` writers + the new `git::commit` primitive under the global lock).
+- **`/api` proxy write-forwarding** — `hooks.server.ts` forwards method+body+`Bearer` JWT
+  on writes (ticket 07 §3); reads unchanged.
 
 ## Out of scope
 
