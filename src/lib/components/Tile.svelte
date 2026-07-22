@@ -1,20 +1,20 @@
 <script lang="ts">
-  // A single tiled Pane (slice: multi-concept-tiling). Owns ONE CodeMirror view
-  // and every logically per-Pane editor concern for its Concept: the per-tile
+  // A single tiled Tile (slice: multi-concept-tiling). Owns ONE CodeMirror view
+  // and every logically per-Tile editor concern for its Concept: the per-tile
   // header, the live-preview view mode, autosave, undo/redo, the review-diff
   // toggle + history stepper, PDF export, the formatting context menu +
-  // annotation popup, link / wikilink click navigation (within THIS Pane, pushing
-  // THIS Pane's history), broken-link decorations, mermaid theme-sync, and the
+  // annotation popup, link / wikilink click navigation (within THIS Tile, pushing
+  // THIS Tile's history), broken-link decorations, mermaid theme-sync, and the
   // Properties panel (rendered inline in EVERY visible tile when the global
   // `session.propertiesShown` toggle is on, showing THIS tile's Concept's
   // frontmatter; only the ACTIVE tile's panel is wired to the 'properties' Region
   // + grid cursor — multi-concept-tiling).
   //
   // App.svelte owns the tiling layout and the single 'editor' Region; it renders
-  // one <Pane> per tile and delegates active-Pane editor concerns here via a few
+  // one <Tile> per tile and delegates active-Tile editor concerns here via a few
   // exported methods (focusView, scrollToDocLine, undo/redo, review + find, the
   // slug-anchor save hook). The same Concept open in two tiles shares one
-  // Document (the registry dedupes by path); each Pane's build effect re-syncs its
+  // Document (the registry dedupes by path); each Tile's build effect re-syncs its
   // view to the shared buffer via a minimal change, so an edit in one tile shows
   // in the other without jumping the untouched tile's caret.
   import { onDestroy } from 'svelte';
@@ -27,7 +27,7 @@
   import { theme } from '$lib/state/theme.svelte';
   import { focus } from '$lib/state/focus.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
-  import type { Pane } from '$lib/state/workspace.svelte';
+  import type { Tile } from '$lib/state/workspace.svelte';
   import type { FileHistory } from '$lib/types';
   import {
     buildEditor,
@@ -74,57 +74,67 @@
   import { resolveLink } from '$lib/links';
   import { findHeadingLine } from '$lib/outline';
   import { isReservedFile } from '$lib/reserved';
-  import { paneTitle } from '$lib/paneTitle';
+  import { tileTitle } from '$lib/tileTitle';
   import { region } from '$lib/region';
-  import PaneHeader from '$lib/components/PaneHeader.svelte';
+  import TileHeader from '$lib/components/TileHeader.svelte';
   import Properties from '$lib/components/Properties.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import AnnotationPopup from '$lib/components/AnnotationPopup.svelte';
 
   interface Props {
-    /** The Pane state object (active Concept, history, shared Document). */
-    pane: Pane;
-    /** Whether this tile is the focused/active Pane (owns the 'properties' Region
+    /** The Tile state object (active Concept, history, shared Document). */
+    tile: Tile;
+    /** Whether this tile is the focused/active Tile (owns the 'properties' Region
      *  + grid cursor when Properties is globally shown). */
     active: boolean;
+    /** Whether more than one tile is on screen (gates the Close affordance). */
+    multipleTiles: boolean;
     /** App's pending "focus the type field" request path (new-Concept create). */
     focusTypeForPath: string | null;
-    /** Ask App to make this tile the active Pane (on focusin / header intent). */
+    /** Ask App to make this tile the active Tile (on focusin / header intent). */
     onActivate: () => void;
-    /** Split this Pane's Concept into a new column to the right. */
+    /** Split this Tile's Concept into a new column to the right. */
     onSplitRight: () => void;
-    /** Split this Pane's Concept into a new tile below. */
+    /** Split this Tile's Concept into a new tile below. */
     onSplitDown: () => void;
     /** Close this tile. */
     onClose: () => void;
   }
 
-  let { pane, active, focusTypeForPath, onActivate, onSplitRight, onSplitDown, onClose }: Props =
-    $props();
+  let {
+    tile,
+    active,
+    multipleTiles,
+    focusTypeForPath,
+    onActivate,
+    onSplitRight,
+    onSplitDown,
+    onClose,
+  }: Props = $props();
 
   let editorParent = $state<HTMLDivElement | null>(null);
   let view: EditorView | null = null;
 
   // The open Concept's frontmatter, mirrored out of the editor's frontmatter
-  // field (the single source of truth — ADR 0003) so this Pane's Properties panel
+  // field (the single source of truth — ADR 0003) so this Tile's Properties panel
   // and header title can render it.
   let frontmatterProps = $state<Property[]>([]);
 
   // The tri-state view mode is GLOBAL (session.editorMode), toggled from the
-  // NavBar and applied to EVERY tile at once — it is not a per-Pane setting. This
-  // effect subscribes each Pane's live view to that global mode: whenever it
+  // NavBar and applied to EVERY tile at once — it is not a per-Tile setting. This
+  // effect subscribes each Tile's live view to that global mode: whenever it
   // changes, the view re-renders in the new mode. Freshly (re)built views adopt
-  // it via `initialMode` below. `pane.mode` is kept in sync so the persisted
+  // it via `initialMode` below. `tile.mode` is kept in sync so the persisted
   // layout stays self-consistent (all tiles share the global mode).
   $effect(() => {
     const mode = session.editorMode;
-    pane.mode = mode;
+    tile.mode = mode;
     if (view) setEditorMode(view, mode);
   });
 
-  const currentPaneTitle = $derived(paneTitle(pane.activePath, frontmatterProps));
+  const currentTileTitle = $derived(tileTitle(tile.activePath, frontmatterProps));
 
-  // --- Unified undo/redo over the Pane's single body+frontmatter history -------
+  // --- Unified undo/redo over the Tile's single body+frontmatter history -------
   let canUndo = $state(false);
   let canRedo = $state(false);
   function syncHistoryDepths() {
@@ -150,11 +160,11 @@
   // the ACTIVE tile's panel is wired to the single 'properties' Region + the
   // singleton grid cursor; a non-active tile's panel is mouse-editable but takes
   // no part in keyboard grid nav (see the `active` prop on <Properties>).
-  const focusTypeNow = $derived(focusTypeForPath !== null && focusTypeForPath === pane.activePath);
+  const focusTypeNow = $derived(focusTypeForPath !== null && focusTypeForPath === tile.activePath);
   function onPropertiesChange(props: Property[]) {
     if (!view) return;
     dispatchFrontmatter(view, props);
-    void pane.flush();
+    void tile.flush();
   }
 
   // --- Editor formatting context menu ------------------------------------------
@@ -317,7 +327,7 @@
     }
   }
 
-  // --- Review changes: working-tree ↔ HEAD (per Pane) --------------------------
+  // --- Review changes: working-tree ↔ HEAD (per Tile) --------------------------
   let reviewActive = $state(false);
   let reviewParent = $state<HTMLDivElement | null>(null);
   let reviewView: EditorView | null = null;
@@ -330,7 +340,7 @@
 
   // Load the git history for the open Concept; switching Concepts exits review.
   $effect(() => {
-    const path = pane.activePath;
+    const path = tile.activePath;
     reviewActive = false;
     reviewText = null;
     reviewHistory = null;
@@ -358,31 +368,31 @@
   });
 
   async function renderReviewStep(pos: number): Promise<boolean> {
-    const path = pane.activePath;
+    const path = tile.activePath;
     if (path === null) return false;
     const step = reviewStep(reviewCommits, pos);
     const oldSide = await backend.fileAtRev(path, step.oldRev);
     if (oldSide.status !== 'ok') return false;
     let newContent: string;
     if (step.newRev === null) {
-      newContent = pane.content;
+      newContent = tile.content;
     } else {
       const newSide = await backend.fileAtRev(path, step.newRev);
       if (newSide.status !== 'ok') return false;
       newContent = newSide.content;
     }
-    if (pane.activePath !== path) return false;
+    if (tile.activePath !== path) return false;
     reviewText = diffToCriticMarkup(oldSide.content, newContent);
     if (reviewView) setReviewText(reviewView, reviewText);
     return true;
   }
 
   async function enterReview(): Promise<void> {
-    const path = pane.activePath;
+    const path = tile.activePath;
     if (path === null || reviewActive || !reviewAvail.enabled) return;
     reviewPosition = 0;
     if (!(await renderReviewStep(0))) return;
-    if (pane.activePath !== path) return;
+    if (tile.activePath !== path) return;
     reviewActive = true;
   }
 
@@ -407,22 +417,22 @@
   }
 
   async function exportPdf(): Promise<void> {
-    const path = pane.activePath;
+    const path = tile.activePath;
     if (path === null) return;
     await backend.openPrintWindow(path);
   }
 
-  // --- Link / wikilink navigation (navigates THIS Pane, pushes its history) ----
+  // --- Link / wikilink navigation (navigates THIS Tile, pushes its history) ----
   let pendingScrollLine: number | null = null;
   let pendingScrollAnchor: string | null = null;
 
   function scrollToOutlineLine(line: number) {
     if (!view) return;
-    scrollToLine(view, line - frontmatterLineCount(pane.content));
+    scrollToLine(view, line - frontmatterLineCount(tile.content));
   }
 
   function handleLinkClick(href: string) {
-    const open = pane.activePath ?? '';
+    const open = tile.activePath ?? '';
     const target = resolveLink(open, href, {
       bundleRoot: indexStore.bundleRoot(),
       exists: (p) => indexStore.exists(p),
@@ -432,26 +442,26 @@
     } else if (target.kind === 'internal') {
       handleWikiLinkOpen(target.path, target.anchor);
     } else if (href.trim().startsWith('#')) {
-      const line = findHeadingLine(pane.content, href.trim().slice(1));
+      const line = findHeadingLine(tile.content, href.trim().slice(1));
       if (line !== null) scrollToOutlineLine(line);
     }
   }
 
   function handleWikiLinkOpen(path: string, anchor: string | null) {
-    if (path === (pane.activePath ?? '')) {
+    if (path === (tile.activePath ?? '')) {
       if (anchor !== null && view) {
-        const line = findHeadingLine(pane.content, anchor);
+        const line = findHeadingLine(tile.content, anchor);
         if (line !== null) scrollToOutlineLine(line);
       }
       return;
     }
     pendingScrollAnchor = anchor;
-    void pane.open(path);
+    void tile.open(path);
   }
 
-  // Slug-anchor rewriting after an autosave of this Pane's Concept.
+  // Slug-anchor rewriting after an autosave of this Tile's Concept.
   function handleSaved(savedPath: string): void {
-    if (!view || pane.activePath !== savedPath) return;
+    if (!view || tile.activePath !== savedPath) return;
     const renames = pendingAnchorRenames(view);
     if (renames.length === 0) return;
     const allPaths = indexStore.pathList();
@@ -482,9 +492,9 @@
     return { from: start, to: endOld, insert: newStr.slice(start, endNew) };
   }
 
-  // --- Build / update this Pane's CodeMirror view ------------------------------
+  // --- Build / update this Tile's CodeMirror view ------------------------------
   $effect(() => {
-    const content = pane.content;
+    const content = tile.content;
     if (!editorParent) return;
 
     const { body } = splitFrontmatter(content);
@@ -495,21 +505,21 @@
         parent: editorParent,
         doc: body,
         frontmatter: props,
-        path: pane.activePath,
+        path: tile.activePath,
         initialMode: session.editorMode,
-        onChange: (full) => pane.edit(full),
+        onChange: (full) => tile.edit(full),
         onFrontmatterChange: (p) => (frontmatterProps = p),
-        onBlur: () => void pane.flush(),
+        onBlur: () => void tile.flush(),
         onHistory: syncHistoryDepths,
         onLinkClick: handleLinkClick,
         onCommentEdit: openCommentPopup,
         brokenLinkContext: {
-          currentPath: () => pane.activePath ?? '',
+          currentPath: () => tile.activePath ?? '',
           exists: (p) => indexStore.exists(p),
           bundleRoot: () => indexStore.bundleRoot(),
         },
         wikiLinkContext: {
-          currentPath: () => pane.activePath ?? '',
+          currentPath: () => tile.activePath ?? '',
           allPaths: () => indexStore.pathList(),
           exists: (p) => indexStore.exists(p),
           open: handleWikiLinkOpen,
@@ -519,7 +529,7 @@
       view.dom.setAttribute('data-theme', theme.resolved);
       syncHistoryDepths();
     } else {
-      setEditorConcept(view, body, props, pane.activePath);
+      setEditorConcept(view, body, props, tile.activePath);
     }
 
     if (pendingScrollLine !== null && view) {
@@ -527,7 +537,7 @@
       pendingScrollLine = null;
     }
     if (pendingScrollAnchor !== null && view) {
-      const line = findHeadingLine(pane.content, pendingScrollAnchor);
+      const line = findHeadingLine(tile.content, pendingScrollAnchor);
       if (line !== null) scrollToOutlineLine(line);
       pendingScrollAnchor = null;
     }
@@ -536,14 +546,14 @@
   // Keep broken-link styling + wikilink resolution fresh.
   $effect(() => {
     void indexStore.version;
-    void pane.activePath;
+    void tile.activePath;
     if (view) {
       refreshBrokenLinkDecorations(view);
       reconfigureWikiLinks(view);
     }
   });
 
-  // Theme: mirror `data-theme` onto this Pane's view(s).
+  // Theme: mirror `data-theme` onto this Tile's view(s).
   $effect(() => {
     const resolved = theme.resolved;
     if (view) view.dom.setAttribute('data-theme', resolved);
@@ -565,7 +575,7 @@
     reviewView = null;
   });
 
-  // --- Exported API used by App for the ACTIVE Pane ----------------------------
+  // --- Exported API used by App for the ACTIVE Tile ----------------------------
   export function focusView(): boolean {
     if (!view) return false;
     view.focus();
@@ -577,13 +587,13 @@
   export function scrollToDocLine(fullDocLine: number): void {
     scrollToOutlineLine(fullDocLine);
   }
-  /** Open `path` in this Pane and scroll to `line` once loaded (search result). */
+  /** Open `path` in this Tile and scroll to `line` once loaded (search result). */
   export function openWithScrollLine(path: string, line: number): void {
-    if (pane.activePath === path) {
+    if (tile.activePath === path) {
       if (view) scrollToLine(view, line);
     } else {
       pendingScrollLine = line;
-      void pane.open(path);
+      void tile.open(path);
     }
   }
   export function enterFind(): void {
@@ -606,31 +616,32 @@
   export { handleSaved };
   /** Adopt a view mode imperatively, applying it to the live view if built. */
   export function setMode(mode: EditorMode): void {
-    pane.mode = mode;
+    tile.mode = mode;
     if (view) setEditorMode(view, mode);
   }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="pane"
-  class:pane-active={active}
-  data-testid="pane"
+  class="tile"
+  class:tile-active={active}
+  data-testid="tile"
   onfocusin={onActivate}
   onpointerdown={onActivate}
 >
-  <PaneHeader
-    title={currentPaneTitle}
-    hasOpenConcept={pane.activePath !== null}
-    canGoBack={pane.canGoBack}
-    canGoForward={pane.canGoForward}
+  <TileHeader
+    title={currentTileTitle}
+    hasOpenConcept={tile.activePath !== null}
+    canGoBack={tile.canGoBack}
+    canGoForward={tile.canGoForward}
     {canUndo}
     {canRedo}
     {reviewActive}
+    {multipleTiles}
     reviewEnabled={reviewAvail.enabled}
     reviewTooltip={reviewAvail.tooltip}
-    onBack={() => void pane.back()}
-    onForward={() => void pane.forward()}
+    onBack={() => void tile.back()}
+    onForward={() => void tile.forward()}
     onClose={onClose}
     onSplitRight={onSplitRight}
     onSplitDown={onSplitDown}
@@ -640,14 +651,14 @@
     onExportPdf={exportPdf}
   />
 
-  {#if pane.error}
-    <p class="status error">{pane.error}</p>
+  {#if tile.error}
+    <p class="status error">{tile.error}</p>
   {/if}
-  {#if !pane.activePath && !pane.error}
+  {#if !tile.activePath && !tile.error}
     <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
   {/if}
 
-  {#if session.propertiesShown && pane.activePath && !isReservedFile(pane.activePath)}
+  {#if session.propertiesShown && tile.activePath && !isReservedFile(tile.activePath)}
     {#if active}
       <!-- Active tile: the single 'properties' Region lives here (grid nav +
            spotlight + Alt-arrow entry). -->
@@ -659,17 +670,17 @@
           id: 'properties',
           isPresent: () =>
             session.propertiesShown &&
-            pane.activePath !== null &&
-            !isReservedFile(pane.activePath),
+            tile.activePath !== null &&
+            !isReservedFile(tile.activePath),
           isVisible: () =>
             session.propertiesShown &&
-            pane.activePath !== null &&
-            !isReservedFile(pane.activePath),
+            tile.activePath !== null &&
+            !isReservedFile(tile.activePath),
         }}
       >
         <Properties
           properties={frontmatterProps}
-          path={pane.activePath}
+          path={tile.activePath}
           types={suggestions.types}
           keys={suggestions.keys}
           tags={suggestions.tags}
@@ -684,7 +695,7 @@
       <div class="properties-host">
         <Properties
           properties={frontmatterProps}
-          path={pane.activePath}
+          path={tile.activePath}
           types={suggestions.types}
           keys={suggestions.keys}
           tags={suggestions.tags}
@@ -699,7 +710,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="editor-host"
-    class:hidden={!pane.activePath || reviewActive}
+    class:hidden={!tile.activePath || reviewActive}
     data-testid="editor"
     bind:this={editorParent}
     oncontextmenu={openEditorMenu}
@@ -761,7 +772,7 @@
 {/if}
 
 <style>
-  .pane {
+  .tile {
     display: flex;
     flex-direction: column;
     height: 100%;

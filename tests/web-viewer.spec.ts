@@ -292,7 +292,7 @@ test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sid
 });
 
 /**
- * Round-2 polish: the center-pane toolbar (collapse-left / back / forward /
+ * Round-2 polish: the center-tile toolbar (collapse-left / back / forward /
  * theme / collapse-right), collapsible Properties, and localStorage persistence
  * of UI state across reloads. Saves the DARK-mode parity shot to
  * tests/screenshots/web-parity-dark.png.
@@ -322,7 +322,7 @@ test('polish: toolbar collapse/nav, Properties collapse, and persistence', async
   await page.getByTestId('properties-toggle').click();
   await expect(page.getByTestId('properties')).toHaveCount(0);
 
-  // Screenshot the DARK parity view (toolbar on centre pane, both Sidebars,
+  // Screenshot the DARK parity view (toolbar on centre tile, both Sidebars,
   // thin scrollbars) with Properties re-expanded.
   await page.getByTestId('properties-toggle').click();
   await expect(page.getByTestId('properties')).toBeVisible();

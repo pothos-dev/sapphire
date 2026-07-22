@@ -18,7 +18,7 @@
   import TagBrowser from '$lib/components/TagBrowser.svelte';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import NavBar from '$lib/components/NavBar.svelte';
-  import Pane from '$lib/components/Pane.svelte';
+  import Tile from '$lib/components/Tile.svelte';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
@@ -36,13 +36,13 @@
     resizeColumns as layoutResizeColumns,
     resizeTiles as layoutResizeTiles,
     MIN_WEIGHT,
-  } from '$lib/paneLayout';
-  import { nextTile } from '$lib/paneNav';
+  } from '$lib/tileLayout';
+  import { nextTile } from '$lib/tileNav';
   import { resolveStoredLayout } from '$lib/state/layoutPersist';
 
-  // The tiling workspace (row of columns of Panes) behind the editor facade. App
+  // The tiling workspace (row of columns of Tiles) behind the editor facade. App
   // renders its layout + drives split/close/resize/active; the facade stays the
-  // "active Pane" surface Outline/Backlinks/quick-nav/etc. read from.
+  // "active Tile" surface Outline/Backlinks/quick-nav/etc. read from.
   const workspace = editor.workspace;
 
   // Right-Sidebar expanded count (Outline + Backlinks), see the note below.
@@ -54,16 +54,22 @@
 
   let appRoot = $state<HTMLDivElement | null>(null);
   // The editor-area container: the single 'editor' Region (spanning every tile).
-  // The active Pane is where focus lands when the Region is entered.
+  // The active Tile is where focus lands when the Region is entered.
   let editorArea = $state<HTMLDivElement | null>(null);
   let unregisterEditor: (() => void) | null = null;
 
-  // One imperative handle per live Pane component, keyed by Pane id (bound in the
-  // layout `{#each}`). App delegates active-Pane editor concerns to the handle for
+  // One imperative handle per live Tile component, keyed by Tile id (bound in the
+  // layout `{#each}`). App delegates active-Tile editor concerns to the handle for
   // `workspace.activeId` — focus, outline scroll, undo/redo, find, review, and the
   // slug-anchor save hook.
-  let paneRefs = $state<Record<string, ReturnType<typeof Pane>>>({});
-  const activePaneRef = $derived(paneRefs[workspace.activeId]);
+  let tileRefs = $state<Record<string, ReturnType<typeof Tile>>>({});
+  const activeTileRef = $derived(tileRefs[workspace.activeId]);
+
+  // Total tiles on screen; the per-Tile Close affordance only appears when there
+  // is more than one (closing the last tile would just clear it to empty state).
+  const tileCount = $derived(
+    workspace.layout.columns.reduce((n, col) => n + col.tiles.length, 0),
+  );
 
   // Quick-nav palette (Ctrl+K) + full-text search (Ctrl+Shift+F) overlays.
   let quickNavOpen = $state(false);
@@ -83,26 +89,26 @@
   );
 
   // New-Concept create focuses the `type` field: the path we want focused. The
-  // active Pane's Properties focuses `type` while it matches its open Concept.
+  // active Tile's Properties focuses `type` while it matches its open Concept.
   let focusTypeForPath = $state<string | null>(null);
 
   onMount(() => {
     // Slug-anchor rewriting: after each autosave, reconcile heading-slug changes
     // by rewriting inbound anchors. The edit happened in the focused (active)
-    // Pane, so route the save hook to it (its view holds the anchor baseline).
-    editor.onSaved = (path) => activePaneRef?.handleSaved(path);
+    // Tile, so route the save hook to it (its view holds the anchor baseline).
+    editor.onSaved = (path) => activeTileRef?.handleSaved(path);
 
     const stopTheme = theme.start();
     const stopFocus = focus.start();
     focus.onLeaveRegion = (entered) => session.clearTransientRevealsExcept(entered);
 
     // Register the single 'editor' Region on the editor-area container (spanning
-    // all tiles). Its entry point focuses the ACTIVE Pane's view; present/visible
+    // all tiles). Its entry point focuses the ACTIVE Tile's view; present/visible
     // whenever a Concept is open.
     if (editorArea) {
       unregisterEditor = focus.register('editor', {
         container: editorArea,
-        focus: () => activePaneRef?.focusView() ?? false,
+        focus: () => activeTileRef?.focusView() ?? false,
         isPresent: () => editor.path !== null,
         isVisible: () => editor.path !== null,
       });
@@ -112,11 +118,11 @@
       await Promise.all([bundle.load(), session.load()]);
 
       // Reconstruct the tiling workspace from the persisted layout: rebuild every
-      // column/tile, open each tile's Concept into its Pane, and restore each
-      // pane's view-mode + the active tile (layout-persistence). An OLD session
+      // column/tile, open each tile's Concept into its Tile, and restore each
+      // tile's view-mode + the active tile (layout-persistence). An OLD session
       // (only `lastOpenConcept` + one `editorMode`, no layout) migrates to a
       // single tile; a missing/corrupt/empty layout falls back to the default
-      // single empty pane — kept as-is, just adopting the persisted global mode.
+      // single empty tile — kept as-is, just adopting the persisted global mode.
       const stored = resolveStoredLayout(
         session.layout,
         session.lastOpenConcept,
@@ -125,7 +131,7 @@
       if (stored) {
         await workspace.restore(stored);
       } else {
-        activePaneRef?.setMode(session.editorMode);
+        activeTileRef?.setMode(session.editorMode);
       }
 
       session.endRestore();
@@ -163,16 +169,16 @@
         return;
       }
 
-      // In-Concept Find: Ctrl/Cmd+F. Focus the active Pane's editor + open its
+      // In-Concept Find: Ctrl/Cmd+F. Focus the active Tile's editor + open its
       // find panel. NO-OP when no Concept is open.
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
         if (editor.path === null) return;
         e.preventDefault();
-        activePaneRef?.enterFind();
+        activeTileRef?.enterFind();
         return;
       }
 
-      // Unified undo/redo: route Ctrl/Cmd+Z/Shift+Z/Y to the active Pane's history
+      // Unified undo/redo: route Ctrl/Cmd+Z/Shift+Z/Y to the active Tile's history
       // unless focus is already inside a CodeMirror editor (CM handles it natively).
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         const key = e.key.toLowerCase();
@@ -182,13 +188,13 @@
           const inEditor = !!(document.activeElement as HTMLElement | null)?.closest('.cm-editor');
           if (inEditor) return;
           e.preventDefault();
-          if (isUndo) activePaneRef?.undoActive();
-          else activePaneRef?.redoActive();
+          if (isUndo) activeTileRef?.undoActive();
+          else activeTileRef?.redoActive();
           return;
         }
       }
 
-      // Browser-style history: Ctrl+Alt+Left/Right on the active Pane.
+      // Browser-style history: Ctrl+Alt+Left/Right on the active Tile.
       if (e.ctrlKey && e.altKey && !e.metaKey && !e.shiftKey) {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
@@ -201,17 +207,17 @@
         }
       }
 
-      // Review mode owns Escape first: exit the active Pane's review view.
+      // Review mode owns Escape first: exit the active Tile's review view.
       if (
         e.key === 'Escape' &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey &&
         !e.shiftKey &&
-        activePaneRef?.isReviewActive()
+        activeTileRef?.isReviewActive()
       ) {
         e.preventDefault();
-        activePaneRef.exitReview();
+        activeTileRef.exitReview();
         return;
       }
 
@@ -275,14 +281,14 @@
     };
   });
 
-  // Apply the resolved theme as `data-theme` on the app root (each Pane's view
+  // Apply the resolved theme as `data-theme` on the app root (each Tile's view
   // mirrors it onto its own CodeMirror root).
   $effect(() => {
     const resolved = theme.resolved;
     if (appRoot) appRoot.setAttribute('data-theme', resolved);
   });
 
-  // Persist the last-open Concept whenever active-Pane navigation changes it.
+  // Persist the last-open Concept whenever active-Tile navigation changes it.
   $effect(() => {
     const path = editor.path;
     if (session.restored) {
@@ -307,14 +313,14 @@
   }
 
   // Close a tile, then land keyboard focus in the neighbour that inherited the
-  // active slot (workspace.closePane picks it). Closing the last tile clears the
-  // Pane to the empty state (no view to focus — focusEditorWhenReady no-ops).
+  // active slot (workspace.closeTile picks it). Closing the last tile clears the
+  // Tile to the empty state (no view to focus — focusEditorWhenReady no-ops).
   async function closeTileAndFocus(id: string) {
-    await workspace.closePane(id);
+    await workspace.closeTile(id);
     focusEditorWhenReady();
   }
 
-  // --- Column / tile divider drags (pure size math in `paneLayout.ts`) --------
+  // --- Column / tile divider drags (pure size math in `tileLayout.ts`) --------
   // Each drag captures the layout snapshot at pointer-down and applies the total
   // pointer delta (as a fraction of the container axis) from that base, so the
   // clamp is idempotent — dragging past a neighbour's minimum stops cleanly and
@@ -370,7 +376,7 @@
     window.addEventListener('pointerup', up);
   }
 
-  // --- Explorer keyboard nav + CRUD (unchanged from single-pane) --------------
+  // --- Explorer keyboard nav + CRUD (unchanged from single-tile) --------------
   let treePane = $state<HTMLDivElement | null>(null);
 
   function onTreeKeydown(e: KeyboardEvent) {
@@ -464,8 +470,8 @@
     focusEditorWhenReady();
   }
 
-  // Move keyboard focus to tile `id`: make it the active Pane (so Outline /
-  // Backlinks / Properties, which track the active Pane, follow) and focus its
+  // Move keyboard focus to tile `id`: make it the active Tile (so Outline /
+  // Backlinks / Properties, which track the active Tile, follow) and focus its
   // CodeMirror view. Retries across frames like `focusEditorWhenReady`, since the
   // target tile's view may still be building. Focusing the view fires its
   // `focusin`, which keeps the 'editor' Region active.
@@ -473,7 +479,7 @@
     workspace.setActive(id);
     let tries = 0;
     const attempt = () => {
-      const ref = paneRefs[id];
+      const ref = tileRefs[id];
       if (ref?.hasView()) {
         ref.focusView();
       } else if (tries++ < 10) {
@@ -483,13 +489,13 @@
     requestAnimationFrame(attempt);
   }
 
-  // Focus the active Pane's CodeMirror view once it exists (retry across frames,
+  // Focus the active Tile's CodeMirror view once it exists (retry across frames,
   // since the view (re)builds reactively and may be null the next microtask).
   function focusEditorWhenReady() {
     let tries = 0;
     const tryFocus = () => {
-      if (activePaneRef?.hasView()) {
-        activePaneRef.focusView();
+      if (activeTileRef?.hasView()) {
+        activeTileRef.focusView();
       } else if (tries++ < 10) {
         requestAnimationFrame(tryFocus);
       }
@@ -520,7 +526,7 @@
       const line = entry ? Number(entry.dataset.line) : NaN;
       if (Number.isFinite(line)) {
         scrollToOutlineLine(line);
-        queueMicrotask(() => activePaneRef?.focusView());
+        queueMicrotask(() => activeTileRef?.focusView());
       }
     });
     if (handled) e.preventDefault();
@@ -534,7 +540,7 @@
       const source = entry?.dataset.path;
       if (source) {
         openConcept(source);
-        queueMicrotask(() => activePaneRef?.focusView());
+        queueMicrotask(() => activeTileRef?.focusView());
       }
     });
     if (handled) e.preventDefault();
@@ -556,15 +562,15 @@
     if (entry && document.activeElement !== entry) entry.focus();
   });
 
-  // Open a full-text search result in the active Pane, scrolling to the match.
+  // Open a full-text search result in the active Tile, scrolling to the match.
   function openSearchResult(path: string, line: number) {
     focusTypeForPath = null;
-    activePaneRef?.openWithScrollLine(path, line);
+    activeTileRef?.openWithScrollLine(path, line);
   }
 
-  // Scroll the active Pane's editor to an Outline heading's full-document line.
+  // Scroll the active Tile's editor to an Outline heading's full-document line.
   function scrollToOutlineLine(line: number) {
-    activePaneRef?.scrollToDocLine(line);
+    activeTileRef?.scrollToDocLine(line);
   }
 
   // --- Tree CRUD: context menu + dialogs --------------------------------------
@@ -629,7 +635,7 @@
         {/if}
       {/snippet}
       <div
-        class="tree-pane"
+        class="tree-tile"
         class:drop-target={treeDnd.dropTarget === ''}
         bind:this={treePane}
         onkeydown={onTreeKeydown}
@@ -718,7 +724,7 @@
     </div>
   </aside>
 
-  <main class="editor-pane" aria-label="Concept">
+  <main class="editor-tile" aria-label="Concept">
     <NavBar
       leftSidebarOpen={session.leftSidebarOpen}
       rightSidebarOpen={session.rightSidebarOpen}
@@ -730,10 +736,10 @@
       onSetMode={(mode) => session.setEditorMode(mode)}
       onToggleProperties={() => session.setPropertiesShown(!session.propertiesShown)}
     />
-    <!-- The editor area: a ROW OF COLUMNS, each a vertical STACK of tiled Panes,
+    <!-- The editor area: a ROW OF COLUMNS, each a vertical STACK of tiled Tiles,
          with draggable dividers between columns and between tiles. It is the
-         single 'editor' Region; the active Pane is where focus lands on entry.
-         (Sizing math lives in the pure `paneLayout.ts`; this just renders it.) -->
+         single 'editor' Region; the active Tile is where focus lands on entry.
+         (Sizing math lives in the pure `tileLayout.ts`; this just renders it.) -->
     <div
       class="editor-area"
       class:region-active={focus.focusedRegion === 'editor'}
@@ -743,14 +749,15 @@
     >
       {#each workspace.layout.columns as col, ci (col.id)}
         <div class="editor-column" style="flex-grow: {col.weight}">
-          {#each col.tiles as tile, ti (tile.id)}
-            {@const pane = workspace.paneById(tile.id)}
-            {#if pane}
-              <div class="editor-tile" style="flex-grow: {tile.weight}">
-                <Pane
-                  bind:this={paneRefs[tile.id]}
-                  {pane}
+          {#each col.tiles as slot, ti (slot.id)}
+            {@const tile = workspace.tileById(slot.id)}
+            {#if tile}
+              <div class="editor-tile" style="flex-grow: {slot.weight}">
+                <Tile
+                  bind:this={tileRefs[tile.id]}
+                  {tile}
                   active={tile.id === workspace.activeId}
+                  multipleTiles={tileCount > 1}
                   {focusTypeForPath}
                   onActivate={() => workspace.setActive(tile.id)}
                   onSplitRight={() => {
@@ -890,7 +897,7 @@
     height: 100vh;
     overflow: hidden;
     color: var(--text);
-    /* Warm sunlit gradient behind the shell; panes paint their own solid
+    /* Warm sunlit gradient behind the shell; tiles paint their own solid
        surfaces on top, so it reads through gutters and translucent chrome. */
     background: var(--bg-gradient, var(--bg));
   }
@@ -933,7 +940,7 @@
     font-size: 0.9rem;
   }
 
-  .tree-pane {
+  .tree-tile {
     padding: 0.5rem;
     font-size: 14px;
   }
@@ -945,7 +952,7 @@
   }
 
   .region-host:focus,
-  .tree-pane:focus {
+  .tree-tile:focus {
     outline: none;
   }
 
@@ -953,12 +960,12 @@
     display: block;
   }
 
-  .tree-pane.drop-target {
+  .tree-tile.drop-target {
     box-shadow: inset 0 0 0 1px var(--accent-ring);
     border-radius: var(--radius-sm);
   }
 
-  .editor-pane {
+  .editor-tile {
     position: relative;
     display: flex;
     flex-direction: column;

@@ -49,23 +49,23 @@ test('layout persistence: a 2-column stacked layout + global mode + active tile 
   // Split Right → column 1, tile 1 (inherits codemirror). Open bundle.md there.
   await page.getByTestId('split-right').first().click();
   await expect(page.getByTestId('editor')).toHaveCount(2);
-  await page.getByTestId('pane').nth(1).locator('.cm-content').click();
+  await page.getByTestId('tile').nth(1).locator('.cm-content').click();
   await tree.locator(`[data-path="${BUNDLE}"]`).click();
-  await expect(page.getByTestId('pane').nth(1).getByTestId('editor')).toContainText(BUNDLE_NEEDLE);
+  await expect(page.getByTestId('tile').nth(1).getByTestId('editor')).toContainText(BUNDLE_NEEDLE);
 
   // Split Down (in column 1) → tile 2 below bundle. Open live-preview.md there.
-  await page.getByTestId('pane').nth(1).getByTestId('split-down').click();
+  await page.getByTestId('tile').nth(1).getByTestId('split-down').click();
   await expect(page.getByTestId('editor')).toHaveCount(3);
-  await page.getByTestId('pane').nth(2).locator('.cm-content').click();
+  await page.getByTestId('tile').nth(2).locator('.cm-content').click();
   await tree.locator(`[data-path="${LIVE}"]`).click();
-  await expect(page.getByTestId('pane').nth(2).getByTestId('editor')).toContainText(LIVE_NEEDLE);
+  await expect(page.getByTestId('tile').nth(2).getByTestId('editor')).toContainText(LIVE_NEEDLE);
 
   // The view-mode is GLOBAL: set Reading (view) once in the NavBar; it applies to
   // EVERY tile at once (all three go read-only).
   await page.getByTestId('editor-mode-view').click();
   await expect(page.getByTestId('editor-mode-view')).toHaveAttribute('aria-pressed', 'true');
   for (const i of [0, 1, 2]) {
-    await expect(page.getByTestId('pane').nth(i).locator('.cm-content')).toHaveAttribute(
+    await expect(page.getByTestId('tile').nth(i).locator('.cm-content')).toHaveAttribute(
       'contenteditable',
       'false',
     );
@@ -74,9 +74,9 @@ test('layout persistence: a 2-column stacked layout + global mode + active tile 
   // Make the MIDDLE tile (bundle, column 1 top) the active one — a non-trivial
   // choice (not the last-split tile) whose restoration proves the active tile is
   // persisted.
-  await page.getByTestId('pane').nth(1).locator('.cm-content').click();
-  await expect(page.locator('[data-testid="pane"].pane-active')).toHaveCount(1);
-  await expect(page.getByTestId('pane').nth(1)).toHaveClass(/pane-active/);
+  await page.getByTestId('tile').nth(1).locator('.cm-content').click();
+  await expect(page.locator('[data-testid="tile"].tile-active')).toHaveCount(1);
+  await expect(page.getByTestId('tile').nth(1)).toHaveClass(/tile-active/);
 
   // Wait for the debounced layout save to flush: two columns, the second with two
   // tiles, active pointing at column 1 / tile 0.
@@ -112,23 +112,23 @@ test('layout persistence: a 2-column stacked layout + global mode + active tile 
   await expect(page.getByTestId('tile-divider')).toHaveCount(1);
 
   // Per-tile Concepts, in row-major order (col0, then col1 top→bottom).
-  await expect(page.getByTestId('pane').nth(0).getByTestId('editor')).toContainText(CM_NEEDLE);
-  await expect(page.getByTestId('pane').nth(1).getByTestId('editor')).toContainText(BUNDLE_NEEDLE);
-  await expect(page.getByTestId('pane').nth(2).getByTestId('editor')).toContainText(LIVE_NEEDLE);
+  await expect(page.getByTestId('tile').nth(0).getByTestId('editor')).toContainText(CM_NEEDLE);
+  await expect(page.getByTestId('tile').nth(1).getByTestId('editor')).toContainText(BUNDLE_NEEDLE);
+  await expect(page.getByTestId('tile').nth(2).getByTestId('editor')).toContainText(LIVE_NEEDLE);
 
   // The global mode (Reading) is restored and applies to every tile: the NavBar
   // toggle shows it, and all three tiles come back read-only.
   await expect(page.getByTestId('editor-mode-view')).toHaveAttribute('aria-pressed', 'true');
   for (const i of [0, 1, 2]) {
-    await expect(page.getByTestId('pane').nth(i).locator('.cm-content')).toHaveAttribute(
+    await expect(page.getByTestId('tile').nth(i).locator('.cm-content')).toHaveAttribute(
       'contenteditable',
       'false',
     );
   }
 
-  // The active tile (middle = bundle) is restored as the active Pane.
-  await expect(page.locator('[data-testid="pane"].pane-active')).toHaveCount(1);
-  await expect(page.getByTestId('pane').nth(1)).toHaveClass(/pane-active/);
+  // The active tile (middle = bundle) is restored as the active Tile.
+  await expect(page.locator('[data-testid="tile"].tile-active')).toHaveCount(1);
+  await expect(page.getByTestId('tile').nth(1)).toHaveClass(/tile-active/);
 });
 
 test('layout persistence: an OLD single-Concept session migrates to one tile', async ({ page }) => {

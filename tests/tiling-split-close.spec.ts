@@ -3,7 +3,7 @@ import { test, expect } from './fixtures';
 /**
  * Slice: multi-concept-tiling (ticket 03).
  *
- * The editor area is a ROW OF COLUMNS, each a vertical stack of tiled Panes.
+ * The editor area is a ROW OF COLUMNS, each a vertical stack of tiled Tiles.
  * Split Right opens the active Concept in a new column; Split Down opens it in a
  * new tile below. Dividers resize columns/tiles. The same Concept open in two
  * tiles shares one Document (an edit in one shows in the other). Closing a tile
@@ -38,7 +38,7 @@ test('tiling: split right + down, resize a divider, shared-doc sync, close to ne
   await expect(page.getByTestId('editor').nth(1)).toContainText(NEEDLE);
 
   // --- Split Down (on the active/right tile) → a stacked tile in that column --
-  await page.getByTestId('pane').last().getByTestId('split-down').click();
+  await page.getByTestId('tile').last().getByTestId('split-down').click();
   await expect(page.getByTestId('editor')).toHaveCount(3);
   await expect(page.getByTestId('tile-divider')).toHaveCount(1);
 
@@ -66,17 +66,17 @@ test('tiling: split right + down, resize a divider, shared-doc sync, close to ne
 
   await page.screenshot({ path: 'tests/screenshots/tiling-split-close.png', fullPage: true });
 
-  // --- Close a non-last tile → a neighbour becomes the active Pane -----------
-  await page.getByTestId('pane').last().getByTestId('pane-close').click();
+  // --- Close a non-last tile → a neighbour becomes the active Tile -----------
+  await page.getByTestId('tile').last().getByTestId('tile-close').click();
   await expect(page.getByTestId('editor')).toHaveCount(2);
-  // Exactly one Pane is marked active (the focused neighbour).
-  await expect(page.locator('[data-testid="pane"].pane-active')).toHaveCount(1);
+  // Exactly one Tile is marked active (the focused neighbour).
+  await expect(page.locator('[data-testid="tile"].tile-active')).toHaveCount(1);
 
   // --- Close the remaining tiles down to the empty state ---------------------
-  await page.getByTestId('pane').last().getByTestId('pane-close').click();
+  await page.getByTestId('tile').last().getByTestId('tile-close').click();
   await expect(page.getByTestId('editor')).toHaveCount(1);
-  // The final close clears the last Pane to the empty "Select a Concept" state.
-  await page.getByTestId('pane-close').click();
+  // The final close clears the last Tile to the empty "Select a Concept" state.
+  await page.getByTestId('tile-close').click();
   await expect(page.getByTestId('placeholder')).toBeVisible();
-  await expect(page.getByTestId('pane-close')).toBeDisabled();
+  await expect(page.getByTestId('tile-close')).toBeDisabled();
 });

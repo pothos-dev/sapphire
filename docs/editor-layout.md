@@ -37,13 +37,18 @@ flag, autosave and disk IO (addressable by path via a registry); a view onto it
 owns the active Concept, navigation history and view state and attaches to a
 Document. Two views onto the same path share one live Document.
 
-## Naming caveat — "Pane" in the code
+## How the code models a Tile
 
-The workspace layer in the code calls each cell a **`Pane`** ("a row of Columns
-of Panes"). That is **not** the glossary's **Pane** (a top-level app-shell
-region). In domain language the cell is a **Tile**; the code's `Pane` type is a
-legacy internal name from the document-pane-state-split slice. When reading
-`workspace.svelte.ts` / `paneLayout.ts`, read their `Pane` as **Tile**.
+The code splits a Tile into two 1:1 representations, addressed by a shared id:
+
+- **`Tile`** (`workspace.svelte.ts`) — the stateful cell: its active Concept,
+  navigation history and view-mode. It attaches to a `Document` (the
+  buffer/autosave layer), so two Tiles on the same path share one live buffer.
+- **`TileSlot`** (`tileLayout.ts`) — the geometry node in the layout tree: an id
+  plus a weight (its share of the column). The pure size math lives here.
+
+The word **Pane** is reserved in code for the domain sense (a top-level app-shell
+region), matching the [glossary](/GLOSSARY.md).
 
 ## Relationships
 

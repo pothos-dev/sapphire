@@ -1,9 +1,9 @@
 <script lang="ts">
-  // Per-Pane header (slice: per-tile-header). A slim strip above the Editor
+  // Per-Tile header (slice: per-tile-header). A slim strip above the Editor
   // carrying everything that is logically PER-PANE for the active Concept:
-  //   - the Concept title + a close affordance (clears the Pane to empty state),
-  //   - Split Right (new Column) / Split Down (new Tile in this Column) affordances,
-  //   - undo / redo over the active Pane's Document history,
+  //   - the Concept title + a close affordance (clears the Tile to empty state),
+  //   - Split Right (new Column) / Split Down (new TileSlot in this Column) affordances,
+  //   - undo / redo over the active Tile's Document history,
   //   - the review-diff toggle (working-tree ↔ HEAD),
   //   - Export as PDF.
   //
@@ -15,16 +15,19 @@
   // reactive flags, mirroring how the NavBar (global chrome) works.
 
   interface Props {
-    /** The active Concept's derived header label ('' when the Pane is empty). */
+    /** The active Concept's derived header label ('' when the Tile is empty). */
     title: string;
     /** Whether a Concept is open (gates the per-Concept controls). */
     hasOpenConcept: boolean;
-    /** Whether there is a previous / next Concept in the Pane's history. */
+    /** Whether more than one tile is on screen (gates the Close affordance —
+     *  closing the sole tile would just clear it to empty state). */
+    multipleTiles: boolean;
+    /** Whether there is a previous / next Concept in the Tile's history. */
     canGoBack: boolean;
     canGoForward: boolean;
     onBack: () => void;
     onForward: () => void;
-    /** Undo/redo availability over the Pane's Document (body+frontmatter) history. */
+    /** Undo/redo availability over the Tile's Document (body+frontmatter) history. */
     canUndo: boolean;
     canRedo: boolean;
     /** Whether the Concept is currently in review (working-tree ↔ HEAD) mode. */
@@ -33,11 +36,11 @@
     reviewEnabled: boolean;
     /** Tooltip for the review toggle (explains the disabled reason when disabled). */
     reviewTooltip: string;
-    /** Clear the Pane to its empty state. */
+    /** Clear the Tile to its empty state. */
     onClose: () => void;
-    /** Open this Pane's Concept in a new Column to the right. */
+    /** Open this Tile's Concept in a new Column to the right. */
     onSplitRight: () => void;
-    /** Open this Pane's Concept in a new Tile below, in this Column. */
+    /** Open this Tile's Concept in a new TileSlot below, in this Column. */
     onSplitDown: () => void;
     onUndo: () => void;
     onRedo: () => void;
@@ -48,6 +51,7 @@
   let {
     title,
     hasOpenConcept,
+    multipleTiles,
     canGoBack,
     canGoForward,
     onBack,
@@ -67,9 +71,9 @@
   }: Props = $props();
 </script>
 
-<header class="pane-header" data-testid="pane-header" aria-label="Concept header">
-  <div class="pane-title-group">
-    <!-- Per-Pane navigation history (the Pane owns its own Back/Forward stack). -->
+<header class="tile-header" data-testid="tile-header" aria-label="Concept header">
+  <div class="tile-title-group">
+    <!-- Per-Tile navigation history (the Tile owns its own Back/Forward stack). -->
     <div class="btn-group">
       <button
         type="button"
@@ -90,20 +94,11 @@
         onclick={onForward}>→</button
       >
     </div>
-    <span class="pane-title" data-testid="pane-title" title={title}>{title}</span>
-    <button
-      type="button"
-      class="icon-btn"
-      data-testid="pane-close"
-      title="Close Concept"
-      aria-label="Close Concept"
-      disabled={!hasOpenConcept}
-      onclick={onClose}>×</button
-    >
+    <span class="tile-title" data-testid="tile-title" title={title}>{title}</span>
   </div>
 
-  <div class="pane-controls">
-    <!-- Undo / redo over the Pane's single body+frontmatter history. Decoupled
+  <div class="tile-controls">
+    <!-- Undo / redo over the Tile's single body+frontmatter history. Decoupled
          from the Properties panel (they rode there by historical accident). The
          mousedown-prevent keeps clicking a button from blurring/committing an
          in-progress frontmatter edit before the command runs. -->
@@ -184,8 +179,8 @@
       </svg>
     </button>
 
-    <!-- Split affordances: Split Right opens this Pane's Concept in a new Column
-         to the right; Split Down opens it in a new Tile below, in this Column. -->
+    <!-- Split affordances: Split Right opens this Tile's Concept in a new Column
+         to the right; Split Down opens it in a new TileSlot below, in this Column. -->
     <div class="btn-group">
       <button
         type="button"
@@ -214,18 +209,33 @@
         </svg>
       </button>
     </div>
+
+    <!-- Close the Concept: sits at the far right edge, past the split buttons.
+         Only shown when more than one tile is on screen — closing the sole tile
+         would just clear it to the empty state, so the affordance is pointless. -->
+    {#if multipleTiles}
+      <button
+        type="button"
+        class="icon-btn"
+        data-testid="tile-close"
+        title="Close Concept"
+        aria-label="Close Concept"
+        disabled={!hasOpenConcept}
+        onclick={onClose}>×</button
+      >
+    {/if}
   </div>
 </header>
 
 <style>
-  .pane-header {
+  .tile-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem 0.4rem;
     /* Wrap the controls onto a second row in narrow tiles (tiling) rather than
-       letting them overflow and overlap the title/close affordances. Wide panes
-       stay on one line, so single-pane layout is unchanged. */
+       letting them overflow and overlap the title/close affordances. Wide tiles
+       stay on one line, so single-tile layout is unchanged. */
     flex-wrap: wrap;
     flex: none;
     padding: 0.3rem 0.6rem;
@@ -233,7 +243,7 @@
     background: var(--bg-elevated);
   }
 
-  .pane-title-group {
+  .tile-title-group {
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -241,7 +251,7 @@
     flex: 1 1 auto;
   }
 
-  .pane-title {
+  .tile-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -250,7 +260,7 @@
     color: var(--text);
   }
 
-  .pane-controls {
+  .tile-controls {
     display: flex;
     align-items: center;
     gap: 0.5rem;

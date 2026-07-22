@@ -161,7 +161,7 @@ class ExplorerNavStore {
    *   A (Shift+a) → New Folder, m → move.
    * Returns true when the key was handled (caller then `preventDefault`s).
    *
-   * Runs AFTER `handleKeydown` in App's tree-pane handler. These are UNMODIFIED
+   * Runs AFTER `handleKeydown` in App's tree-tile handler. These are UNMODIFIED
    * keys, EXCEPT the one deliberate Shift exception (`A` = Shift+a → New
    * Folder); any other Ctrl/Alt/Meta/Shift chord is left for the global handler.
    * No-ops when nothing is focused — there is no target item.

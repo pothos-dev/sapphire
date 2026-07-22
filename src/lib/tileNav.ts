@@ -1,8 +1,8 @@
 // Editor-internal grid navigation math (pure; no DOM/runes) for the tiling area.
 //
 // The editor area is ONE logical `'editor'` Region (see `regionGrid`) that
-// internally owns a 2D pane grid: a ROW OF COLUMNS, each a vertical STACK of
-// tiles (see `paneLayout`). This module owns the pure movement math that sits IN
+// internally owns a 2D tile grid: a ROW OF COLUMNS, each a vertical STACK of
+// tiles (see `tileLayout`). This module owns the pure movement math that sits IN
 // FRONT of the Region backbone:
 //
 //   - Alt+Left / Alt+Right move between COLUMNS,
@@ -19,8 +19,8 @@
 // `{ [columnId]: tileId }` record, updated via `rememberTile`) and hands it to
 // `nextTile`; this module reads it (`landingTile`) but never mutates it.
 
-import type { Column, Layout } from '$lib/paneLayout';
-import { columnIndexOf } from '$lib/paneLayout';
+import type { Column, Layout } from '$lib/tileLayout';
+import { columnIndexOf } from '$lib/tileLayout';
 import type { Direction } from '$lib/regionGrid';
 
 /** Per-column sticky memory: the tile last focused in each column, by column id. */
@@ -32,7 +32,7 @@ export type ColumnMemory = Readonly<Record<string, string>>;
  *  - `{ kind: 'exit' }` — the move left the grid's edge; the caller delegates to
  *    the Region backbone (`focus.moveFocus`) for cross-Region movement.
  */
-export type PaneMove = { kind: 'tile'; id: string } | { kind: 'exit' };
+export type TileMove = { kind: 'tile'; id: string } | { kind: 'exit' };
 
 /**
  * Which tile to land on when ENTERING `col`: its sticky `memory` tile when that
@@ -63,7 +63,7 @@ export function nextTile(
   activeId: string,
   direction: Direction,
   memory: ColumnMemory = {},
-): PaneMove {
+): TileMove {
   const ci = columnIndexOf(layout, activeId);
   if (ci === -1) return { kind: 'exit' };
   const col = layout.columns[ci];

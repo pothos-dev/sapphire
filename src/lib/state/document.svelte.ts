@@ -10,7 +10,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 300;
  * A Document owns the *content* of a single Concept — the editable buffer, its
  * dirty flag, Obsidian-like autosave, and the seam to the backend read/write.
  * Documents are addressable by bundle-relative path (via `DocumentRegistry`),
- * NOT owned 1:1 by a Pane: this is what lets a future second Pane attach to a
+ * NOT owned 1:1 by a Tile: this is what lets a future second Tile attach to a
  * Concept that is already open and share its live buffer.
  *
  * Autosave: user edits flow in via `edit()`, which updates `content` and
@@ -20,7 +20,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 300;
  * External changes: `reloadExternal()` refreshes the buffer from disk when the
  * file changed on disk by another tool — but never clobbers unsaved local
  * edits. Sunstone's own writes are suppressed by the backend, so they never
- * arrive here (no reload loop or cursor jump). The removed-file case is a Pane
+ * arrive here (no reload loop or cursor jump). The removed-file case is a Tile
  * concern (it clears the view), so it lives in the workspace layer.
  */
 export class Document {
@@ -119,10 +119,10 @@ export class Document {
 }
 
 /**
- * Addressable pool of open Documents, keyed by bundle-relative path. A Pane
+ * Addressable pool of open Documents, keyed by bundle-relative path. A Tile
  * asks the registry for the Document at a path (creating it lazily); a future
- * second Pane opening the same path gets the SAME Document instance, so they
- * share one live buffer. For the single-Pane workspace today this is effectively
+ * second Tile opening the same path gets the SAME Document instance, so they
+ * share one live buffer. For the single-Tile workspace today this is effectively
  * the set of visited Concepts.
  */
 export class DocumentRegistry {

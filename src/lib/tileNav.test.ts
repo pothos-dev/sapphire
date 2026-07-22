@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'bun:test';
-import { singlePaneLayout, splitRight, splitDown, type Layout } from './paneLayout';
-import { nextTile, landingTile, rememberTile, type ColumnMemory } from './paneNav';
+import { singleTileLayout, splitRight, splitDown, type Layout } from './tileLayout';
+import { nextTile, landingTile, rememberTile, type ColumnMemory } from './tileNav';
 
 // Build a 2-column layout: col0 = [a], col1 = [b, c].
 //   splitRight(a→b) → [a | b]; splitDown(b→c) → [a | b,c].
 function twoColStacked(): Layout {
-  return splitDown(splitRight(singlePaneLayout('a'), 'a', 'b'), 'b', 'c');
+  return splitDown(splitRight(singleTileLayout('a'), 'a', 'b'), 'b', 'c');
 }
 const colId = (l: Layout, ci: number) => l.columns[ci].id;
 

@@ -31,7 +31,7 @@
   let { data }: Props = $props();
 
   // The read-only "Sunstone Web" viewer, shaped like the desktop shell: a
-  // toolbar over the CENTER pane (sidebar toggles + back/forward + theme), left
+  // toolbar over the CENTER tile (sidebar toggles + back/forward + theme), left
   // Sidebar Accordion (Explorer + Tags) and right Sidebar Accordion (Outline +
   // Backlinks) reusing the desktop `SidebarSection`, and the rendered Concept in
   // the centre. No write path / editor / CodeMirror. UI state persists (uiState).
@@ -250,7 +250,7 @@
     </aside>
 
     <div class="center">
-      <!-- Toolbar over the centre pane (mirrors the desktop editor toolbar). -->
+      <!-- Toolbar over the centre tile (mirrors the desktop editor toolbar). -->
       <nav class="toolbar" aria-label="Toolbar">
         <div class="tb-left">
           <button

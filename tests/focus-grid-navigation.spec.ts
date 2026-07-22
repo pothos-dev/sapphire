@@ -4,7 +4,7 @@ import { test, expect, type Page } from './fixtures';
  * Slice: multi-concept-tiling (ticket 04 — focus grid navigation).
  *
  * The editor area stays ONE logical 'editor' Region that internally owns a 2D
- * pane grid. With focus in the editor:
+ * tile grid. With focus in the editor:
  *   - Alt+Left/Right move between COLUMNS,
  *   - Alt+Up/Down move between TILES within the current column.
  * At the grid's edge the move DELEGATES to the Region backbone: Alt+Left from the
@@ -27,10 +27,10 @@ async function expectActiveRegion(page: Page, id: string) {
   await expect.poll(() => activeRegion(page)).toBe(id);
 }
 
-/** Assert exactly one tile is the active Pane and it is the `index`-th tile. */
+/** Assert exactly one tile is the active Tile and it is the `index`-th tile. */
 async function expectActiveTile(page: Page, index: number) {
-  await expect(page.locator('[data-testid="pane"].pane-active')).toHaveCount(1);
-  await expect(page.getByTestId('pane').nth(index)).toHaveClass(/pane-active/);
+  await expect(page.locator('[data-testid="tile"].tile-active')).toHaveCount(1);
+  await expect(page.getByTestId('tile').nth(index)).toHaveClass(/tile-active/);
 }
 
 async function altPress(page: Page, key: string) {
@@ -64,7 +64,7 @@ test('editor grid: Alt+arrow moves across columns/tiles, delegates at edges, sti
   // Build the layout: col0 = [p1], col1 = [p2, p3].
   await page.getByTestId('split-right').first().click(); // [p1 | p2]
   await expect(page.getByTestId('editor')).toHaveCount(2);
-  await page.getByTestId('pane').last().getByTestId('split-down').click(); // col1 → [p2, p3]
+  await page.getByTestId('tile').last().getByTestId('split-down').click(); // col1 → [p2, p3]
   await expect(page.getByTestId('editor')).toHaveCount(3);
   await expect(page.getByTestId('column-divider')).toHaveCount(1);
   await expect(page.getByTestId('tile-divider')).toHaveCount(1);

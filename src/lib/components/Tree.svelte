@@ -81,7 +81,7 @@
   // "move INTO this folder"; a file row resolves to its PARENT folder, so a
   // slightly-off drop onto a sibling Concept is a safe no-op rather than a
   // surprise move. Dropping onto empty tree space targets the Bundle root — that
-  // zone lives on `.tree-pane` in App.svelte.
+  // zone lives on `.tree-tile` in App.svelte.
   const draggable = $derived(node.isDir || isMarkdown);
   const dropDir = $derived(node.isDir ? node.path : dirname(node.path));
   // Only folder rows show the highlight; a hovered file lights up its PARENT.

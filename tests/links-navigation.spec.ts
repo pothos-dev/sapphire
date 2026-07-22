@@ -7,7 +7,7 @@ import { test, expect, type Page } from '@playwright/test';
  * backend:
  *  - opens a Concept (`concepts/bundle.md`) containing BOTH a relative link
  *    (`./codemirror.md`) and a bundle-absolute link (`/index.md`),
- *  - clicks the relative link and asserts the target Concept opens in the pane,
+ *  - clicks the relative link and asserts the target Concept opens in the tile,
  *  - asserts Back returns to the original Concept and Forward re-advances,
  *  - exercises the absolute link and the Ctrl+Alt+Left (history Back) shortcut.
  *

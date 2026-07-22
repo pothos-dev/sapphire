@@ -1,16 +1,16 @@
 // Layout persistence (pure; no DOM/runes) for the tiling workspace.
 //
 // The tiled workspace must survive a relaunch: its columns (order + weights),
-// each tile (order + weight + Concept path + per-pane view-mode) and which tile
+// each tile (order + weight + Concept path + per-tile view-mode) and which tile
 // is active. This module owns the pure shape math — SERIALIZE the live layout
 // tree to a plain `StoredLayout`, DESERIALIZE + defensively validate a stored
 // shape back into one, and MIGRATE an old single-Concept session — so the
 // `.svelte.ts`/`.svelte` layers stay thin and the logic is unit-testable without
 // a Svelte runtime.
 //
-// Pane ids are ephemeral (a per-launch monotonic counter), so the stored shape
+// Tile ids are ephemeral (a per-launch monotonic counter), so the stored shape
 // is ID-FREE: the active tile is a `[columnIndex, tileIndex]` pair and the
-// workspace rebuilds fresh Panes from the stored order on restore.
+// workspace rebuilds fresh Tiles from the stored order on restore.
 
 import type { EditorMode } from '$lib/editor/cm';
 
@@ -24,7 +24,7 @@ const EDITOR_MODES: readonly EditorMode[] = ['edit', 'hybrid', 'view'];
 export interface StoredTile {
   /** bundle-relative Concept path, or null for an empty tile. */
   path: string | null;
-  /** the tile's per-pane view-mode. */
+  /** the tile's per-tile view-mode. */
   mode: EditorMode;
   /** the tile's share of its column's height (0..1; a column's tiles sum to 1). */
   weight: number;
@@ -40,7 +40,7 @@ export interface StoredColumn {
 
 /**
  * The persisted workspace layout: the row of columns, plus which tile is active
- * as an ID-free `[columnIndex, tileIndex]` pair (Pane ids are ephemeral, so we
+ * as an ID-free `[columnIndex, tileIndex]` pair (Tile ids are ephemeral, so we
  * never persist them — the workspace mints fresh ids on restore).
  */
 export interface StoredLayout {
@@ -63,20 +63,20 @@ function coerceWeight(v: unknown): number {
 }
 
 /**
- * SERIALIZE the live layout tree to a plain `StoredLayout`. `paneData` resolves a
- * Pane id to its Concept path + view-mode (missing → an empty hybrid tile). The
+ * SERIALIZE the live layout tree to a plain `StoredLayout`. `tileData` resolves a
+ * Tile id to its Concept path + view-mode (missing → an empty hybrid tile). The
  * active tile is located by id and stored as a `[columnIndex, tileIndex]` pair
  * (falling back to `[0, 0]` when the active id is absent). Pure.
  */
 export function serializeLayout(
   layout: LiveLayout,
   activeId: string,
-  paneData: (id: string) => { path: string | null; mode: EditorMode } | undefined,
+  tileData: (id: string) => { path: string | null; mode: EditorMode } | undefined,
 ): StoredLayout {
   const columns: StoredColumn[] = layout.columns.map((c) => ({
     weight: c.weight,
     tiles: c.tiles.map((t) => {
-      const d = paneData(t.id);
+      const d = tileData(t.id);
       return {
         path: d?.path ?? null,
         mode: d?.mode ?? DEFAULT_MODE,
@@ -99,7 +99,7 @@ export function serializeLayout(
 /**
  * DESERIALIZE + defensively validate an arbitrary stored value into a
  * `StoredLayout`, or `null` when it is missing/corrupt/empty (the caller then
- * falls back to a single empty pane). Structural corruption — a non-object, no
+ * falls back to a single empty tile). Structural corruption — a non-object, no
  * columns, or a column with no tiles — yields `null`; cosmetic corruption within
  * an otherwise-valid tile (a bad weight/mode, or a non-string path) is COERCED
  * (weight→1, mode→hybrid, path→null) rather than rejected, so a slightly damaged
@@ -163,7 +163,7 @@ export function migrateLegacy(lastOpenConcept: string | null, mode: EditorMode):
 /**
  * Resolve the layout to reconstruct at startup: a valid stored layout wins; else
  * an old session with a `lastOpenConcept` migrates to a single tile; else `null`
- * (a fresh/empty workspace — the caller keeps its default single empty pane).
+ * (a fresh/empty workspace — the caller keeps its default single empty tile).
  */
 export function resolveStoredLayout(
   storedLayout: unknown,

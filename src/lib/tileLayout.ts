@@ -1,7 +1,7 @@
 // Tiling layout geometry (pure; no DOM/runes) for the editor area.
 //
 // The editor area is a ROW OF COLUMNS; each column is a vertical STACK of tiles
-// (Panes). Rows need not align across columns. This module owns the pure size
+// (Tiles). Rows need not align across columns. This module owns the pure size
 // math — weights, split/close redistribution and divider-drag clamping — so the
 // `.svelte` layer stays a thin renderer over it and the arithmetic is
 // unit-testable without a Svelte runtime.
@@ -11,9 +11,9 @@
 // CSS `flex-grow`, so the exact scale is irrelevant to layout — but we keep them
 // normalised so the numbers stay legible and the clamp math is simple.
 
-/** A single tile (Pane slot) in a column, identified by its Pane id. */
-export interface Tile {
-  /** The Pane id this tile renders (stable across resizes/splits). */
+/** A single tile (Tile slot) in a column, identified by its Tile id. */
+export interface TileSlot {
+  /** The Tile id this tile renders (stable across resizes/splits). */
   id: string;
   /** This tile's share of its column's height (0..1; column tiles sum to 1). */
   weight: number;
@@ -30,7 +30,7 @@ export interface Column {
   /** This column's share of the row's width (0..1; row columns sum to 1). */
   weight: number;
   /** The tiles stacked in this column, top to bottom. */
-  tiles: Tile[];
+  tiles: TileSlot[];
 }
 
 /** The stable column id derived from its founding tile id. */
@@ -51,11 +51,11 @@ export interface Layout {
 export const MIN_WEIGHT = 0.1;
 
 /** A layout of exactly one column holding one tile for `id` (the fresh app). */
-export function singlePaneLayout(id: string): Layout {
+export function singleTileLayout(id: string): Layout {
   return { columns: [{ id: columnId(id), weight: 1, tiles: [{ id, weight: 1 }] }] };
 }
 
-/** Every Pane id present in the layout, in row-major (column, then tile) order. */
+/** Every Tile id present in the layout, in row-major (column, then tile) order. */
 export function allTileIds(layout: Layout): string[] {
   return layout.columns.flatMap((c) => c.tiles.map((t) => t.id));
 }
@@ -122,15 +122,15 @@ export function splitDown(layout: Layout, activeId: string, newId: string): Layo
   const col = layout.columns[ci];
   const ti = col.tiles.findIndex((t) => t.id === activeId);
   const weights = shareWithNewcomer(col.tiles.map((t) => t.weight));
-  const tiles: Tile[] = col.tiles.map((t, i) => ({ ...t, weight: weights[i] }));
-  const newTile: Tile = { id: newId, weight: weights[weights.length - 1] };
+  const tiles: TileSlot[] = col.tiles.map((t, i) => ({ ...t, weight: weights[i] }));
+  const newTile: TileSlot = { id: newId, weight: weights[weights.length - 1] };
   tiles.splice(ti + 1, 0, newTile);
   const columns = layout.columns.map((c, i) => (i === ci ? { ...c, tiles } : c));
   return { columns };
 }
 
 /**
- * The Pane id a close of `id` should focus next: the NEXT tile in the same
+ * The Tile id a close of `id` should focus next: the NEXT tile in the same
  * column, else the PREVIOUS tile there; if `id` is the column's only tile, the
  * first tile of the ADJACENT column (the next column, else the previous). Null
  * when `id` was the last tile in the whole layout. Pure lookahead — does not

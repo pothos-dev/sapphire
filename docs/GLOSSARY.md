@@ -95,7 +95,7 @@ own view-mode, scroll and history. Exactly one is the **active Tile**. See
 [Editor layout](/editor-layout.md).
 _Avoid_: "tab" (Tiles are always visible, never behind a tab bar), "split" (a
 Tile is the cell; Split is the action), "editor group" (VSCode's tabbed term),
-"pane" (the code's internal `Pane` type is a Tile — see Flagged ambiguities).
+"pane" (a Tile is a cell inside the Editor pane, not a Pane itself).
 
 **Accordion**:
 The height-sharing behaviour of a Sidebar's stacked Sections (they share the viewport, each
@@ -160,7 +160,7 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
 - "pane" was used loosely for "the thing keyboard focus moves between" — but focus targets
   (Editor, Explorer, Properties, ...) don't map to Panes (Properties is neither Pane nor
   Section). Resolved: the focus unit is a **Region**, orthogonal to Pane/Section.
-- The code's workspace layer names each editor cell a **`Pane`** ("a row of Columns of
-  Panes"), colliding with the domain **Pane** (a top-level app-shell region). The cell is a
-  **Tile** in domain language; the code's `Pane` type is a legacy internal name. See
-  [Editor layout](/editor-layout.md#naming-caveat--pane-in-the-code).
+- The code's workspace layer once named each editor cell a **`Pane`**, colliding with the
+  domain **Pane** (a top-level app-shell region). Resolved: the cell is now the **`Tile`**
+  class (state) + **`TileSlot`** (geometry); `Pane` is reserved for the domain region. See
+  [Editor layout](/editor-layout.md#how-the-code-models-a-tile).

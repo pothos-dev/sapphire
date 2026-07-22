@@ -856,7 +856,7 @@ export function setEditorConcept(
   if (!docChanged && !fmChanged) return;
   // Apply a MINIMAL change (common prefix/suffix trimmed) rather than a whole-doc
   // replace, so CodeMirror maps the selection/cursor through it. This matters for
-  // multi-pane sync: when a SECOND tile shows the same Concept, an edit in the
+  // multi-tile sync: when a SECOND tile shows the same Concept, an edit in the
   // first tile pushes new content here — a minimal change keeps the untouched
   // tile's caret in place instead of collapsing it to the doc end.
   view.dispatch({

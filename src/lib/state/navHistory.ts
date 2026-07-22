@@ -1,9 +1,9 @@
 // Browser-style navigation history (pure; no DOM/IPC/runes).
 //
-// The per-Pane list of visited Concept paths plus a cursor into it. Opening a
+// The per-Tile list of visited Concept paths plus a cursor into it. Opening a
 // Concept pushes onto the stack, truncating any forward entries (standard
 // browser semantics); Back/Forward move the cursor without re-pushing. Kept as
-// a plain, immutable value type so the Pane rune store stays thin over it and
+// a plain, immutable value type so the Tile rune store stays thin over it and
 // the index math is unit-testable without a Svelte runtime.
 
 import { remapPath } from '$lib/path';

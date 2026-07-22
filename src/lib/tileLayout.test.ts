@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import {
-  singlePaneLayout,
+  singleTileLayout,
   allTileIds,
   columnIndexOf,
   splitRight,
@@ -12,7 +12,7 @@ import {
   resizeTiles,
   MIN_WEIGHT,
   type Layout,
-} from './paneLayout';
+} from './tileLayout';
 
 /** Sum of column weights (should always be ~1). */
 const colSum = (l: Layout) => l.columns.reduce((a, c) => a + c.weight, 0);
@@ -20,9 +20,9 @@ const colSum = (l: Layout) => l.columns.reduce((a, c) => a + c.weight, 0);
 const tileSum = (l: Layout, ci: number) => l.columns[ci].tiles.reduce((a, t) => a + t.weight, 0);
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
-describe('singlePaneLayout', () => {
+describe('singleTileLayout', () => {
   it('is one full-weight column with one full-weight tile', () => {
-    const l = singlePaneLayout('a');
+    const l = singleTileLayout('a');
     expect(l.columns).toHaveLength(1);
     expect(l.columns[0].weight).toBe(1);
     expect(l.columns[0].tiles).toEqual([{ id: 'a', weight: 1 }]);
@@ -32,7 +32,7 @@ describe('singlePaneLayout', () => {
 
 describe('splitRight', () => {
   it('adds a new column right of the active column, weights sum to 1', () => {
-    const l = splitRight(singlePaneLayout('a'), 'a', 'b');
+    const l = splitRight(singleTileLayout('a'), 'a', 'b');
     expect(l.columns).toHaveLength(2);
     expect(allTileIds(l)).toEqual(['a', 'b']);
     expect(near(colSum(l), 1)).toBe(true);
@@ -42,7 +42,7 @@ describe('splitRight', () => {
   });
 
   it('inserts immediately after the active column (not at the end)', () => {
-    let l = splitRight(singlePaneLayout('a'), 'a', 'b'); // [a,b]
+    let l = splitRight(singleTileLayout('a'), 'a', 'b'); // [a,b]
     l = splitRight(l, 'a', 'c'); // split a again → [a,c,b]
     expect(allTileIds(l)).toEqual(['a', 'c', 'b']);
     expect(near(colSum(l), 1)).toBe(true);
@@ -51,14 +51,14 @@ describe('splitRight', () => {
   });
 
   it('is a no-op for an unknown active id', () => {
-    const l = singlePaneLayout('a');
+    const l = singleTileLayout('a');
     expect(splitRight(l, 'zzz', 'b')).toBe(l);
   });
 });
 
 describe('splitDown', () => {
   it('adds a tile below the active one in the same column', () => {
-    const l = splitDown(singlePaneLayout('a'), 'a', 'b');
+    const l = splitDown(singleTileLayout('a'), 'a', 'b');
     expect(l.columns).toHaveLength(1);
     expect(l.columns[0].tiles.map((t) => t.id)).toEqual(['a', 'b']);
     expect(near(tileSum(l, 0), 1)).toBe(true);
@@ -66,7 +66,7 @@ describe('splitDown', () => {
   });
 
   it('only affects the active column', () => {
-    let l = splitRight(singlePaneLayout('a'), 'a', 'b'); // [a | b]
+    let l = splitRight(singleTileLayout('a'), 'a', 'b'); // [a | b]
     l = splitDown(l, 'a', 'c'); // column 0 → [a,c]
     expect(l.columns[0].tiles.map((t) => t.id)).toEqual(['a', 'c']);
     expect(l.columns[1].tiles.map((t) => t.id)).toEqual(['b']);
@@ -77,7 +77,7 @@ describe('splitDown', () => {
 
 describe('neighborAfterClose / closeTile', () => {
   it('closing a stacked tile focuses the next tile in the column', () => {
-    let l = splitDown(singlePaneLayout('a'), 'a', 'b'); // column [a,b]
+    let l = splitDown(singleTileLayout('a'), 'a', 'b'); // column [a,b]
     expect(neighborAfterClose(l, 'a')).toBe('b');
     const { layout, focusId } = closeTile(l, 'a');
     expect(focusId).toBe('b');
@@ -86,7 +86,7 @@ describe('neighborAfterClose / closeTile', () => {
   });
 
   it('closing the last tile in a column focuses the adjacent column', () => {
-    const l = splitRight(singlePaneLayout('a'), 'a', 'b'); // [a | b]
+    const l = splitRight(singleTileLayout('a'), 'a', 'b'); // [a | b]
     expect(neighborAfterClose(l, 'b')).toBe('a');
     const { layout, focusId } = closeTile(l, 'b');
     expect(focusId).toBe('a');
@@ -95,13 +95,13 @@ describe('neighborAfterClose / closeTile', () => {
   });
 
   it('closing the very last tile yields an empty layout and null focus', () => {
-    const { layout, focusId } = closeTile(singlePaneLayout('a'), 'a');
+    const { layout, focusId } = closeTile(singleTileLayout('a'), 'a');
     expect(layout.columns).toHaveLength(0);
     expect(focusId).toBeNull();
   });
 
   it('redistributes a removed tile weight across survivors', () => {
-    let l = splitDown(singlePaneLayout('a'), 'a', 'b'); // [a:.5, b:.5]
+    let l = splitDown(singleTileLayout('a'), 'a', 'b'); // [a:.5, b:.5]
     l = splitDown(l, 'b', 'c'); // column [a, b, c]
     const { layout } = closeTile(l, 'b');
     expect(layout.columns[0].tiles.map((t) => t.id)).toEqual(['a', 'c']);
@@ -143,28 +143,28 @@ describe('resizeWeights', () => {
 
 describe('resizeColumns / resizeTiles', () => {
   it('resizeColumns adjusts the boundary between two columns', () => {
-    const l = splitRight(singlePaneLayout('a'), 'a', 'b');
+    const l = splitRight(singleTileLayout('a'), 'a', 'b');
     const out = resizeColumns(l, 0, 0.2);
     expect(near(out.columns[0].weight, 0.7)).toBe(true);
     expect(near(out.columns[1].weight, 0.3)).toBe(true);
   });
 
   it('resizeTiles adjusts a boundary within a column', () => {
-    const l = splitDown(singlePaneLayout('a'), 'a', 'b');
+    const l = splitDown(singleTileLayout('a'), 'a', 'b');
     const out = resizeTiles(l, 0, 0, 0.15);
     expect(near(out.columns[0].tiles[0].weight, 0.65)).toBe(true);
     expect(near(out.columns[0].tiles[1].weight, 0.35)).toBe(true);
   });
 
   it('resizeTiles is a no-op for an unknown column', () => {
-    const l = singlePaneLayout('a');
+    const l = singleTileLayout('a');
     expect(resizeTiles(l, 9, 0, 0.1)).toBe(l);
   });
 });
 
 describe('columnIndexOf', () => {
   it('finds the column holding an id, -1 when absent', () => {
-    const l = splitRight(singlePaneLayout('a'), 'a', 'b');
+    const l = splitRight(singleTileLayout('a'), 'a', 'b');
     expect(columnIndexOf(l, 'a')).toBe(0);
     expect(columnIndexOf(l, 'b')).toBe(1);
     expect(columnIndexOf(l, 'zzz')).toBe(-1);

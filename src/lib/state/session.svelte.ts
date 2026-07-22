@@ -79,7 +79,7 @@ class SessionStore {
    * `false` (the fresh/older-Bundle DEFAULT), no tile shows any Properties
    * chrome at all (zero height cost). Persisted via `setPropertiesShown` so the
    * choice survives a relaunch, mirroring the other sticky UI flags. Replaces the
-   * old single-pane `propertiesOpen` collapse flag: with the panel now gated by
+   * old single-tile `propertiesOpen` collapse flag: with the panel now gated by
    * this global toggle, the per-panel collapse chevron (and its transient
    * auto-reveal) no longer exist.
    */
@@ -95,7 +95,7 @@ class SessionStore {
    * Persisted tiling workspace layout (multi-concept-tiling ticket 06): the full
    * row-of-columns-of-tiles shape (order + weights + each tile's Concept path +
    * view-mode + the active tile), as an ID-free `StoredLayout`. `null` on a fresh
-   * Bundle (single empty pane) and on an OLD session that predates tiling — the
+   * Bundle (single empty tile) and on an OLD session that predates tiling — the
    * app reconstructs from `lastOpenConcept` in that case (see `resolveStoredLayout`).
    * Written through `setLayout` (debounced) whenever the workspace changes.
    */

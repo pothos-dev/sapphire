@@ -53,7 +53,7 @@
      * non-active panel is mouse-editable (its inputs still dispatch through
      * `onchange`) but takes no part in keyboard grid nav / the spotlight ring, so
      * the two never fight over the shared cursor. Clicking a non-active panel
-     * activates its tile (Pane's pointer handler), promoting it to the interactive
+     * activates its tile (Tile's pointer handler), promoting it to the interactive
      * one.
      */
     active?: boolean;
@@ -531,7 +531,7 @@
   onfocusin={onPanelFocusIn}
 >
   <!-- The property grid + add controls. Rendering is gated by the GLOBAL
-       Properties toggle (session.propertiesShown) up in Pane.svelte, so there is
+       Properties toggle (session.propertiesShown) up in Tile.svelte, so there is
        no per-panel collapse chrome here: when the panel renders at all, its
        frontmatter shows inline. -->
     {#each rows as { id, prop } (id)}

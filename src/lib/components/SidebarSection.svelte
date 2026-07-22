@@ -1,5 +1,5 @@
 <script lang="ts">
-  // VSCode-style collapsible sidebar section (an "accordion" pane).
+  // VSCode-style collapsible sidebar section (an "accordion" tile).
   //
   // The header is always visible and toggles the body. When expanded the body
   // sizes to its natural content height but is capped so the expanded sections

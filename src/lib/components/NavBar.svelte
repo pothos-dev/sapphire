@@ -1,10 +1,10 @@
 <script lang="ts">
   // Global app chrome (slice: per-tile-header). The NavBar holds ONLY controls
-  // that are global to the whole app — not to any one Pane: the left/right
+  // that are global to the whole app — not to any one Tile: the left/right
   // Sidebar collapse toggles, the global tri-state view-mode toggle (Source /
   // Live / Reading — applies to EVERY tile at once), and a global Properties
-  // show/hide toggle. The remaining per-Concept / per-Pane controls (undo/redo,
-  // review, export, close, split, history) live in the PaneHeader above the Editor.
+  // show/hide toggle. The remaining per-Concept / per-Tile controls (undo/redo,
+  // review, export, close, split, history) live in the TileHeader above the Editor.
   //
   // (Search and Quick-nav are keyboard-driven today — Ctrl+Shift+F / Ctrl+K —
   // and theme follows the OS, so those global affordances have no button here

@@ -2,10 +2,10 @@ import { test, expect } from './fixtures';
 
 /**
  * Verification: clicking an EXTERNAL (scheme) link opens it in the default
- * browser rather than navigating the Pane in-app. The click routes through the
+ * browser rather than navigating the Tile in-app. The click routes through the
  * `backend.openExternal` seam; the fake backend (running under a real browser)
  * implements that as `window.open`, so we spy on it and assert the URL — and
- * assert the Pane did NOT navigate away from the source Concept.
+ * assert the Tile did NOT navigate away from the source Concept.
  */
 test('clicking an external link opens it externally, not in-app', async ({ page }) => {
   await page.goto('/');
@@ -42,7 +42,7 @@ test('clicking an external link opens it externally, not in-app', async ({ page 
     .poll(() => page.evaluate(() => (window as unknown as { __opened: string[] }).__opened))
     .toContain('https://example.com');
 
-  // …and the Pane stayed on the source Concept (no in-app navigation).
+  // …and the Tile stayed on the source Concept (no in-app navigation).
   await expect(editor).toContainText('An external link is never treated as broken');
   await expect(page.locator('[data-path="concepts/links-demo.md"]')).toHaveClass(/selected/);
 });

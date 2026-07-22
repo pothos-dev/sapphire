@@ -31,9 +31,9 @@ test('tree DnD: drag a Concept into a folder, then back out to the root', async 
 
   await page.screenshot({ path: 'tests/screenshots/tree-dnd.png', fullPage: true });
 
-  // Drag it back out onto empty tree-pane space (below the rows) → moves to the
+  // Drag it back out onto empty tree-tile space (below the rows) → moves to the
   // Bundle root. The "+ New…" affordance sits in that empty area and bubbles its
-  // drag events up to the pane's root drop zone.
+  // drag events up to the tile's root drop zone.
   await tree
     .locator(`[data-row-path="${moved}"]`)
     .dragTo(page.getByTestId('root-new-concept'));

@@ -39,14 +39,14 @@ describe('serializeLayout', () => {
         },
       ],
     };
-    const paneData = (id: string) =>
+    const tileData = (id: string) =>
       ({
         p1: { path: 'a.md', mode: 'view' as const },
         p2: { path: 'b.md', mode: 'edit' as const },
         p3: { path: null, mode: 'hybrid' as const },
       })[id];
 
-    expect(serializeLayout(layout, 'p2', paneData)).toEqual(sampleLayout());
+    expect(serializeLayout(layout, 'p2', tileData)).toEqual(sampleLayout());
   });
 
   test('falls back to active [0,0] when the active id is absent', () => {
@@ -55,7 +55,7 @@ describe('serializeLayout', () => {
     expect(out.active).toEqual([0, 0]);
   });
 
-  test('serializes an unknown pane id as an empty hybrid tile', () => {
+  test('serializes an unknown tile id as an empty hybrid tile', () => {
     const layout = { columns: [{ weight: 1, tiles: [{ id: 'p1', weight: 1 }] }] };
     const out = serializeLayout(layout, 'p1', () => undefined);
     expect(out.columns[0].tiles[0]).toEqual({ path: null, mode: 'hybrid', weight: 1 });
