@@ -1,5 +1,6 @@
 import type { PageLoad } from './$types';
 import { loadConcept } from '$lib/web/loadConcept';
+import { printPageData } from '$lib/print/printData';
 
 /**
  * Root-page load (`/`).
@@ -18,13 +19,9 @@ import { loadConcept } from '$lib/web/loadConcept';
  * is untouched (never hits `/api`).
  */
 export const load: PageLoad = async ({ fetch, url }) => {
-  const print = url.searchParams.get('print');
-  if (print !== null) {
-    return {
-      web: false as const,
-      print,
-      toolbar: url.searchParams.get('toolbar') === '1',
-    };
+  const print = printPageData(url);
+  if (print) {
+    return print;
   }
   if (!__SAPPHIRE_WEB__) {
     return { web: false as const };

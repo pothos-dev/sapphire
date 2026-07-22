@@ -1,5 +1,6 @@
 import type { PageLoad } from './$types';
 import { loadConcept } from '$lib/web/loadConcept';
+import { printPageData } from '$lib/print/printData';
 
 /**
  * Concept-by-path load (`/providers`, `/research/providers/mistral-ai`, …).
@@ -9,9 +10,15 @@ import { loadConcept } from '$lib/web/loadConcept';
  * root `/` is handled by the sibling `src/routes/+page.ts`. In the DEFAULT
  * desktop/Tauri build the body is dead-code-eliminated (`__SAPPHIRE_WEB__` is a
  * compile-time `false`) and this route only exists so the static SPA's client
- * router can match any deep link back to `<App/>`.
+ * router can match any deep link back to `<App/>` — including the print window,
+ * which loads `index.html?print=…` (a `/index.html` pathname that matches here,
+ * not the root route), so the `?print=` overlay must be detected here too.
  */
-export const load: PageLoad = async ({ fetch, params }) => {
+export const load: PageLoad = async ({ fetch, url, params }) => {
+  const print = printPageData(url);
+  if (print) {
+    return print;
+  }
   if (!__SAPPHIRE_WEB__) {
     return { web: false as const };
   }
