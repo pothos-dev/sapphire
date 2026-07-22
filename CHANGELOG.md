@@ -4,6 +4,42 @@ All notable changes to Sapphire are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-07-22
+
+### Added
+
+- **Multi-Concept tiling workspace** — split the editor into columns and tiles to
+  view several Concepts side by side, with draggable dividers, per-tile close, and
+  `Alt`+arrow navigation across the grid. A slim per-Pane header carries per-pane
+  controls, and the tiled layout persists across restarts.
+- **Export as PDF** — render the open Concept to an inspectable print-preview
+  window (server-quality HTML with reader controls) and print or save it; on macOS
+  and Windows a direct Save-as-PDF skips the OS print dialog.
+- **Review changes** — a working-tree ↔ HEAD review toggle backed by a git seam,
+  with a file-history stepper that walks consecutive revisions; scattered word
+  edits render as CriticMarkup track-changes.
+- **Inline citations** render as clickable superscript links, keeping the `[n]`
+  brackets.
+- **External links** (`http(s)`/`mailto`/`tel`) now open in the OS default
+  browser instead of being swallowed by the desktop webview.
+- Global Properties (frontmatter) toggle, applied per-tile.
+- The launcher opens a chosen known folder when Sapphire is started with no path.
+- Tag path disambiguation plus quick-nav tag search and drill-down.
+
+### Changed
+
+- The Source/Live/Read view-mode control is now a global NavBar control with icons
+  instead of floating over the Concept view.
+- In Reading mode a click anywhere on a link's text follows the link, not just the
+  trailing open-in-new icon.
+- Folders containing an `index.md` collapse by default on first open.
+
+### Fixed
+
+- The print preview follows in-Bundle links, and the `?print` overlay is detected
+  in the catch-all route so the desktop preview opens correctly.
+- Desktop install builds from the workspace-root target directory.
+
 ## [0.15.2] - 2026-07-16
 
 ### Fixed
