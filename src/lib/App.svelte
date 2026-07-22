@@ -67,7 +67,8 @@
   import TagBrowser from '$lib/components/TagBrowser.svelte';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
   import NavBar from '$lib/components/NavBar.svelte';
-  import ModeToggle from '$lib/components/ModeToggle.svelte';
+  import PaneHeader from '$lib/components/PaneHeader.svelte';
+  import { paneTitle } from '$lib/paneTitle';
   import { treeActions } from '$lib/state/treeActions.svelte';
   import { treeDnd } from '$lib/state/treeDnd.svelte';
   import { focus } from '$lib/state/focus.svelte';
@@ -337,6 +338,35 @@
     }
   }
 
+  // The active Pane's header label: prefer the frontmatter `title`, else the
+  // filename stem (pure `paneTitle` helper). Drives the PaneHeader's title. This
+  // is still single-pane — the header describes `editor.path` (the one Pane).
+  const currentPaneTitle = $derived(paneTitle(editor.path, frontmatterProps));
+
+  // --- Per-Pane header affordances (slice: per-tile-header) -----------------
+  // Close clears the active Pane to its empty state (flushing pending autosave);
+  // Split Right / Split Down are wired but INERT until ticket 03 grows the
+  // workspace to more than one Pane.
+  function closePane(): void {
+    void editor.close();
+  }
+  function splitRight(): void {
+    // TODO(ticket-03): add a Pane to the right of the active one in the tiling
+    // layout and attach it to the same DocumentRegistry. No-op until then.
+  }
+  function splitDown(): void {
+    // TODO(ticket-03): add a Pane below the active one in the tiling layout. No-op.
+  }
+
+  // Global Properties show/hide toggle (NavBar). PLACEHOLDER: ticket 05 wires the
+  // per-tile Properties behaviour off this state. For now it only flips a flag so
+  // the control reads/toggles; it deliberately does NOT hide the current
+  // Properties panel (that panel keeps its own per-Concept collapse).
+  let propertiesPanelShown = $state(true);
+  function toggleProperties(): void {
+    propertiesPanelShown = !propertiesPanelShown;
+  }
+
   // --- Review changes: working-tree ↔ HEAD (review-toggle) -----------------
   // A dedicated toggle (NavBar, SEPARATE from the mode control) flips the open
   // Concept into a READ-ONLY review view showing what changed since the last
@@ -484,7 +514,8 @@
 
   // Unified undo/redo (unified-body-frontmatter-undo): one CodeMirror history
   // spans body + frontmatter. These mirror `undoDepth`/`redoDepth` so the
-  // Properties-panel buttons can enable/disable reactively. They are NOT derived
+  // PaneHeader's undo/redo buttons can enable/disable reactively (they moved out
+  // of the Properties panel — slice: per-tile-header). They are NOT derived
   // from `view.state` (the view isn't reactive); instead `syncHistoryDepths` is
   // called from the editor's update listener (every transaction) and after any
   // programmatic undo/redo we trigger.
@@ -1505,16 +1536,33 @@
     <NavBar
       leftSidebarOpen={session.leftSidebarOpen}
       rightSidebarOpen={session.rightSidebarOpen}
+      propertiesShown={propertiesPanelShown}
+      onToggleLeft={() => session.setLeftSidebarOpen(!session.leftSidebarOpen)}
+      onToggleRight={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
+      onToggleProperties={toggleProperties}
+    />
+    <!-- Per-Pane header: carries every logically per-Pane control for the active
+         Concept (title, close, split, view mode, undo/redo, review, export,
+         history). Still single-pane — it describes `editor.path`. -->
+    <PaneHeader
+      title={currentPaneTitle}
+      hasOpenConcept={editor.path !== null}
       canGoBack={editor.canGoBack}
       canGoForward={editor.canGoForward}
-      hasOpenConcept={editor.path !== null}
+      {editorMode}
+      {canUndo}
+      {canRedo}
       {reviewActive}
       reviewEnabled={reviewAvail.enabled}
       reviewTooltip={reviewAvail.tooltip}
-      onToggleLeft={() => session.setLeftSidebarOpen(!session.leftSidebarOpen)}
-      onToggleRight={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
       onBack={() => void editor.back()}
       onForward={() => void editor.forward()}
+      onClose={closePane}
+      onSplitRight={splitRight}
+      onSplitDown={splitDown}
+      onSetMode={changeEditorMode}
+      onUndo={doUndo}
+      onRedo={doRedo}
       onToggleReview={toggleReview}
       onExportPdf={exportPdf}
     />
@@ -1553,10 +1601,6 @@
           tags={suggestions.tags}
           focusType={focusTypeNow}
           onchange={onPropertiesChange}
-          onUndo={doUndo}
-          onRedo={doRedo}
-          {canUndo}
-          {canRedo}
           bind:collapsed={propertiesCollapsed}
         />
       </div>
@@ -1623,14 +1667,6 @@
       </div>
       <div class="editor-host review-host" data-testid="review-editor" bind:this={reviewParent}></div>
     {/if}
-    <!-- Source / Live / Read view-mode control, floated over the lower-right of
-         the Concept view (icons: hashtag / pen / book). Display-only; the mode
-         state + switch logic stay here (`editorMode` / `changeEditorMode`). -->
-    <ModeToggle
-      {editorMode}
-      hasOpenConcept={editor.path !== null}
-      onSetMode={changeEditorMode}
-    />
   </main>
 
   <!-- Right Sidebar: a second accordion mirroring the left one, anchored so its

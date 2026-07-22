@@ -1,44 +1,40 @@
 <script lang="ts">
+  // Global app chrome (slice: per-tile-header). The NavBar holds ONLY controls
+  // that are global to the whole app — not to any one Pane: the left/right
+  // Sidebar collapse toggles and a global Properties show/hide toggle. Every
+  // per-Concept / per-Pane control (view mode, undo/redo, review, export, close,
+  // split, history) moved into the PaneHeader above the Editor.
+  //
+  // (Search and Quick-nav are keyboard-driven today — Ctrl+Shift+F / Ctrl+K —
+  // and theme follows the OS, so those global affordances have no button here
+  // yet; the seam is this bar when they grow one.)
+
   interface Props {
     leftSidebarOpen: boolean;
     rightSidebarOpen: boolean;
-    canGoBack: boolean;
-    canGoForward: boolean;
-    hasOpenConcept: boolean;
-    /** Whether the open Concept is currently in review (working-tree ↔ HEAD) mode. */
-    reviewActive: boolean;
-    /** Whether the review toggle is available (the file has reviewable history). */
-    reviewEnabled: boolean;
-    /** Tooltip for the review toggle (explains the disabled reason when disabled). */
-    reviewTooltip: string;
+    /** Whether the global Properties panel is shown (placeholder — see below). */
+    propertiesShown: boolean;
     onToggleLeft: () => void;
     onToggleRight: () => void;
-    onBack: () => void;
-    onForward: () => void;
-    onToggleReview: () => void;
-    /** Export the open Concept as PDF (render → print container → print). */
-    onExportPdf: () => void;
+    /**
+     * Toggle the global Properties panel. Placeholder for ticket 05 (per-tile
+     * Properties): App wires a placeholder state today; the actual show/hide
+     * behaviour arrives with the per-tile Properties work.
+     */
+    onToggleProperties: () => void;
   }
 
   let {
     leftSidebarOpen,
     rightSidebarOpen,
-    canGoBack,
-    canGoForward,
-    hasOpenConcept,
-    reviewActive,
-    reviewEnabled,
-    reviewTooltip,
+    propertiesShown,
     onToggleLeft,
     onToggleRight,
-    onBack,
-    onForward,
-    onToggleReview,
-    onExportPdf,
+    onToggleProperties,
   }: Props = $props();
 </script>
 
-<nav class="nav-bar" aria-label="Navigation history">
+<nav class="nav-bar" aria-label="Global controls">
   <div class="nav-left">
     <button
       type="button"
@@ -60,14 +56,7 @@
           stroke="currentColor"
           stroke-width="1.2"
         />
-        <line
-          x1="6"
-          y1="2.5"
-          x2="6"
-          y2="13.5"
-          stroke="currentColor"
-          stroke-width="1.2"
-        />
+        <line x1="6" y1="2.5" x2="6" y2="13.5" stroke="currentColor" stroke-width="1.2" />
         <rect
           x="1.5"
           y="2.5"
@@ -81,91 +70,34 @@
       </svg>
     </button>
   </div>
-  <div class="nav-center">
-    <button
-      type="button"
-      class="nav-btn"
-      data-testid="nav-back"
-      title="Back (Ctrl+Alt+Left)"
-      aria-label="Back"
-      disabled={!canGoBack}
-      onclick={onBack}>←</button
-    >
-    <button
-      type="button"
-      class="nav-btn"
-      data-testid="nav-forward"
-      title="Forward (Ctrl+Alt+Right)"
-      aria-label="Forward"
-      disabled={!canGoForward}
-      onclick={onForward}>→</button
-    >
-  </div>
   <div class="nav-right">
-    <!-- Review changes (working-tree ↔ HEAD): a dedicated toggle. Disabled with
-         an explanatory tooltip when the open Concept has no reviewable git
-         history. (The Source/Live/Read mode control now overlays the Concept
-         view — see ModeToggle.svelte.) -->
+    <!-- Global Properties show/hide toggle. Placeholder until ticket 05 wires the
+         per-tile Properties behaviour; App holds a placeholder state so the
+         control reads/toggles now without changing the current Properties panel. -->
     <button
       type="button"
       class="nav-btn"
-      class:active={reviewActive}
-      data-testid="review-toggle"
-      title={reviewTooltip}
-      aria-label={reviewTooltip}
-      aria-pressed={reviewActive}
-      disabled={!hasOpenConcept || !reviewEnabled}
-      onclick={onToggleReview}
+      class:active={propertiesShown}
+      data-testid="properties-panel-toggle"
+      title={propertiesShown ? 'Hide Properties' : 'Show Properties'}
+      aria-label={propertiesShown ? 'Hide Properties' : 'Show Properties'}
+      aria-pressed={propertiesShown}
+      onclick={onToggleProperties}
     >
       <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-        <!-- git-branch glyph: two commit nodes on a branch line + a fork. -->
-        <circle cx="4" cy="3" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2" />
-        <circle cx="4" cy="13" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2" />
-        <circle cx="12" cy="5.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2" />
-        <line x1="4" y1="4.6" x2="4" y2="11.4" stroke="currentColor" stroke-width="1.2" />
-        <path
-          d="M4 8.5 Q4 5.5 10.4 5.5"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.2"
-        />
-      </svg>
-    </button>
-    <!-- Export as PDF: render the open Concept to static HTML and print it via a
-         clean hidden container (App.svelte's `exportPdf`), NOT the virtualized
-         CodeMirror editor. Disabled with no Concept open. The icon mirrors the
-         web viewer's export-pdf button for consistency. -->
-    <button
-      type="button"
-      class="nav-btn"
-      data-testid="export-pdf"
-      title="Export as PDF"
-      aria-label="Export as PDF"
-      disabled={!hasOpenConcept}
-      onclick={onExportPdf}
-    >
-      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-        <path
-          d="M4 2.5h5l3 3v8a0 0 0 0 1 0 0H4a0 0 0 0 1 0 0z"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.2"
-          stroke-linejoin="round"
-        />
-        <path d="M9 2.5v3h3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
-        <path d="M8 7.5v4m0 0 1.6-1.6M8 11.5 6.4 9.9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+        <!-- sliders glyph: two horizontal rails with knobs (properties/settings). -->
+        <line x1="2.5" y1="5" x2="13.5" y2="5" stroke="currentColor" stroke-width="1.2" />
+        <line x1="2.5" y1="11" x2="13.5" y2="11" stroke="currentColor" stroke-width="1.2" />
+        <circle cx="6" cy="5" r="1.8" fill="var(--bg-elevated)" stroke="currentColor" stroke-width="1.2" />
+        <circle cx="10.5" cy="11" r="1.8" fill="var(--bg-elevated)" stroke="currentColor" stroke-width="1.2" />
       </svg>
     </button>
     <button
       type="button"
       class="nav-btn"
       data-testid="right-sidebar-toggle"
-      title={rightSidebarOpen
-        ? 'Collapse Outline & Backlinks'
-        : 'Expand Outline & Backlinks'}
-      aria-label={rightSidebarOpen
-        ? 'Collapse Outline & Backlinks'
-        : 'Expand Outline & Backlinks'}
+      title={rightSidebarOpen ? 'Collapse Outline & Backlinks' : 'Expand Outline & Backlinks'}
+      aria-label={rightSidebarOpen ? 'Collapse Outline & Backlinks' : 'Expand Outline & Backlinks'}
       aria-pressed={rightSidebarOpen}
       onclick={onToggleRight}
     >
@@ -180,14 +112,7 @@
           stroke="currentColor"
           stroke-width="1.2"
         />
-        <line
-          x1="10"
-          y1="2.5"
-          x2="10"
-          y2="13.5"
-          stroke="currentColor"
-          stroke-width="1.2"
-        />
+        <line x1="10" y1="2.5" x2="10" y2="13.5" stroke="currentColor" stroke-width="1.2" />
         <rect
           x="10"
           y="2.5"
@@ -204,32 +129,25 @@
 </nav>
 
 <style>
-  /* Three-track header: the toggle sits at the left, the back/forward group is
-     centred in the pane regardless of the toggle's width (empty right track
-     balances the left). */
+  /* Two-track global bar: left Sidebar toggle at the start, the Properties +
+     right-Sidebar toggles at the end. */
   .nav-bar {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 0.4rem 0.6rem;
     border-bottom: 1px solid var(--border);
   }
 
   .nav-left {
-    justify-self: start;
-  }
-
-  .nav-center {
     display: flex;
     gap: 0.35rem;
-    justify-self: center;
   }
 
   .nav-right {
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    justify-self: end;
   }
 
   .nav-btn {
@@ -252,8 +170,6 @@
     background: var(--hover);
   }
 
-  /* Review toggle "on" state: reuse the segmented control's active accent so the
-     active affordance reads consistently across the two controls. */
   .nav-btn.active {
     background: var(--accent);
     color: #fff;

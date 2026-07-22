@@ -14,7 +14,7 @@ bottom-right corner of the pane into the header**.
 
 **Blocked by:** 01 — Document/Pane state split.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] A per-pane header renders above the editor with: Concept title, close,
       Split Right / Split Down affordances, view-mode toggle, undo/redo,

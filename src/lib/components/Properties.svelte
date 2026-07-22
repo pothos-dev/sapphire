@@ -48,16 +48,6 @@
     /** Called with the new properties after an edit. */
     onchange: (props: Property[]) => void;
     /**
-     * Unified undo/redo (unified-body-frontmatter-undo). The panel doesn't hold
-     * the editor view, so the app shell passes the editor-history commands and
-     * their availability. The buttons drive the SAME single timeline that spans
-     * body + frontmatter.
-     */
-    onUndo?: () => void;
-    onRedo?: () => void;
-    canUndo?: boolean;
-    canRedo?: boolean;
-    /**
      * Whether the panel is COLLAPSED (raw collapse state, ignoring any transient
      * reveal). Bound out so the app shell's Region registration can treat a
      * collapsed panel as not-visible and transiently reveal it on directional
@@ -74,10 +64,6 @@
     tags = [],
     focusType = false,
     onchange,
-    onUndo,
-    onRedo,
-    canUndo = false,
-    canRedo = false,
     collapsed = $bindable(false),
   }: Props = $props();
 
@@ -564,23 +550,19 @@
   onkeydown={onGridKeydown}
   onfocusin={onPanelFocusIn}
 >
-  <!-- Panel header: a collapse toggle (left) + unified undo/redo over the single
-       body+frontmatter history (right). The onToggle logic (flip the EFFECTIVE
-       shown state, persisting the choice, and drop any transient reveal so a
-       click while peeked doesn't leave the panel fighting the auto-reveal — the
-       explicit toggle takes over as the source of truth) stays here so the
-       header can remain dumb (no `session` import). -->
+  <!-- Panel header: just the collapse toggle. The onToggle logic (flip the
+       EFFECTIVE shown state, persisting the choice, and drop any transient reveal
+       so a click while peeked doesn't leave the panel fighting the auto-reveal —
+       the explicit toggle takes over as the source of truth) stays here so the
+       header can remain dumb (no `session` import). Undo/redo moved to the
+       PaneHeader (slice: per-tile-header). -->
   <PropertiesHeader
     {bodyShown}
     count={properties.length}
-    {canUndo}
-    {canRedo}
     onToggle={() => {
       session.setPropertiesOpen(!bodyShown);
       session.propertiesRevealed = false;
     }}
-    onUndo={() => onUndo?.()}
-    onRedo={() => onRedo?.()}
   />
 
   <!-- Body: the property grid + add controls. Hidden while the panel is

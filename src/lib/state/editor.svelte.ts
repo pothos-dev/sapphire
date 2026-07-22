@@ -90,6 +90,11 @@ class EditorStore {
     return this.#pane.forward();
   }
 
+  /** Clear the active Pane to its empty state (flushing any pending autosave). */
+  close(): Promise<void> {
+    return this.#pane.close();
+  }
+
   /** Record a user edit and schedule a debounced autosave. */
   edit(content: string): void {
     this.#pane.edit(content);

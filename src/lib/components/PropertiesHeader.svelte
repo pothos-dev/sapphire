@@ -1,27 +1,21 @@
 <script lang="ts">
-  // Panel header for the Properties panel: a collapse toggle (left) + unified
-  // undo/redo over the single body+frontmatter history (right). Purely
+  // Panel header for the Properties panel: just a collapse toggle. Purely
   // presentational — it owns no state and reaches for no store; the parent
-  // supplies the effective shown state, count, availability, and the callbacks.
+  // supplies the effective shown state, count, and the toggle callback.
   //
-  // The history buttons mousedown-prevent default so clicking them does not blur
-  // (and thus commit) an in-progress scalar/key edit before the command runs.
-  // The toggle does NOT — clicking it should blur/commit any active edit before
-  // the body is hidden.
+  // Undo/redo used to ride here by historical accident; they are per-Pane
+  // controls and moved to the PaneHeader (slice: per-tile-header). Clicking the
+  // toggle blurs/commits any active edit before the body is hidden.
 
   interface Props {
     /** Effective shown state (drives chevron rotation + `aria-expanded`). */
     bodyShown: boolean;
     /** Number of properties, for the collapsed-only count badge. */
     count: number;
-    canUndo: boolean;
-    canRedo: boolean;
     onToggle: () => void;
-    onUndo: () => void;
-    onRedo: () => void;
   }
 
-  let { bodyShown, count, canUndo, canRedo, onToggle, onUndo, onRedo }: Props = $props();
+  let { bodyShown, count, onToggle }: Props = $props();
 </script>
 
 <div class="panel-header" data-testid="properties-header">
@@ -39,28 +33,6 @@
       <span class="panel-count" data-testid="properties-count">{count}</span>
     {/if}
   </button>
-  <div class="history">
-    <button
-      type="button"
-      class="hist-btn"
-      data-testid="undo"
-      title="Undo (Ctrl+Z)"
-      aria-label="Undo"
-      disabled={!canUndo}
-      onmousedown={(e) => e.preventDefault()}
-      onclick={() => onUndo()}>↶</button
-    >
-    <button
-      type="button"
-      class="hist-btn"
-      data-testid="redo"
-      title="Redo (Ctrl+Shift+Z)"
-      aria-label="Redo"
-      disabled={!canRedo}
-      onmousedown={(e) => e.preventDefault()}
-      onclick={() => onRedo()}>↷</button
-    >
-  </div>
 </div>
 
 <style>
@@ -117,45 +89,5 @@
     opacity: 0.8;
     text-transform: none;
     letter-spacing: 0;
-  }
-
-  .history {
-    display: flex;
-    gap: 0.2rem;
-  }
-
-  .hist-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.6rem;
-    height: 1.6rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: none;
-    color: var(--text-muted);
-    font: inherit;
-    font-size: 0.95rem;
-    line-height: 1;
-    cursor: pointer;
-    transition:
-      background-color 0.12s ease,
-      color 0.12s ease;
-  }
-
-  .hist-btn:hover:not(:disabled) {
-    background: var(--hover);
-    color: var(--text);
-  }
-
-  .hist-btn:focus-visible {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-
-  .hist-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 </style>

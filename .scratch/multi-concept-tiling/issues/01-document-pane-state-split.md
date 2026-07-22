@@ -11,7 +11,7 @@ today. This is pure prefactor: "make the change easy, then make the easy change.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** in-progress
+**Status:** done
 
 - [ ] `editor.svelte.ts` singleton is split into a Document layer (per-path
       buffer/dirty/autosave/edit-history, owns disk writes) and a workspace/Pane

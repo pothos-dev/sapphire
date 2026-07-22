@@ -113,6 +113,18 @@ export class Pane {
     this.activePath = path;
   }
 
+  /**
+   * Clear the Pane to its empty state: flush the outgoing Document's pending
+   * autosave (so closing never loses edits), then detach the active Concept.
+   * The navigation history is left intact — Back can still re-open the last
+   * Concept. With a single Pane this returns the editor to the empty
+   * "Select a Concept" placeholder.
+   */
+  async close(): Promise<void> {
+    await this.activeDocument?.flush();
+    this.activePath = null;
+  }
+
   /** Record a user edit into the active Document (schedules autosave). */
   edit(content: string): void {
     this.activeDocument?.edit(content);
