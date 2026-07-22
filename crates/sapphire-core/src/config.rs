@@ -71,6 +71,19 @@ pub struct BundleState {
     /// absence; the frontend defaults it to "hybrid" (Live) on read. Carried as an
     /// opaque string here — the frontend owns the `EditorMode` union.
     pub editor_mode: Option<String>,
+    /// GLOBAL Properties show/hide flag (multi-concept-tiling). When present +
+    /// true, every visible tile renders its Concept's frontmatter inline. Optional
+    /// so older files tolerate its absence; the frontend defaults it to `false`
+    /// (hidden) on read. (Supersedes the older per-panel `properties_open` above,
+    /// which is retained only so older files round-trip.)
+    pub properties_shown: Option<bool>,
+    /// Persisted tiling workspace layout (multi-concept-tiling ticket 06): the row
+    /// of columns of tiles (order + weights, each tile's Concept path + view-mode,
+    /// and the active tile). Round-tripped as OPAQUE JSON — the frontend owns the
+    /// `StoredLayout` shape (layoutPersist.ts); Rust only needs to persist it so
+    /// the tiled workspace survives a relaunch. Optional/`None` on older files and
+    /// on a fresh Bundle (the frontend migrates from `last_open_concept` then).
+    pub layout: Option<serde_json::Value>,
 }
 
 /// Saved window size and position (physical pixels). `None`-able position lets
@@ -237,6 +250,39 @@ mod tests {
         let store: Store = serde_json::from_str("{ not valid json").unwrap_or_default();
         assert!(store.bundles.is_empty());
         assert_eq!(store.config.theme, "system");
+    }
+
+    #[test]
+    fn layout_round_trips_as_opaque_json() {
+        // The frontend owns the layout shape; Rust must round-trip it verbatim so
+        // the tiled workspace survives a relaunch. Also covers `properties_shown`.
+        let layout = serde_json::json!({
+            "columns": [
+                { "weight": 0.6, "tiles": [{ "path": "a.md", "mode": "view", "weight": 1.0 }] },
+                { "weight": 0.4, "tiles": [{ "path": null, "mode": "edit", "weight": 1.0 }] }
+            ],
+            "active": [1, 0]
+        });
+        let state = BundleState {
+            properties_shown: Some(true),
+            layout: Some(layout.clone()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains("propertiesShown"));
+        assert!(json.contains("layout"));
+        let back: BundleState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.properties_shown, Some(true));
+        assert_eq!(back.layout, Some(layout));
+    }
+
+    #[test]
+    fn missing_layout_defaults_to_none() {
+        // An older file with no layout/propertiesShown loads cleanly.
+        let json = r#"{ "lastOpenConcept": "x.md" }"#;
+        let st: BundleState = serde_json::from_str(json).unwrap();
+        assert!(st.layout.is_none());
+        assert!(st.properties_shown.is_none());
     }
 
     #[test]

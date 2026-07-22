@@ -2,6 +2,7 @@ import { backend } from '$lib/ipc';
 import { createDebouncer } from '$lib/debounce';
 import { remapPaths } from '$lib/path';
 import { DEFAULT_EDITOR_MODE, type EditorMode } from '$lib/editor/cm';
+import type { StoredLayout } from '$lib/state/layoutPersist';
 import type { BundleState } from '$lib/types';
 import type { RegionId } from '$lib/regionGrid';
 import { flagsToClearOnEnter } from '$lib/transientReveal';
@@ -91,6 +92,15 @@ class SessionStore {
    */
   editorMode = $state<EditorMode>(DEFAULT_EDITOR_MODE);
   /**
+   * Persisted tiling workspace layout (multi-concept-tiling ticket 06): the full
+   * row-of-columns-of-tiles shape (order + weights + each tile's Concept path +
+   * view-mode + the active tile), as an ID-free `StoredLayout`. `null` on a fresh
+   * Bundle (single empty pane) and on an OLD session that predates tiling — the
+   * app reconstructs from `lastOpenConcept` in that case (see `resolveStoredLayout`).
+   * Written through `setLayout` (debounced) whenever the workspace changes.
+   */
+  layout = $state<StoredLayout | null>(null);
+  /**
    * EPHEMERAL transient-reveal flags (slice: transient-region-auto-reveal).
    * NEVER persisted — kept out of `#snapshot()`/`load()` deliberately. When
    * directional focus moves INTO a Region hidden only by a collapse (a folded
@@ -122,6 +132,13 @@ class SessionStore {
 
   /** Opaque window geometry from Rust; carried through saves untouched. */
   #window: unknown = undefined;
+  /**
+   * JSON of the last layout given to `setLayout`, so an unchanged re-serialize
+   * (e.g. a divider drag that lands back where it started) is a no-op rather than
+   * scheduling a redundant save. Seeded from the loaded value so a faithful
+   * reconstruction doesn't immediately re-persist.
+   */
+  #lastLayoutJson: string | undefined = undefined;
   /** Debounced persistence: coalesces rapid UI-state changes into one write. */
   #persist = createDebouncer(
     () => void backend.saveBundleState(this.#snapshot()).catch(() => {}),
@@ -146,6 +163,11 @@ class SessionStore {
       // Global Properties toggle defaults to HIDDEN (`false`) when absent.
       this.propertiesShown = state.propertiesShown ?? false;
       this.editorMode = state.editorMode ?? DEFAULT_EDITOR_MODE;
+      // The full tiling layout (null on a fresh/old Bundle — App migrates from
+      // `lastOpenConcept` then). Carried as the raw stored value; validation +
+      // migration + corrupt-fallback happen in `resolveStoredLayout` at restore.
+      this.layout = state.layout ?? null;
+      this.#lastLayoutJson = JSON.stringify(this.layout);
       // The right Sidebar defaults to COLLAPSED (`false`) when absent — a fresh
       // or older Bundle opens with the right Sidebar hidden.
       this.rightSidebarOpen = state.rightSidebarOpen ?? false;
@@ -283,6 +305,21 @@ class SessionStore {
     this.#scheduleSave();
   }
 
+  /**
+   * Record the full tiling layout and schedule a persist. Called from an App
+   * `$effect` observing the workspace, so it fires on any layout-relevant change
+   * (split/close, divider drag, per-tile navigation or mode toggle, active tile).
+   * A byte-identical re-serialize is a no-op — this is the seam that keeps the
+   * observing effect from scheduling redundant saves while dragging a divider.
+   */
+  setLayout(layout: StoredLayout): void {
+    const json = JSON.stringify(layout);
+    if (json === this.#lastLayoutJson) return;
+    this.#lastLayoutJson = json;
+    this.layout = layout;
+    this.#scheduleSave();
+  }
+
   // --- Transient auto-reveal (slice: transient-region-auto-reveal) ---------
   //
   // Effective visibility of each collapsible: persisted `*Open` OR the
@@ -372,6 +409,7 @@ class SessionStore {
       outlineOpen: this.outlineOpen,
       propertiesShown: this.propertiesShown,
       editorMode: this.editorMode,
+      layout: this.layout,
       window: this.#window,
     };
   }

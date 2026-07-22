@@ -517,6 +517,9 @@ function loadFakeBundleState(): BundleState {
       // Editor view mode: passed through untouched (undefined when absent, which
       // the session store defaults to `DEFAULT_EDITOR_MODE` on read).
       editorMode: parsed.editorMode,
+      // Tiling workspace layout: passed through untouched (undefined when absent;
+      // the session/App layer validates + migrates + falls back on read).
+      layout: parsed.layout,
     };
   } catch {
     return defaultBundleState();

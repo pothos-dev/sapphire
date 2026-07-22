@@ -34,7 +34,7 @@ export interface Column {
 }
 
 /** The stable column id derived from its founding tile id. */
-function columnId(foundingTileId: string): string {
+export function columnId(foundingTileId: string): string {
   return `col:${foundingTileId}`;
 }
 

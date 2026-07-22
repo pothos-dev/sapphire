@@ -3,6 +3,7 @@
 // See ARCHITECTURE.md and CONTEXT.md.
 
 import type { EditorMode } from '$lib/editor/cm';
+import type { StoredLayout } from '$lib/state/layoutPersist';
 
 /**
  * A node in the Bundle's directory tree. Paths are bundle-relative,
@@ -113,6 +114,16 @@ export type BundleState = {
    * absence; the session store defaults it to `DEFAULT_EDITOR_MODE` on read.
    */
   editorMode?: EditorMode;
+  /**
+   * Persisted tiling workspace layout (multi-concept-tiling ticket 06): the row
+   * of columns of tiles — each column's order + weight, each tile's order +
+   * weight + Concept path + per-pane view-mode, and which tile is active.
+   * Optional so older sessions (which have only `lastOpenConcept` + a single
+   * `editorMode`) tolerate its absence and are migrated to a single tile on read;
+   * `null`/corrupt falls back to one empty pane. The Rust backend round-trips it
+   * as opaque JSON (see `config.rs`); the frontend owns the `StoredLayout` shape.
+   */
+  layout?: StoredLayout | null;
 };
 
 /**

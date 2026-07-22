@@ -13,15 +13,20 @@ import {
 import {
   singlePaneLayout,
   allTileIds,
+  columnId,
   splitRight as layoutSplitRight,
   splitDown as layoutSplitDown,
   closeTile as layoutCloseTile,
   resizeColumns as layoutResizeColumns,
   resizeTiles as layoutResizeTiles,
   MIN_WEIGHT,
+  type Column,
   type Layout,
+  type Tile,
 } from '$lib/paneLayout';
 import { rememberTile, type ColumnMemory } from '$lib/paneNav';
+import { serializeLayout, type StoredLayout } from '$lib/state/layoutPersist';
+import { DEFAULT_EDITOR_MODE, type EditorMode } from '$lib/editor/cm';
 
 /** Monotonic Pane-id source: ids are opaque, stable, and never reused. */
 let paneIdCounter = 0;
@@ -47,6 +52,13 @@ export class Pane {
   readonly id: string;
   /** bundle-relative path of the active Concept, or null if none. */
   activePath = $state<string | null>(null);
+  /**
+   * This Pane's tri-state view-mode (Source / Live / Reading). Owned here (not in
+   * the Pane.svelte component) so it is part of the persisted layout shape and
+   * survives a relaunch. A fresh Pane defaults to `DEFAULT_EDITOR_MODE`; a split
+   * inherits its source's mode; a restore sets it from the stored layout.
+   */
+  mode = $state<EditorMode>(DEFAULT_EDITOR_MODE);
   /** This Pane's navigation history (immutable value; see navHistory.ts). */
   #history = $state<NavHistory>(EMPTY_HISTORY);
 
@@ -285,6 +297,7 @@ export class Workspace {
   splitRight(): void {
     const source = this.activePane;
     const pane = this.#create();
+    pane.mode = source.mode;
     if (source.activePath !== null) pane.adopt(source.activePath);
     this.layout = layoutSplitRight(this.layout, source.id, pane.id);
     this.activeId = pane.id;
@@ -297,6 +310,7 @@ export class Workspace {
   splitDown(): void {
     const source = this.activePane;
     const pane = this.#create();
+    pane.mode = source.mode;
     if (source.activePath !== null) pane.adopt(source.activePath);
     this.layout = layoutSplitDown(this.layout, source.id, pane.id);
     this.activeId = pane.id;
@@ -354,5 +368,52 @@ export class Workspace {
   /** Set the post-save hook on every Document in the pool. */
   setOnSaved(cb: ((path: string) => void) | null): void {
     this.#registry.setOnSaved(cb);
+  }
+
+  /**
+   * Snapshot the workspace as a plain, ID-free `StoredLayout` for persistence:
+   * every column (order + weight), every tile (order + weight + its Pane's
+   * Concept path + view-mode) and the active tile. Thin over the pure
+   * `serializeLayout`; reads the reactive layout/pane state so an `$effect`
+   * observing it re-persists on any layout-relevant change.
+   */
+  snapshotLayout(): StoredLayout {
+    return serializeLayout(this.layout, this.activeId, (id) => {
+      const pane = this.#panes.get(id);
+      return pane ? { path: pane.activePath, mode: pane.mode } : undefined;
+    });
+  }
+
+  /**
+   * Rebuild the workspace from a persisted `StoredLayout`: mint a fresh Pane per
+   * stored tile, restore its view-mode, open its Concept (a missing/absent path
+   * lands in the Pane's graceful not-found state — it never wedges startup), and
+   * set the active tile. Per-pane navigation history and scroll/cursor are NOT
+   * restored (out of scope): each Pane starts with a fresh one-entry history at
+   * its Concept. Await resolves once every tile's Concept has loaded.
+   */
+  async restore(stored: StoredLayout): Promise<void> {
+    this.#panes.clear();
+    this.#columnMemory = {};
+    const opens: Promise<void>[] = [];
+    let activeId = '';
+
+    const columns: Column[] = stored.columns.map((sc, ci) => {
+      const tiles: Tile[] = sc.tiles.map((st, ti) => {
+        const pane = this.#create();
+        pane.mode = st.mode;
+        // A stored path that no longer exists resolves to the Document's
+        // not-found state (Document.load catches); swallow here so one bad tile
+        // can't reject the whole restore.
+        if (st.path !== null) opens.push(pane.open(st.path).catch(() => {}));
+        if (ci === stored.active[0] && ti === stored.active[1]) activeId = pane.id;
+        return { id: pane.id, weight: st.weight };
+      });
+      return { id: columnId(tiles[0].id), weight: sc.weight, tiles };
+    });
+
+    this.layout = { columns };
+    this.activeId = activeId !== '' ? activeId : columns[0].tiles[0].id;
+    await Promise.all(opens);
   }
 }

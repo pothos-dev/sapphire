@@ -110,12 +110,13 @@
   // and header title can render it.
   let frontmatterProps = $state<Property[]>([]);
 
-  // This Pane's tri-state view mode. Seeded from the persisted session default;
-  // toggling writes back to the session (the global default for new Panes /
-  // relaunch) but panes can otherwise diverge.
-  let editorMode = $state<EditorMode>(session.editorMode);
+  // This Pane's tri-state view mode lives on the Pane STATE object (`pane.mode`)
+  // so it is part of the persisted layout shape (multi-concept-tiling ticket 06)
+  // and survives a relaunch. Toggling here also writes the session's GLOBAL
+  // `editorMode` (the default a fresh Pane / fresh Bundle adopts), but tiles can
+  // otherwise diverge.
   function changeEditorMode(mode: EditorMode): void {
-    editorMode = mode;
+    pane.mode = mode;
     session.setEditorMode(mode);
     if (view) {
       setEditorMode(view, mode);
@@ -494,7 +495,7 @@
         doc: body,
         frontmatter: props,
         path: pane.activePath,
-        initialMode: editorMode,
+        initialMode: pane.mode,
         onChange: (full) => pane.edit(full),
         onFrontmatterChange: (p) => (frontmatterProps = p),
         onBlur: () => void pane.flush(),
@@ -601,9 +602,9 @@
     doExitReview();
   }
   export { handleSaved };
-  /** Adopt the persisted view mode (startup restore of the initial Pane). */
+  /** Adopt a view mode imperatively, applying it to the live view if built. */
   export function setMode(mode: EditorMode): void {
-    editorMode = mode;
+    pane.mode = mode;
     if (view) setEditorMode(view, mode);
   }
 </script>
@@ -621,7 +622,7 @@
     hasOpenConcept={pane.activePath !== null}
     canGoBack={pane.canGoBack}
     canGoForward={pane.canGoForward}
-    {editorMode}
+    editorMode={pane.mode}
     {canUndo}
     {canRedo}
     {reviewActive}

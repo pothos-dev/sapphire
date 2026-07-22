@@ -39,6 +39,7 @@
     MIN_WEIGHT,
   } from '$lib/paneLayout';
   import { nextTile } from '$lib/paneNav';
+  import { resolveStoredLayout } from '$lib/state/layoutPersist';
 
   // The tiling workspace (row of columns of Panes) behind the editor facade. App
   // renders its layout + drives split/close/resize/active; the facade stays the
@@ -111,8 +112,22 @@
     void (async () => {
       await Promise.all([bundle.load(), session.load()]);
 
-      // Restore the persisted editor mode onto the initial (active) Pane.
-      activePaneRef?.setMode(session.editorMode);
+      // Reconstruct the tiling workspace from the persisted layout: rebuild every
+      // column/tile, open each tile's Concept into its Pane, and restore each
+      // pane's view-mode + the active tile (layout-persistence). An OLD session
+      // (only `lastOpenConcept` + one `editorMode`, no layout) migrates to a
+      // single tile; a missing/corrupt/empty layout falls back to the default
+      // single empty pane — kept as-is, just adopting the persisted global mode.
+      const stored = resolveStoredLayout(
+        session.layout,
+        session.lastOpenConcept,
+        session.editorMode,
+      );
+      if (stored) {
+        await workspace.restore(stored);
+      } else {
+        activePaneRef?.setMode(session.editorMode);
+      }
 
       if (
         bundle.tree &&
@@ -122,10 +137,6 @@
         for (const p of defaultOpenFolders(bundle.tree, 2)) session.setExpanded(p, true);
       }
 
-      if (session.lastOpenConcept) {
-        await editor.open(session.lastOpenConcept);
-        activePaneRef?.setMode(session.editorMode);
-      }
       session.endRestore();
 
       focusExplorerInitial();
@@ -287,6 +298,16 @@
       session.setLastOpenConcept(path);
       if (path !== null) session.pushRecentFile(path);
     }
+  });
+
+  // Persist the full tiling layout (columns + weights, each tile's Concept +
+  // view-mode, and the active tile) whenever it changes, so the workspace is
+  // reconstructed on relaunch. `snapshotLayout` reads the reactive workspace
+  // state, so this re-runs on split/close/resize/navigation/mode/active changes;
+  // gated on `restored` and debounced (via `setLayout`) like other session state.
+  $effect(() => {
+    const snapshot = workspace.snapshotLayout();
+    if (session.restored) session.setLayout(snapshot);
   });
 
   function openConcept(path: string) {
