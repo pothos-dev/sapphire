@@ -2,7 +2,7 @@
   // Per-Pane header (slice: per-tile-header). A slim strip above the Editor
   // carrying everything that is logically PER-PANE for the active Concept:
   //   - the Concept title + a close affordance (clears the Pane to empty state),
-  //   - Split Right / Split Down affordances (wired but no-ops until ticket 03),
+  //   - Split Right (new Column) / Split Down (new Tile in this Column) affordances,
   //   - the tri-state view-mode toggle (Source / Live / Reading),
   //   - undo / redo over the active Pane's Document history,
   //   - the review-diff toggle (working-tree ↔ HEAD),
@@ -36,9 +36,9 @@
     reviewTooltip: string;
     /** Clear the Pane to its empty state. */
     onClose: () => void;
-    /** Split the Pane to the right (no-op until ticket 03). */
+    /** Open this Pane's Concept in a new Column to the right. */
     onSplitRight: () => void;
-    /** Split the Pane downward (no-op until ticket 03). */
+    /** Open this Pane's Concept in a new Tile below, in this Column. */
     onSplitDown: () => void;
     onSetMode: (mode: EditorMode) => void;
     onUndo: () => void;
@@ -218,9 +218,8 @@
       </svg>
     </button>
 
-    <!-- Split affordances: wired to handlers but INERT until ticket 03 adds the
-         tiling layout (TODO(ticket-03): grow the workspace to >1 Pane). Kept
-         enabled so the seam is real and clickable; the handlers no-op for now. -->
+    <!-- Split affordances: Split Right opens this Pane's Concept in a new Column
+         to the right; Split Down opens it in a new Tile below, in this Column. -->
     <div class="btn-group">
       <button
         type="button"

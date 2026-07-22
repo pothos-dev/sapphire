@@ -72,7 +72,26 @@ heading level. Selecting a heading scrolls the Editor pane to it. Derived live f
 Concept's body (frontmatter and fenced code blocks excluded).
 
 **Editor pane**:
-The central Pane showing the open Concept.
+The central Pane. It hosts a grid of **Tiles** arranged in **Columns** — a
+horizontal row of Columns, each a vertical stack of Tiles. (Before tiling it
+showed a single open Concept; that is now the one-Tile case.)
+
+**Column**:
+A vertical stack of **Tiles** inside the Editor pane; the Editor pane is a row of
+Columns. Columns (and the Tiles within them) are independently resizable via
+draggable dividers, and rows need not align across Columns.
+_Avoid_: "split" for the noun (a Column is the unit; "Split Right/Down" name the
+actions that create one).
+
+**Tile**:
+One editor cell within the Editor pane, showing a single open **Concept** with its
+own view-mode, scroll position and navigation history. The same Concept may be
+open in multiple Tiles at once, sharing one underlying buffer (edits/autosave in
+one are reflected in the others). Exactly one Tile is the **active Tile** (the
+focused editor cell); the **Outline**, **Backlinks** and **Properties** describe
+it.
+_Avoid_: "tab" (Tiles are always visible, never behind a tab bar), "split" (a
+Tile is the cell; Split is the action), "editor group" (VSCode's tabbed term).
 
 **Accordion**:
 The height-sharing behaviour of a Sidebar's stacked Sections (they share the viewport, each

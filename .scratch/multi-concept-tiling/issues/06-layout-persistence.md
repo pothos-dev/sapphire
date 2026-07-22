@@ -11,7 +11,7 @@ today) — a restored tile starts with a fresh one-entry history.
 the active pane (so per-tile mode and the global Properties flag are part of the
 persisted shape).
 
-**Status:** in-progress
+**Status:** done
 
 - [ ] The full layout tree — columns, each tile's `{path, mode}`, and divider
       sizes — is persisted per-Bundle via the existing `session` seam.
