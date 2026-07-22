@@ -73,6 +73,16 @@ can implement web writing without further design choices.
   (overrides ticket 02's fixed committer); `note_self_write` on every written path. **One global
   write lock** wraps the whole write→rewrite→add→commit critical section; conflicts are
   last-write-wins (SSE warn/reload is separate). **Push/pull out of scope** (deployment-level).
+- [Web editor shell](issues/06-web-editor-shell.md) — keep `WebViewer`'s SSR read chrome;
+  add a **viewer-default + Edit toggle** (Edit shown to authed users only, swaps the CENTER
+  article for the editor in place, Done/Save returns to rendered view). Mount the existing
+  desktop **`Tile.svelte`** editor as a **client-only dynamic-`import()` island** — the island
+  (`WebEditorIsland`) wraps the *whole* `Tile` (it statically imports CM/atomic-editor), keeping
+  it out of the SSR graph (ticket 03). Not full `App.svelte`, not a from-scratch shell. Reuse is
+  real but needs scaffolding: `Tile` couples to the `workspace` model + `focus`/`index`/`session`/
+  `suggestions`/`theme`/`treeActions` stores, so the island constructs a **single-Tile** workspace
+  state + stubs desktop-only affordances (region/tile-split). `cm.ts` drives unchanged, only the
+  `http` backend swapped behind the seam. One Concept at a time (matches ≤1 dirty buffer).
 
 ## Not yet specified
 
@@ -86,9 +96,6 @@ can implement web writing without further design choices.
 - **Concurrency UX** — stale-buffer detection, SSE self-write suppression (the server
   now writes, so it must suppress its own echo like the desktop watcher does), and the
   last-write-wins warn/reload flow. Depends on the write routes + editor shell.
-- **Viewer↔editor gating in the web UI** — anonymous = read-only viewer vs
-  authenticated = editor; how the mode is chosen and surfaced. Auth model now decided
-  (ticket 04: OAuth session, reads open); still depends on the editor shell (ticket 06).
 - **Deployment / ops** — self-hosted always-on server, Bundle-as-git-repo assumptions,
   env/config, how the Node SSR process and the axum server are run together. Depends on
   the git model.
