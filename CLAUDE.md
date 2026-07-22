@@ -6,7 +6,7 @@ then read the deeper docs:
 
 - **`docs/GLOSSARY.md`** — domain language (Bundle, Concept, Wikilink, Region, …).
   Use these terms; avoid the listed synonyms.
-- **`docs/adr/`** — architecture decisions. `docs/tickets/` — slice workflow.
+- **`docs/adr/`** — architecture decisions.
 
 ## Verifying changes
 

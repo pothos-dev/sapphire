@@ -1,7 +1,7 @@
 # 07 — Server write-route surface & watcher self-write suppression
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 04, 05
 
 ## Question
