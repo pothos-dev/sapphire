@@ -32,6 +32,8 @@ export interface BrokenLinkContext {
   currentPath: () => string;
   /** synchronous existence check against the index's cached path set. */
   exists: (path: string) => boolean;
+  /** best-effort nested OKF bundle root prefix ('' = opened root). Optional. */
+  bundleRoot?: () => string;
 }
 
 /** Dispatch this effect to force the broken-link decoration to recompute. */
@@ -57,6 +59,7 @@ export const brokenLinkTheme = EditorView.theme({
 function computeBrokenLinks(view: EditorView, ctx: BrokenLinkContext): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const currentPath = ctx.currentPath();
+  const bundleRoot = ctx.bundleRoot?.() ?? '';
 
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(view.state).iterate({
@@ -77,7 +80,7 @@ function computeBrokenLinks(view: EditorView, ctx: BrokenLinkContext): Decoratio
           } while (cursor.nextSibling());
         }
         if (href === null) return;
-        const resolved = resolveLink(currentPath, href);
+        const resolved = resolveLink(currentPath, href, { bundleRoot, exists: ctx.exists });
         if (resolved.kind === 'internal' && !ctx.exists(resolved.path)) {
           builder.add(node.from, node.to, brokenLinkMark);
         }

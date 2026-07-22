@@ -20,12 +20,87 @@
  * path and drops the anchor (anchor scrolling is a later slice).
  */
 
-import { basename, dirname, stripMd } from './path';
+import { basename, dirname, joinPath, stripMd } from './path';
 
 export type ResolvedLink =
   | { kind: 'external'; href: string }
   | { kind: 'internal'; path: string; anchor: string | null }
   | { kind: 'none' };
+
+/**
+ * Best-effort location of the OKF bundle root WITHIN the opened tree, as a
+ * bundle-relative prefix (`''` = the opened folder is itself the bundle root).
+ *
+ * The opened folder is not always the OKF bundle root: a repository commonly
+ * keeps its bundle in a subfolder (canonically `docs/`). Bundle-absolute links
+ * (`/x.md`) are authored relative to THAT root, so to resolve them we must
+ * first find it. Identification is purely structural (paths only, no
+ * frontmatter):
+ *
+ *   1. If the opened folder carries any top-level `.md` (a root `index.md`, or
+ *      any root-level Concept), it IS the bundle root → `''`. Never redirect
+ *      down — a bundle at the opened root is the overwhelmingly common case.
+ *   2. Otherwise the bundle lives below the opened folder. Take the shallowest
+ *      directory holding an `index.md`; on a depth tie, prefer the canonical
+ *      `docs/`, and otherwise only commit when a single candidate is shallowest.
+ *   3. No `index.md` anywhere: fall back to the sole shared top-level segment
+ *      when every Concept has one, else `''` (don't guess).
+ *
+ * Deliberately conservative: it pairs with the safe fallback in `resolveLink`,
+ * where a wrong guess simply fails to resolve and the link is left unrooted
+ * rather than mis-navigated.
+ */
+export function findBundleRoot(allPaths: string[]): string {
+  const mds = allPaths.filter((p) => p.toLowerCase().endsWith('.md'));
+  if (mds.length === 0) return '';
+
+  // 1. A top-level markdown file means the opened folder is the bundle root.
+  if (mds.some((p) => !p.includes('/'))) return '';
+
+  // 2. Shallowest directory carrying an index.md.
+  const indexDirs = [...new Set(mds.filter((p) => basename(p) === 'index.md').map(dirname))];
+  if (indexDirs.length > 0) {
+    const depth = (d: string) => d.split('/').length;
+    const minDepth = Math.min(...indexDirs.map(depth));
+    const shallow = indexDirs.filter((d) => depth(d) === minDepth);
+    if (shallow.includes('docs')) return 'docs';
+    if (shallow.length === 1) return shallow[0];
+    return ''; // ambiguous — several sibling bundles at the same depth
+  }
+
+  // 3. No index.md anywhere: the sole shared top-level segment, if any.
+  const topSegs = [...new Set(mds.map((p) => p.split('/')[0]))];
+  return topSegs.length === 1 ? topSegs[0] : '';
+}
+
+/** Options that let `resolveLink` redirect bundle-absolute links into a nested OKF root. */
+export interface ResolveLinkOptions {
+  /**
+   * Bundle-relative prefix of the OKF root within the opened tree (`''` = the
+   * opened folder itself; see `findBundleRoot`). Default `''` — no redirection.
+   */
+  bundleRoot?: string;
+  /**
+   * Whether a bundle-relative path names an existing Concept. Gates the safe
+   * fallback: the nested root is applied ONLY when the rewritten target
+   * actually exists.
+   */
+  exists?: (path: string) => boolean;
+}
+
+/**
+ * Apply the identified nested bundle root to a bundle-absolute target, with a
+ * safe fallback. The root is only prepended when the rewritten path actually
+ * resolves to an existing Concept; otherwise the original (opened-root-relative)
+ * path is kept, so a mis-identified root can never mis-navigate a link that
+ * would otherwise have worked.
+ */
+function applyBundleRoot(path: string, opts?: ResolveLinkOptions): string {
+  const root = opts?.bundleRoot;
+  if (!root) return path;
+  const rooted = joinPath(root, path);
+  return opts?.exists?.(rooted) ? rooted : path;
+}
 
 /** Matches a URL scheme like `http:`, `https:`, `mailto:`, `tel:`. */
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
@@ -154,8 +229,17 @@ export function resolveWikilink(
  * Returns `external` for scheme URLs (caller opens in browser), `internal`
  * with a bundle-relative path for OKF links, or `none` for pure anchors / empty
  * hrefs (nothing to navigate to).
+ *
+ * When `opts.bundleRoot` names a nested OKF root, bundle-absolute (`/…`) links
+ * are resolved from THAT root with a safe fallback (see `applyBundleRoot`).
+ * Relative links are unaffected — they resolve against the current Concept's
+ * real position in the opened tree regardless of where the OKF root sits.
  */
-export function resolveLink(currentPath: string, href: string): ResolvedLink {
+export function resolveLink(
+  currentPath: string,
+  href: string,
+  opts?: ResolveLinkOptions,
+): ResolvedLink {
   const raw = href.trim();
   if (raw === '') return { kind: 'none' };
 
@@ -174,9 +258,10 @@ export function resolveLink(currentPath: string, href: string): ResolvedLink {
   const anchor = extractAnchor(raw);
 
   if (pathPart.startsWith('/')) {
-    // Bundle-absolute: resolve from the bundle root.
+    // Bundle-absolute: resolve from the bundle root (redirected into a nested
+    // OKF root when one is identified and the rooted target exists).
     const path = normalizeSegments(pathPart.slice(1).split('/'));
-    return path === '' ? { kind: 'none' } : { kind: 'internal', path, anchor };
+    return path === '' ? { kind: 'none' } : { kind: 'internal', path: applyBundleRoot(path, opts), anchor };
   }
 
   // Relative: resolve against the current Concept's directory.

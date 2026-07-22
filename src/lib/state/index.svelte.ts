@@ -1,4 +1,5 @@
 import { backend } from '$lib/ipc';
+import { findBundleRoot } from '$lib/links';
 
 /**
  * Frontend mirror of the Rust Bundle index's existence set.
@@ -25,6 +26,22 @@ class IndexStore {
   /** Synchronous existence check used by the broken-link decoration. */
   exists(path: string): boolean {
     return this.paths.has(path);
+  }
+
+  /** Memoized `findBundleRoot` result, keyed on the current path-set identity. */
+  #rootCache: { key: Set<string>; value: string } | null = null;
+
+  /**
+   * Best-effort OKF bundle root within the opened tree (`''` = the opened
+   * folder itself; see `findBundleRoot`). Bundle-absolute links resolve from
+   * this prefix. Recomputed only when the path set is replaced (on `refresh`),
+   * since `paths` is swapped wholesale rather than mutated in place.
+   */
+  bundleRoot(): string {
+    if (this.#rootCache?.key !== this.paths) {
+      this.#rootCache = { key: this.paths, value: findBundleRoot([...this.paths]) };
+    }
+    return this.#rootCache.value;
   }
 
   /**

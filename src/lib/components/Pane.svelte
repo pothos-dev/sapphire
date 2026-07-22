@@ -423,7 +423,10 @@
 
   function handleLinkClick(href: string) {
     const open = pane.activePath ?? '';
-    const target = resolveLink(open, href);
+    const target = resolveLink(open, href, {
+      bundleRoot: indexStore.bundleRoot(),
+      exists: (p) => indexStore.exists(p),
+    });
     if (target.kind === 'external') {
       void backend.openExternal(target.href);
     } else if (target.kind === 'internal') {
@@ -503,6 +506,7 @@
         brokenLinkContext: {
           currentPath: () => pane.activePath ?? '',
           exists: (p) => indexStore.exists(p),
+          bundleRoot: () => indexStore.bundleRoot(),
         },
         wikiLinkContext: {
           currentPath: () => pane.activePath ?? '',

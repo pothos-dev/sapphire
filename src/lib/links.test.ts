@@ -1,7 +1,13 @@
 // Unit tests for OKF markdown link resolution (pure module, no DOM/IPC).
 // Run with `bun test src/lib`. Pins current resolveLink/isExternalLink behavior.
 import { describe, expect, test } from 'bun:test';
-import { isExternalLink, resolveLink, resolveWikilink, splitWikilinkTarget } from './links';
+import {
+  findBundleRoot,
+  isExternalLink,
+  resolveLink,
+  resolveWikilink,
+  splitWikilinkTarget,
+} from './links';
 
 describe('isExternalLink', () => {
   test('scheme URLs are external', () => {
@@ -98,6 +104,93 @@ describe('resolveLink', () => {
   test('absolute href that normalizes to empty is none', () => {
     expect(resolveLink('cur.md', '/')).toEqual({ kind: 'none' });
     expect(resolveLink('cur.md', '/.')).toEqual({ kind: 'none' });
+  });
+
+  describe('nested bundle root', () => {
+    const exists = (paths: string[]) => (p: string) => paths.includes(p);
+
+    test('prepends the identified root when the rooted target exists', () => {
+      const paths = ['docs/index.md', 'docs/tables/orders.md'];
+      expect(
+        resolveLink('docs/index.md', '/tables/orders.md', {
+          bundleRoot: 'docs',
+          exists: exists(paths),
+        }),
+      ).toEqual({ kind: 'internal', path: 'docs/tables/orders.md', anchor: null });
+    });
+
+    test('safe fallback: keeps the unrooted path when the rooted target does not exist', () => {
+      expect(
+        resolveLink('docs/index.md', '/tables/orders.md', {
+          bundleRoot: 'docs',
+          exists: () => false,
+        }),
+      ).toEqual({ kind: 'internal', path: 'tables/orders.md', anchor: null });
+    });
+
+    test('empty root or missing opts is a no-op (legacy behavior)', () => {
+      expect(resolveLink('cur.md', '/x.md', { bundleRoot: '', exists: () => true })).toEqual({
+        kind: 'internal',
+        path: 'x.md',
+        anchor: null,
+      });
+      expect(resolveLink('cur.md', '/x.md')).toEqual({
+        kind: 'internal',
+        path: 'x.md',
+        anchor: null,
+      });
+    });
+
+    test('relative links are never redirected into the root', () => {
+      expect(
+        resolveLink('docs/tables/cur.md', './orders.md', {
+          bundleRoot: 'docs',
+          exists: () => true,
+        }),
+      ).toEqual({ kind: 'internal', path: 'docs/tables/orders.md', anchor: null });
+    });
+
+    test('carries the anchor through the redirect', () => {
+      const paths = ['docs/tables/orders.md'];
+      expect(
+        resolveLink('docs/index.md', '/tables/orders.md#schema', {
+          bundleRoot: 'docs',
+          exists: exists(paths),
+        }),
+      ).toEqual({ kind: 'internal', path: 'docs/tables/orders.md', anchor: 'schema' });
+    });
+  });
+});
+
+describe('findBundleRoot', () => {
+  test('empty bundle → root', () => {
+    expect(findBundleRoot([])).toBe('');
+  });
+
+  test('top-level markdown means the opened folder is the root', () => {
+    expect(findBundleRoot(['index.md', 'tables/orders.md'])).toBe('');
+    expect(findBundleRoot(['README.md', 'docs/index.md'])).toBe('');
+  });
+
+  test('bundle nested under docs/ is found via its index.md', () => {
+    expect(findBundleRoot(['docs/index.md', 'docs/tables/orders.md'])).toBe('docs');
+  });
+
+  test('shallowest index.md wins over deeper ones', () => {
+    expect(findBundleRoot(['wiki/index.md', 'wiki/a/index.md', 'wiki/a/b.md'])).toBe('wiki');
+  });
+
+  test('docs/ is preferred on a same-depth tie', () => {
+    expect(findBundleRoot(['docs/index.md', 'notes/index.md'])).toBe('docs');
+  });
+
+  test('ambiguous same-depth siblings (no docs) → root, not a guess', () => {
+    expect(findBundleRoot(['notes/index.md', 'wiki/index.md'])).toBe('');
+  });
+
+  test('no index anywhere → sole shared top-level segment', () => {
+    expect(findBundleRoot(['docs/a.md', 'docs/sub/b.md'])).toBe('docs');
+    expect(findBundleRoot(['docs/a.md', 'other/b.md'])).toBe('');
   });
 });
 
