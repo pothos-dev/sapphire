@@ -4,6 +4,9 @@ index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2
 diff --git a/node_modules/@atomic-editor/editor/.bun-tag-b078cfe0b0463c9b b/.bun-tag-b078cfe0b0463c9b
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@atomic-editor/editor/.bun-tag-fb7ae7c466f3f7e0 b/.bun-tag-fb7ae7c466f3f7e0
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/index.d.ts b/dist/index.d.ts
 index 9e17e82ee7ef8a8a558dbd0444faf2ab2f8836dc..dd472ca33425b6bf1c4ff5b9ca39c5ec044ab4de 100644
 --- a/dist/index.d.ts
@@ -44,7 +47,7 @@ index 4951e264cdf8f9e1c2f52936ed6e4cb6558769e1..fbf13f0ec66ab9d62a205de2447af577
  /**
   * Assemble the inline-preview extension set. Call once per editor and
 diff --git a/dist/inline-preview.js b/dist/inline-preview.js
-index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7f9685f7d 100644
+index 94d48d196e21fac09a774cd97b61ed5274ab48b9..864b2038174712c7968dcfdf24f894832b2ed2ee 100644
 --- a/dist/inline-preview.js
 +++ b/dist/inline-preview.js
 @@ -1,5 +1,5 @@
@@ -68,7 +71,35 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
  const FREEZE_TAIL_MS = 100;
  // ---- freeze plumbing -----------------------------------------------------
  const setFrozen = StateEffect.define();
-@@ -289,7 +296,11 @@ function buildInlineDecorations(view) {
+@@ -24,13 +31,17 @@ const previewFrozenField = StateField.define({
+         return prev;
+     },
+ });
+-function linkIconHitTarget(event, root) {
++function linkIconHitTarget(event, root, wholeLink = false) {
+     const target = event.target;
+     if (!(target instanceof Element))
+         return null;
+     const linkEl = target.closest('.cm-atomic-link');
+     if (!linkEl || (root && !root.contains(linkEl)))
+         return null;
++    // Sapphire VIEW (reading) mode: the link text isn't editable, so the
++    // whole link is the click target — no need to hit the trailing icon.
++    if (wholeLink)
++        return linkEl;
+     // The icon is a `::after` pseudo-element, so it doesn't have its own
+     // event target. Compute the same trailing hit-zone used by the click
+     // opener and treat pointerdown in that zone as "on the icon", not
+@@ -88,7 +99,7 @@ const freezeMousePlugin = ViewPlugin.fromClass(class {
+                 if (!(target instanceof Node) || !this.view.contentDOM.contains(target)) {
+                     return;
+                 }
+-                if (linkIconHitTarget(event, this.view.contentDOM)) {
++                if (linkIconHitTarget(event, this.view.contentDOM, this.view.state.facet(alwaysRenderFacet))) {
+                     // Let the follow-up click open the link, but stop CM6 from
+                     // interpreting the icon press as a text-editing click. Without
+                     // this, pointerdown moves the selection into the Link node and
+@@ -289,7 +300,11 @@ function buildInlineDecorations(view) {
      const { doc } = state;
      const ranges = [];
      const activeLines = new Set();
@@ -81,7 +112,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
          for (const r of state.selection.ranges) {
              const firstLine = doc.lineAt(r.from).number;
              const lastLine = doc.lineAt(r.to).number;
-@@ -322,6 +333,12 @@ function buildInlineDecorations(view) {
+@@ -322,6 +337,12 @@ function buildInlineDecorations(view) {
      // aren't included; they already have their own widget UX and the
      // line-based reveal is the right fit for `![alt](url)`.
      const activeLinkStarts = new Set();
@@ -94,7 +125,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
      // Single pre-order walk. A tree walk visits a parent before its
      // children, which lets us compute two pieces of look-ahead state on
      // the way in — right before the children that depend on them:
-@@ -353,14 +370,21 @@ function buildInlineDecorations(view) {
+@@ -353,14 +374,21 @@ function buildInlineDecorations(view) {
                          activeLines.add(n);
                  }
              }
@@ -124,7 +155,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
                      }
                  }
              }
-@@ -374,7 +398,8 @@ function buildInlineDecorations(view) {
+@@ -374,7 +402,8 @@ function buildInlineDecorations(view) {
                  }
              }
              const markClass = INLINE_MARK_CLASS[node.name];
@@ -134,7 +165,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
                  ranges.push(Decoration.mark({ class: markClass }).range(node.from, node.to));
              }
              if (HIDEABLE_SYNTAX.has(node.name) && node.from < node.to) {
-@@ -390,7 +415,19 @@ function buildInlineDecorations(view) {
+@@ -390,7 +419,19 @@ function buildInlineDecorations(view) {
                          parent = parent.parent;
                      }
                      if (parent && parent.name === 'Link') {
@@ -155,7 +186,16 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
                      }
                      else {
                          shouldHide = !activeLines.has(lineNum);
-@@ -796,11 +833,13 @@ function makeLinkClickHandler(onLinkClick) {
+@@ -788,7 +829,7 @@ function makeLinkClickHandler(onLinkClick) {
+                 return false;
+             if (event.button !== 0)
+                 return false;
+-            const linkEl = linkIconHitTarget(event, view.contentDOM);
++            const linkEl = linkIconHitTarget(event, view.contentDOM, view.state.facet(alwaysRenderFacet));
+             if (!linkEl)
+                 return false;
+             const pos = view.posAtDOM(linkEl);
+@@ -796,11 +837,13 @@ function makeLinkClickHandler(onLinkClick) {
                  return false;
              const tree = syntaxTree(view.state);
              let node = tree.resolveInner(pos, 1);
@@ -171,7 +211,7 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
              if (!urlNode)
                  return false;
              const url = view.state.doc.sliceString(urlNode.from, urlNode.to);
-@@ -821,8 +860,9 @@ function makeLinkClickHandler(onLinkClick) {
+@@ -821,8 +864,9 @@ function makeLinkClickHandler(onLinkClick) {
   * browser, etc.) instead of the default `window.open`.
   */
  export function inlinePreview(config = {}) {
@@ -183,10 +223,25 @@ index 94d48d196e21fac09a774cd97b61ed5274ab48b9..ae1bf42355ee144315f333216fe512d7
          inlinePreviewPlugin,
          freezeMousePlugin,
 diff --git a/dist/styles/inline-preview.css b/dist/styles/inline-preview.css
-index de6e2618e9b0bd8c788aea16f95d6a9181f84e67..d1f599a46008ed100c896eb2d8a6faa74ecb4e77 100644
+index de6e2618e9b0bd8c788aea16f95d6a9181f84e67..6f23542fc98af8a9b6b495195b6e5312c37f96d8 100644
 --- a/dist/styles/inline-preview.css
 +++ b/dist/styles/inline-preview.css
-@@ -457,6 +457,7 @@
+@@ -195,6 +195,14 @@
+   color: var(--atomic-editor-link-hover, #a5b4fc);
+ }
+ 
++/* Reading view (Sapphire VIEW mode): the whole link follows the link, not
++ * just the trailing icon, so the pointer cursor spans the link text too.
++ * Scoped to the non-editable content DOM — VIEW mode sets
++ * `contenteditable="false"`; edit/hybrid keep the text-caret cursor. */
++.cm-content[contenteditable="false"] .cm-atomic-link {
++  cursor: pointer;
++}
++
+ /* External-link icon. In prose it's a `::after` pseudo-element; inside
+  * table cells it's a real `.cm-atomic-link-icon` element (a pseudo can't
+  * receive a click, so the in-cell icon wouldn't open the link). Both
+@@ -457,6 +465,7 @@
  .cm-atomic-table-cell-source .cm-atomic-strong-wrap.active > .cm-atomic-mark,
  .cm-atomic-table-cell-source .cm-atomic-em-wrap.active > .cm-atomic-mark,
  .cm-atomic-table-cell-source .cm-atomic-strike-wrap.active > .cm-atomic-mark,
