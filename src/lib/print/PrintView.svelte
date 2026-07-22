@@ -26,8 +26,21 @@
   let { path, toolbar }: Props = $props();
 
   let bodyEl = $state<HTMLElement | null>(null);
+  let surfaceEl = $state<HTMLElement | null>(null);
   let error = $state<string | null>(null);
   let ready = $state(false);
+
+  // The Concept currently shown: the `path` prop until an in-Bundle link is
+  // followed inside the preview, which sets `navigatedPath` (see `followLinks`)
+  // so the link opens IN the print preview rather than escaping to the app shell.
+  let navigatedPath = $state<string | null>(null);
+  const currentPath = $derived(navigatedPath ?? path);
+  // Guards against a slow render for an earlier Concept clobbering a later one
+  // when links are clicked in quick succession.
+  let renderToken = 0;
+  // Auto-print (web bare tab) must fire on the FIRST render only, not on every
+  // in-preview navigation.
+  let firstRender = true;
 
   // --- Reader controls (toolbar mode only) --------------------------------
   // Font size scales the whole rendered body; margins drive BOTH the on-screen
@@ -50,32 +63,62 @@
     pageStyleEl.textContent = `@page { margin: ${m}; }`;
   });
 
-  onMount(() => {
-    let cancelled = false;
+  // Render `currentPath` into the body. Re-runs whenever an in-Bundle link
+  // re-points `currentPath` (the whole point: links open IN the preview). A
+  // per-run token means a superseded render never writes its stale HTML.
+  $effect(() => {
+    const p = currentPath;
+    const token = ++renderToken;
+    ready = false;
+    error = null;
     void (async () => {
       let payload: RenderPayload;
       try {
-        payload = await backend.renderConcept(path);
+        payload = await backend.renderConcept(p);
       } catch (e) {
-        if (!cancelled) error = e instanceof Error ? e.message : String(e);
+        if (token === renderToken) error = e instanceof Error ? e.message : String(e);
         return;
       }
-      if (cancelled || !bodyEl) return;
+      if (token !== renderToken || !bodyEl) return;
       bodyEl.innerHTML = payload.html;
       // Force light Mermaid — dark diagrams read wrong / waste ink on paper.
       await hydrateMermaid(bodyEl, 'light');
-      if (cancelled) return;
+      if (token !== renderToken) return;
+      if (surfaceEl) surfaceEl.scrollTop = 0; // a followed link starts at the top
       // Name the window/tab after the Concept so the saved PDF is sensibly named.
-      document.title = conceptTitle(path, payload);
+      document.title = conceptTitle(p, payload);
       ready = true;
-      // Web tab: hand straight to the browser's print → Save-as-PDF preview.
-      if (!toolbar) window.print();
+      // Web tab: hand straight to the browser's print → Save-as-PDF preview
+      // (initial load only — not on every in-preview navigation).
+      if (!toolbar && firstRender) window.print();
+      firstRender = false;
     })();
-    return () => {
-      cancelled = true;
-      pageStyleEl?.remove();
-      pageStyleEl = null;
+  });
+
+  onMount(() => () => {
+    pageStyleEl?.remove();
+    pageStyleEl = null;
+  });
+
+  // The rendered body carries `<a class="internal-link" data-path=…>` for
+  // in-Bundle links (resolved in Rust). Their `href` is the app's pretty URL, so
+  // a plain click would let the router escape the preview to the normal shell.
+  // Delegate a listener on the body to intercept them and re-point
+  // `navigatedPath` instead, keeping navigation inside the print preview. Broken
+  // links have no target; external / anchor links keep their default behaviour.
+  $effect(() => {
+    const el = bodyEl;
+    if (!el) return;
+    const followLinks = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a');
+      if (!anchor || !anchor.classList.contains('internal-link')) return;
+      e.preventDefault();
+      if (anchor.dataset.broken) return;
+      const dest = anchor.dataset.path;
+      if (dest) navigatedPath = dest;
     };
+    el.addEventListener('click', followLinks);
+    return () => el.removeEventListener('click', followLinks);
   });
 
   function decFont() {
@@ -149,17 +192,20 @@
     </nav>
   {/if}
 
-  <div class="print-surface">
+  <div class="print-surface" bind:this={surfaceEl}>
     {#if error}
-      <p class="print-error" data-testid="print-error">Cannot render {path}: {error}</p>
-    {:else}
-      <article
-        class="print-page rendered"
-        data-testid="print-body"
-        style="font-size: {fontSize}px; padding: {marginValue};"
-        bind:this={bodyEl}
-      ></article>
+      <p class="print-error" data-testid="print-error">Cannot render {currentPath}: {error}</p>
     {/if}
+    <!-- Always mounted so the render effect can write into it across in-preview
+         navigation; hidden (not unmounted) while an error is shown. Link clicks
+         are handled by a delegated listener wired in `followLinks` (below). -->
+    <article
+      class="print-page rendered"
+      data-testid="print-body"
+      hidden={!!error}
+      style="font-size: {fontSize}px; padding: {marginValue};"
+      bind:this={bodyEl}
+    ></article>
   </div>
 </div>
 

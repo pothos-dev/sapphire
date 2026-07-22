@@ -148,3 +148,60 @@ test('preview (web, no toolbar) renders and auto-invokes the browser print', asy
   // The bare tab hands straight to the browser's print preview on load.
   await expect.poll(() => printCalls(page)).toBe(1);
 });
+
+// Following an in-Bundle link inside the preview must open the target IN the
+// preview, not escape to the normal app shell. The Rust renderer emits in-Bundle
+// links as `<a class="internal-link" data-path="…">`; the fake renderer omits
+// link resolution, so we inject that exact anchor markup (the render contract)
+// to drive the click delegation.
+async function injectLink(page: Page, cls: string, dataPath: string): Promise<void> {
+  await page.evaluate(
+    ([c, p]) => {
+      const body = document.querySelector('[data-testid="print-body"]');
+      if (!body) throw new Error('no print-body');
+      const a = document.createElement('a');
+      a.className = c;
+      a.setAttribute('data-path', p);
+      if (c.includes('broken')) a.setAttribute('data-broken', 'true');
+      a.setAttribute('href', '/should-not-navigate-here');
+      a.textContent = 'go';
+      a.id = 'injected-link';
+      body.appendChild(a);
+    },
+    [cls, dataPath] as const,
+  );
+}
+
+test('following an internal link re-renders in the preview, not the app shell', async ({
+  page,
+}) => {
+  await stubPrint(page);
+  await page.goto(`/?print=${encodeURIComponent(FIXTURE)}&toolbar=1`);
+  await expect(page.getByTestId('print-body').locator('h1')).toContainText('Annotated');
+
+  await injectLink(page, 'internal-link', 'concepts/codemirror.md');
+  await page.locator('#injected-link').click();
+
+  // Re-rendered the linked Concept IN PLACE: still the print preview (toolbar
+  // present), never the editor/app shell, and the URL never left the print tab.
+  await expect(page.getByTestId('print-body').locator('h1')).toContainText('CodeMirror');
+  await expect(page.getByTestId('print-view')).toBeVisible();
+  await expect(page.getByTestId('margin-select')).toBeVisible();
+  await expect(page.getByTestId('editor')).toHaveCount(0);
+  expect(page.url()).toContain('print=');
+  expect(page.url()).not.toContain('should-not-navigate-here');
+});
+
+test('a broken internal link does not navigate', async ({ page }) => {
+  await stubPrint(page);
+  await page.goto(`/?print=${encodeURIComponent(FIXTURE)}&toolbar=1`);
+  await expect(page.getByTestId('print-body').locator('h1')).toContainText('Annotated');
+
+  await injectLink(page, 'internal-link broken', 'missing.md');
+  await page.locator('#injected-link').click();
+
+  // No target: stays on the current Concept, no escape to the shell.
+  await expect(page.getByTestId('print-body').locator('h1')).toContainText('Annotated');
+  await expect(page.getByTestId('print-view')).toBeVisible();
+  expect(page.url()).not.toContain('should-not-navigate-here');
+});
