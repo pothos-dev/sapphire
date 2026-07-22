@@ -64,6 +64,15 @@ can implement web writing without further design choices.
   Commit **author = committer = OIDC name+email**. Authz = **trust the (operator-scoped)
   provider**, no app allowlist. CSRF via SvelteKit Origin check + `SameSite`/`HttpOnly` cookie
   + Auth.js `skipCSRFCheck`.
+- [Git persistence & commit model](issues/05-git-persistence-and-commit-model.md) —
+  **one Concept = one commit**, templated per-op messages (`edit/create/rename/move/delete
+  <path> via web`). Text edits buffer until Save; **Tree CRUD commits immediately** (rewrites
+  folded in). Structural op requires a **clean active buffer** — if dirty, a **confirm dialog**
+  flush-commits it first (2 commits), **cancel aborts both**; editor holds **≤1 dirty buffer**.
+  System `git` CLI extending `git.rs`; **author=committer=OIDC identity** via `GIT_*` env
+  (overrides ticket 02's fixed committer); `note_self_write` on every written path. **One global
+  write lock** wraps the whole write→rewrite→add→commit critical section; conflicts are
+  last-write-wins (SSE warn/reload is separate). **Push/pull out of scope** (deployment-level).
 
 ## Not yet specified
 
@@ -102,6 +111,10 @@ can implement web writing without further design choices.
   everything (few known users).
 - **Multi-Bundle / Bundle switching on the web** — the server serves one fixed Bundle.
 - **Offline / PWA editing.**
+- **Remote push / pull from the server** ([ticket 05](issues/05-git-persistence-and-commit-model.md))
+  — the server commits **locally only**; syncing the Bundle repo to a remote (backup, replication)
+  is a deployment-level concern, not part of the web write path. Returns as a fresh effort if
+  in-API push is ever needed.
 - **CLI/bot web write path** ([ticket 04](issues/04-auth-and-git-identity-model.md) §8) —
   automation clones the git repo and commits/pushes via normal git, so the web write API
   needs no machine credential; axum accepts only the hook-minted JWT. Returns as a fresh
