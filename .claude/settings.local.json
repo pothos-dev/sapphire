@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /tmp/llm-wiki/references /tmp/llm-wiki/scripts)",
+      "Bash(cp /home/nhp/.claude/skills/llm-wiki/SKILL.md /tmp/llm-wiki/SKILL.md)",
+      "Bash(cp /home/nhp/.claude/skills/llm-wiki/references/SPEC.md /tmp/llm-wiki/references/SPEC.md)",
+      "Bash(cp /home/nhp/.claude/skills/llm-wiki/scripts/okf-lint.ts /tmp/llm-wiki/scripts/okf-lint.ts)",
+      "Read(//tmp/llm-wiki/**)",
+      "Bash(mkdir -p /tmp/okf)",
+      "Bash(cp /home/nhp/.claude/skills/llm-wiki/scripts/okf-lint.ts /tmp/okf/okf-lint.ts)",
+      "Read(//tmp/okf/**)"
+    ]
+  }
+}
