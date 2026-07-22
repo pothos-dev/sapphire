@@ -25,29 +25,13 @@ test for components.
 
 ### Running Playwright
 
-```bash
-bunx playwright test                              # normal machine (browsers installed)
-bunx playwright test tree-crud region-focus       # a subset (match by spec name)
-```
-
-The runner needs a Chromium. On a normal machine, install it once with
-`bunx playwright install chromium`. **In a sandbox that lacks the ms-playwright
-browser cache** (and where `playwright install` can't download), point the
-runner at an already-present system Chromium via the committed override config:
+This sandbox has a system Chromium at `/tmp/chromium` (no ms-playwright cache),
+so use the committed override config, which defaults to it:
 
 ```bash
-bunx playwright test -c playwright.local.config.ts                 # uses /tmp/chromium
-CHROMIUM_BIN=/path/to/chromium bunx playwright test -c playwright.local.config.ts
+bunx playwright test -c playwright.local.config.ts             # all specs
+bunx playwright test -c playwright.local.config.ts tree-crud   # a subset (by spec name)
 ```
-
-`playwright.local.config.ts` inherits everything from `playwright.config.ts` and
-only swaps in `launchOptions.executablePath` (+ `--no-sandbox`). Check for a
-system Chromium with `ps aux | grep -i chromium` or a running CDP endpoint
-(`curl -s localhost:9222/json/version`); its binary is the `CHROMIUM_BIN`.
-
-If NO browser is available at all, restrict component edits to mechanical
-pure-logic extraction (verified by `bun run check`) and lean on the unit + Rust
-suites.
 
 ## Conventions that bite
 
