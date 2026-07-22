@@ -4,8 +4,6 @@ Sunstone is a CLI-launched **Tauri 2 + SvelteKit (Svelte 5 runes) + Rust**
 markdown editor with first-class Open Knowledge Format (OKF) support. Start here,
 then read the deeper docs:
 
-- **`ARCHITECTURE.md`** — the implementation contract: stack, repository layout,
-  the IPC seam, Rust/editor/state conventions. Read it before touching code.
 - **`docs/GLOSSARY.md`** — domain language (Bundle, Concept, Wikilink, Region, …).
   Use these terms; avoid the listed synonyms.
 - **`docs/adr/`** — architecture decisions. `docs/tickets/` — slice workflow.
