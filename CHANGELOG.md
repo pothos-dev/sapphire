@@ -4,6 +4,21 @@ All notable changes to Sunstone are documented in this file. The format is based
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-07-22
+
+### Changed
+
+- **New Sunstone look** — a warm amber palette and the Jost typeface throughout
+  the app.
+- The per-Tile Close control moved to the right edge and only appears when more
+  than one Tile is open.
+- Every folder now starts collapsed when a fresh Bundle is opened.
+
+### Added
+
+- Absolute in-Bundle links now resolve against the nearest enclosing OKF bundle
+  root, so nested bundles link correctly.
+
 ## [0.16.0] - 2026-07-22
 
 ### Added
