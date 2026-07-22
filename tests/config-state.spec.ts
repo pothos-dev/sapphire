@@ -40,9 +40,11 @@ test('session state persists across reload; theme follows OS', async ({ page }) 
   await expect(livePreview).toBeHidden();
 
   // Expand `concepts/` via its disclosure twisty (its NAME-click would open the
-  // index page instead of toggling). Its child `concepts/editor` is seeded open
-  // (no index.md), so the deep file surfaces once its collapsed ancestor opens.
+  // index page instead of toggling), then expand its child `concepts/editor`. On
+  // a fresh Bundle every folder starts collapsed, so both ancestors must be
+  // opened for the deep file to surface.
   await tree.locator('[data-row-path="concepts"] button.twisty-toggle').click();
+  await tree.locator('[data-row-path="concepts/editor"] button.twisty-toggle').click();
   await expect(livePreview).toBeVisible();
   await livePreview.click();
 

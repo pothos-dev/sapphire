@@ -108,9 +108,10 @@ test('Explorer keyboard nav: move/expand/collapse/descend/parent, clamp, roving 
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => focusedRow(page)).toBe('concepts/editor/live-preview.md');
 
-  // `j` (vim down) moves to the next visible row — a sibling Concept.
+  // `j` (vim down) moves to the next visible row — the first sibling Concept
+  // (files sort after the `editor/` folder; `annotated.md` leads alphabetically).
   await page.keyboard.press('j');
-  await expect.poll(() => focusedRow(page)).toBe('concepts/bundle.md');
+  await expect.poll(() => focusedRow(page)).toBe('concepts/annotated.md');
 
   // `k` (vim up) moves back up.
   await page.keyboard.press('k');
