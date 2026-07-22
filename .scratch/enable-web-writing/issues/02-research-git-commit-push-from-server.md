@@ -1,7 +1,7 @@
 # 02 — Research: git commit/push from the Rust server
 
 Type: research
-Status: claimed
+Status: resolved
 Blocked by: None
 
 ## Question
@@ -29,3 +29,18 @@ Investigate:
 
 Write findings to `.scratch/enable-web-writing/research/02-git-commit-push.md` and
 link them here. Feeds the *Git persistence & commit model* decision.
+
+## Answer
+
+Keep shelling out to the system `git` binary (the seam in `sunstone-core/src/git.rs`
+already does this, zero git-lib deps — the CLI gets correct credentials, hooks, and
+`.gitattributes` handling for free). Per Save: `git add <path>` + commit with a
+per-request author via `GIT_AUTHOR_NAME/EMAIL` and a fixed `GIT_COMMITTER_*`, all
+serialized behind one server mutex (one working tree = one shared `index.lock`), and
+push deferred off the request path (`GIT_TERMINAL_PROMPT=0` + deploy-key
+`GIT_SSH_COMMAND`, best-effort with retry). Critically, the server must call the
+existing `AppState::note_self_write(resolved)` (shared with the watcher) for every
+path it writes, or its own Save echoes back to all browsers over SSE — the desktop's
+suppression mechanism already exists and just isn't wired on the web write path.
+
+Findings: [research/02-git-commit-push.md](../research/02-git-commit-push.md)

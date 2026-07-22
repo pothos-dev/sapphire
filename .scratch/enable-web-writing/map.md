@@ -44,6 +44,20 @@ can implement web writing without further design choices.
 
 <!-- one line per resolved ticket; zoom the link for detail -->
 
+- [Research: auth approaches](issues/01-research-auth-approaches.md) — recommend GitHub
+  OAuth via `@auth/sveltekit` (in-process cookie session), enforced in the `/api` hook,
+  forwarding a trusted identity header to a **loopback-bound** axum; GitHub email+name =
+  git author. Bearer token as CLI/bot secondary. Lucia is deprecated — avoid.
+- [Research: git commit/push from server](issues/02-research-git-commit-push-from-server.md)
+  — keep the **system `git` CLI** (already used in `sunstone-core/src/git.rs`); per-Save
+  `git add`+commit with per-request `GIT_AUTHOR_*` / fixed committer, serialized behind
+  one mutex (shared `index.lock`), push deferred (`GIT_TERMINAL_PROMPT=0` + deploy key);
+  server **must** call `AppState::note_self_write` or its Save echoes over SSE.
+- [Research: CodeMirror under SvelteKit SSR](issues/03-research-codemirror-under-sveltekit-ssr.md)
+  — keep the SSR read view; mount the editor as a client-only island (`onMount` +
+  **dynamic** `import('$lib/editor/cm')` into a `bind:this` host) so atomic-editor / CSS
+  never enter the SSR graph. Don't drop SSR per-route.
+
 ## Not yet specified
 
 <!-- in-scope fog; graduates into tickets as the foundational decisions resolve -->
@@ -63,6 +77,11 @@ can implement web writing without further design choices.
   the git model.
 - **Web write test strategy** — how Playwright exercises writing against the fake/http
   backend and how the fake backend models commits.
+- **`/api` proxy + axum hardening** (surfaced by ticket 01) — the `hooks.server.ts` proxy
+  currently forwards no cookie/body/auth and only GET-shaped reads; write routes need it
+  to forward POST bodies + the trusted identity, and axum must move from `0.0.0.0` to
+  loopback-bound under the header-trust model. Belongs to the auth decision + write-route
+  surface tickets.
 
 ## Out of scope
 

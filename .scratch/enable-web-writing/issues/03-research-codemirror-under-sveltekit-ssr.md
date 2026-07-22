@@ -1,7 +1,7 @@
 # 03 — Research: CodeMirror editor under SvelteKit SSR
 
 Type: research
-Status: claimed
+Status: resolved
 Blocked by: None
 
 ## Question
@@ -27,3 +27,17 @@ Investigate (primary sources: SvelteKit + CodeMirror 6 docs):
 
 Write findings to `.scratch/enable-web-writing/research/03-codemirror-ssr.md` and link
 them here. Feeds the *Web editor shell* prototype ticket.
+
+## Answer
+
+Keep the web build's SSR read view and mount the editor as a client-only island:
+an empty `bind:this` container that SSR renders, then `onMount` (browser-only) does
+`const { buildEditor } = await import('$lib/editor/cm')` and calls it with
+`parent: host`. The load-bearing rule is that `cm.ts` must be reached by **dynamic**
+`import()`, never a static import, so its top-level `@atomic-editor/editor` +
+`styles.css` + CodeMirror module-load code never enter the SSR module graph (same
+goal the existing `AppStub` alias serves, done per-component). Dropping SSR per-route
+(`ssr = false`) works and overrides `+layout.ts`, but costs the server-rendered read
+payload and first paint, so it's not recommended.
+
+See [research/03-codemirror-ssr.md](../research/03-codemirror-ssr.md).
