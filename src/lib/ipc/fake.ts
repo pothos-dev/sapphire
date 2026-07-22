@@ -511,9 +511,9 @@ function loadFakeBundleState(): BundleState {
       // Outline section collapse flag: passed through untouched (undefined when
       // absent, which the session store defaults to `true` on read).
       outlineOpen: parsed.outlineOpen,
-      // Properties panel collapse flag: passed through untouched (undefined when
-      // absent, which the session store defaults to `true` on read).
-      propertiesOpen: parsed.propertiesOpen,
+      // Global Properties show/hide flag: passed through untouched (undefined
+      // when absent, which the session store defaults to `false` on read).
+      propertiesShown: parsed.propertiesShown,
       // Editor view mode: passed through untouched (undefined when absent, which
       // the session store defaults to `DEFAULT_EDITOR_MODE` on read).
       editorMode: parsed.editorMode,

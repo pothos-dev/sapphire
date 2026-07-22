@@ -65,13 +65,6 @@
   let paneRefs = $state<Record<string, ReturnType<typeof Pane>>>({});
   const activePaneRef = $derived(paneRefs[workspace.activeId]);
 
-  // Global Properties show/hide toggle (NavBar). PLACEHOLDER: ticket 05 wires the
-  // per-tile Properties behaviour off this state. For now it only flips a flag.
-  let propertiesPanelShown = $state(true);
-  function toggleProperties(): void {
-    propertiesPanelShown = !propertiesPanelShown;
-  }
-
   // Quick-nav palette (Ctrl+K) + full-text search (Ctrl+Shift+F) overlays.
   let quickNavOpen = $state(false);
   let quickNavTagActive = $state(false);
@@ -717,10 +710,10 @@
     <NavBar
       leftSidebarOpen={session.leftSidebarOpen}
       rightSidebarOpen={session.rightSidebarOpen}
-      propertiesShown={propertiesPanelShown}
+      propertiesShown={session.propertiesShown}
       onToggleLeft={() => session.setLeftSidebarOpen(!session.leftSidebarOpen)}
       onToggleRight={() => session.setRightSidebarOpen(!session.rightSidebarOpen)}
-      onToggleProperties={toggleProperties}
+      onToggleProperties={() => session.setPropertiesShown(!session.propertiesShown)}
     />
     <!-- The editor area: a ROW OF COLUMNS, each a vertical STACK of tiled Panes,
          with draggable dividers between columns and between tiles. It is the

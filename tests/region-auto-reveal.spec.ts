@@ -175,30 +175,38 @@ test('absent (no Concept → Properties/Editor) and empty (no tags → Tags) Reg
   await expect(page.getByTestId('tags-section')).toHaveCount(0);
 });
 
-test('a collapsed Properties panel is transiently revealed on Alt-in and re-collapses on leave', async ({
+test('Properties hidden by the global toggle is ABSENT: Alt-in clamps, nothing revealed', async ({
   page,
 }) => {
   await openConcept(page);
 
-  // codemirror.md has frontmatter, so the Properties panel opens EXPANDED.
-  // Collapse it via the header chevron — its body unmounts, leaving the panel
-  // present (a Concept is open) but hidden purely by a collapse.
-  const toggle = page.getByTestId('properties-toggle');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByTestId('scalar-type')).toHaveCount(0);
+  // Properties is HIDDEN by default now (global toggle), so the centre-column
+  // Properties Region is genuinely ABSENT — like an empty Region, it is skipped,
+  // never revealed. Alt+Up from the Editor (row1) has no row0 target in the
+  // column, so it clamps and focus stays in the Editor.
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+  await altPress(page, 'ArrowUp');
+  await expectActive(page, 'editor');
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+});
 
-  // Clicking the toggle moved focus into the Properties header; return to the
-  // Editor (row1, col1) so the next Alt+Up is a real cross-Region move.
+test('Properties shown by the global toggle: Alt-in lands focus, Escape returns, stays shown', async ({
+  page,
+}) => {
+  await openConcept(page);
+
+  // Turn Properties ON globally — its panel renders inline in the tile and the
+  // 'properties' Region becomes present + visible. Re-focus the Editor after the
+  // toggle click so the next Alt+Up is a real cross-Region move.
+  await page.getByTestId('properties-panel-toggle').click();
+  await expect(page.getByTestId('properties')).toBeVisible();
   await page.getByTestId('editor').locator('.cm-content').click();
   await expectActive(page, 'editor');
 
-  // Alt+Up toward Properties (row0, col1): present-but-collapsed → transiently
-  // reveal the body and land focus in the grid (like the Sidebar Sections).
+  // Alt+Up toward Properties (row0, col1): present + visible → focus lands in the
+  // grid, no transient reveal needed (the global toggle is the only show/hide).
   await altPress(page, 'ArrowUp');
   await expectActive(page, 'properties');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('scalar-type')).toBeVisible();
   expect(
     await page.evaluate(() => {
@@ -207,32 +215,11 @@ test('a collapsed Properties panel is transiently revealed on Alt-in and re-coll
     }),
   ).toBe(true);
 
-  // Leave the Region (Escape → Editor). The peek was NOT manually expanded
-  // beforehand, so it snaps back: the panel re-collapses.
+  // Leave the Region (Escape → Editor). Properties is globally shown, not a
+  // transient peek, so it STAYS shown.
   await page.keyboard.press('Escape');
   await expectActive(page, 'editor');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByTestId('scalar-type')).toHaveCount(0);
-});
-
-test('a manually-expanded Properties panel stays open after focus leaves', async ({
-  page,
-}) => {
-  await openConcept(page);
-
-  // codemirror.md opens with the Properties panel EXPANDED (it has frontmatter).
-  const toggle = page.getByTestId('properties-toggle');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-
-  // Alt+Up into Properties (already shown — no reveal needed), then leave.
-  await altPress(page, 'ArrowUp');
-  await expectActive(page, 'properties');
-  await page.keyboard.press('Escape');
-  await expectActive(page, 'editor');
-
-  // It was expanded BEFORE the visit, so it STAYS open (no re-collapse).
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByTestId('scalar-type')).toBeVisible();
+  await expect(page.getByTestId('properties')).toBeVisible();
 });
 
 test('Section-collapsed Tags (left Sidebar open) is transiently revealed on Alt-Down from the Explorer', async ({

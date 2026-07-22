@@ -71,7 +71,9 @@ test('pane header: title, view-mode toggle, undo/redo, review + export live in t
   await expect(undoBtn).toBeDisabled();
   await expect(redoBtn).toBeDisabled();
 
-  // Edit a property; the header undo enables.
+  // Edit a property; the header undo enables. Properties is hidden by default
+  // (global toggle) — switch it on so the frontmatter inputs are available.
+  await page.getByTestId('properties-panel-toggle').click();
   const titleInput = page.getByTestId('scalar-title');
   await titleInput.fill('CodeMirror Renamed');
   await titleInput.blur();
@@ -119,18 +121,24 @@ test('pane header: close affordance clears the Pane to the empty state', async (
   await expect(page.getByTestId('editor-mode-hybrid')).toBeDisabled();
 });
 
-test('nav bar: global-only — Properties toggle placeholder + sidebar toggles, no per-Pane controls', async ({
+test('nav bar: global-only — real Properties toggle + sidebar toggles, no per-Pane controls', async ({
   page,
 }) => {
   await openCodemirror(page);
 
-  // The global Properties toggle is present and flips its pressed state (inert
-  // placeholder until ticket 05).
+  // The global Properties toggle is present and drives the inline panel. It
+  // starts OFF (default hidden): no Properties chrome in the tile.
   const propsToggle = page.getByTestId('properties-panel-toggle');
   await expect(propsToggle).toBeVisible();
+  await expect(propsToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+  // Toggling it ON reveals the tile's frontmatter inline; OFF hides it again.
+  await propsToggle.click();
   await expect(propsToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('properties')).toBeVisible();
   await propsToggle.click();
   await expect(propsToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('properties')).toHaveCount(0);
 
   // The NavBar no longer carries the per-Pane controls (they moved to the header).
   const navBar = page.locator('nav[aria-label="Global controls"]');

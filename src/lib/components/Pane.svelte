@@ -5,8 +5,10 @@
   // toggle + history stepper, PDF export, the formatting context menu +
   // annotation popup, link / wikilink click navigation (within THIS Pane, pushing
   // THIS Pane's history), broken-link decorations, mermaid theme-sync, and the
-  // Properties panel (rendered only for the ACTIVE Pane — Properties tracks the
-  // active Concept for this slice).
+  // Properties panel (rendered inline in EVERY visible tile when the global
+  // `session.propertiesShown` toggle is on, showing THIS tile's Concept's
+  // frontmatter; only the ACTIVE tile's panel is wired to the 'properties' Region
+  // + grid cursor — multi-concept-tiling).
   //
   // App.svelte owns the tiling layout and the single 'editor' Region; it renders
   // one <Pane> per tile and delegates active-Pane editor concerns here via a few
@@ -82,7 +84,8 @@
   interface Props {
     /** The Pane state object (active Concept, history, shared Document). */
     pane: Pane;
-    /** Whether this tile is the focused/active Pane (gates the Properties panel). */
+    /** Whether this tile is the focused/active Pane (owns the 'properties' Region
+     *  + grid cursor when Properties is globally shown). */
     active: boolean;
     /** App's pending "focus the type field" request path (new-Concept create). */
     focusTypeForPath: string | null;
@@ -142,8 +145,12 @@
     syncHistoryDepths();
   }
 
-  // --- Properties panel (active Pane only) -------------------------------------
-  let propertiesCollapsed = $state(false);
+  // --- Properties panel (per tile, gated by the global toggle) -----------------
+  // The Properties panel renders inline in EVERY visible tile when the global
+  // `session.propertiesShown` toggle is on (default off → no chrome at all). Only
+  // the ACTIVE tile's panel is wired to the single 'properties' Region + the
+  // singleton grid cursor; a non-active tile's panel is mouse-editable but takes
+  // no part in keyboard grid nav (see the `active` prop on <Properties>).
   const focusTypeNow = $derived(focusTypeForPath !== null && focusTypeForPath === pane.activePath);
   function onPropertiesChange(props: Property[]) {
     if (!view) return;
@@ -639,32 +646,53 @@
     <p class="placeholder" data-testid="placeholder">Select a Concept from the tree.</p>
   {/if}
 
-  {#if active && pane.activePath && !isReservedFile(pane.activePath)}
-    <div
-      class="region-host properties-host"
-      class:region-active={focus.focusedRegion === 'properties'}
-      data-region="properties"
-      use:region={{
-        id: 'properties',
-        isPresent: () => pane.activePath !== null && !isReservedFile(pane.activePath),
-        isVisible: () =>
-          pane.activePath !== null &&
-          !isReservedFile(pane.activePath) &&
-          (!propertiesCollapsed || session.propertiesRevealed),
-        reveal: () => session.revealProperties(),
-      }}
-    >
-      <Properties
-        properties={frontmatterProps}
-        path={pane.activePath}
-        types={suggestions.types}
-        keys={suggestions.keys}
-        tags={suggestions.tags}
-        focusType={focusTypeNow}
-        onchange={onPropertiesChange}
-        bind:collapsed={propertiesCollapsed}
-      />
-    </div>
+  {#if session.propertiesShown && pane.activePath && !isReservedFile(pane.activePath)}
+    {#if active}
+      <!-- Active tile: the single 'properties' Region lives here (grid nav +
+           spotlight + Alt-arrow entry). -->
+      <div
+        class="region-host properties-host"
+        class:region-active={focus.focusedRegion === 'properties'}
+        data-region="properties"
+        use:region={{
+          id: 'properties',
+          isPresent: () =>
+            session.propertiesShown &&
+            pane.activePath !== null &&
+            !isReservedFile(pane.activePath),
+          isVisible: () =>
+            session.propertiesShown &&
+            pane.activePath !== null &&
+            !isReservedFile(pane.activePath),
+        }}
+      >
+        <Properties
+          properties={frontmatterProps}
+          path={pane.activePath}
+          types={suggestions.types}
+          keys={suggestions.keys}
+          tags={suggestions.tags}
+          focusType={focusTypeNow}
+          onchange={onPropertiesChange}
+          active
+        />
+      </div>
+    {:else}
+      <!-- Non-active tile: its own Concept's frontmatter, mouse-editable but not
+           part of the Region / keyboard grid nav (active={false}). -->
+      <div class="properties-host">
+        <Properties
+          properties={frontmatterProps}
+          path={pane.activePath}
+          types={suggestions.types}
+          keys={suggestions.keys}
+          tags={suggestions.tags}
+          focusType={false}
+          onchange={onPropertiesChange}
+          active={false}
+        />
+      </div>
+    {/if}
   {/if}
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->

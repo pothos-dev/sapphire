@@ -27,6 +27,8 @@ test('properties panel: typed inputs, scalar persist, tag chips', async ({ page 
 
   const tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
+  // Properties is hidden by default (global toggle); switch it on.
+  await page.getByTestId('properties-panel-toggle').click();
 
   await tree.locator('[data-path="concepts/codemirror.md"]').click();
 
@@ -68,34 +70,29 @@ test('properties panel: typed inputs, scalar persist, tag chips', async ({ page 
     .toBe(true);
 });
 
-test('properties panel: a Concept with frontmatter opens expanded and the header collapses it', async ({
+test('properties panel: the global toggle shows/hides the inline frontmatter', async ({
   page,
 }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
   await page.locator('[data-path="concepts/codemirror.md"]').click();
 
-  const properties = page.getByTestId('properties');
-  await expect(properties).toBeVisible();
-
-  // A Concept WITH frontmatter opens EXPANDED: the toggle reports expanded and
-  // the property rows are visible.
-  const toggle = page.getByTestId('properties-toggle');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByTestId('scalar-type')).toBeVisible();
-
-  // Collapsing hides the body and surfaces a count badge (5 properties:
-  // type, title, description, tags, timestamp).
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  // Hidden by default: no Properties chrome at all (zero height cost).
+  await expect(page.getByTestId('properties')).toHaveCount(0);
   await expect(page.getByTestId('scalar-type')).toHaveCount(0);
-  await expect(page.getByTestId('properties-count')).toHaveText('5');
 
-  // Re-expanding restores the rows.
+  // Toggle ON (NavBar): the panel renders its frontmatter inline.
+  const toggle = page.getByTestId('properties-panel-toggle');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('properties')).toBeVisible();
   await expect(page.getByTestId('scalar-type')).toBeVisible();
-  await expect(page.getByTestId('properties-count')).toHaveCount(0);
+
+  // Toggle OFF again: all Properties chrome disappears (no header, no rows).
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('properties')).toHaveCount(0);
+  await expect(page.getByTestId('scalar-type')).toHaveCount(0);
 });
 
 test('properties panel: complex frontmatter round-trips byte-for-byte', async ({
@@ -104,6 +101,8 @@ test('properties panel: complex frontmatter round-trips byte-for-byte', async ({
   await page.goto('/');
 
   const tree = page.getByTestId('tree');
+  await expect(tree).toBeVisible();
+  await page.getByTestId('properties-panel-toggle').click();
   await tree.locator('[data-path="concepts/complex-frontmatter.md"]').click();
 
   const properties = page.getByTestId('properties');

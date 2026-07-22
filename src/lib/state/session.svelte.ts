@@ -72,14 +72,17 @@ class SessionStore {
    */
   outlineOpen = $state<boolean>(true);
   /**
-   * Properties panel collapse state (persist-properties-collapse). A single
-   * sticky preference mirroring the Sidebar Sections: defaults to `true`
-   * (expanded) on a fresh/older Bundle, and the header chevron writes it through
-   * `setPropertiesOpen` so the choice persists across Concept switches and
-   * restarts. (Previously the panel kept this ephemerally in its component with a
-   * per-Concept content default; it now lives here so it survives a reload.)
+   * GLOBAL Properties show/hide flag (slice: multi-concept-tiling). A single
+   * app-wide preference driven by the NavBar Properties toggle: when `true`,
+   * EVERY visible tile renders its own Concept's frontmatter inline; when
+   * `false` (the fresh/older-Bundle DEFAULT), no tile shows any Properties
+   * chrome at all (zero height cost). Persisted via `setPropertiesShown` so the
+   * choice survives a relaunch, mirroring the other sticky UI flags. Replaces the
+   * old single-pane `propertiesOpen` collapse flag: with the panel now gated by
+   * this global toggle, the per-panel collapse chevron (and its transient
+   * auto-reveal) no longer exist.
    */
-  propertiesOpen = $state<boolean>(true);
+  propertiesShown = $state<boolean>(false);
   /**
    * Editor view mode (persist-editor-mode). Seeds `buildEditor`'s `initialMode`
    * on launch and is written through `setEditorMode` when the user toggles the
@@ -108,15 +111,6 @@ class SessionStore {
   tagsRevealed = $state<boolean>(false);
   outlineRevealed = $state<boolean>(false);
   backlinksRevealed = $state<boolean>(false);
-  /**
-   * Properties panel transient reveal (slice: properties-auto-reveal). The
-   * panel's persisted collapse lives in `propertiesOpen` above; this is the
-   * ephemeral peek layered over it. Directional focus into a COLLAPSED Properties
-   * panel flips this so the panel renders its body and focus can land in the
-   * grid; focus leaving the Region clears it, snapping the panel back to its
-   * persisted collapsed state.
-   */
-  propertiesRevealed = $state<boolean>(false);
   /**
    * True only after the FULL restore sequence (load + seed defaults + reopen the
    * last Concept) has completed. Persistence is gated on this so a reactive
@@ -149,7 +143,8 @@ class SessionStore {
       this.tagsOpen = state.tagsOpen ?? false;
       this.backlinksOpen = state.backlinksOpen ?? true;
       this.outlineOpen = state.outlineOpen ?? true;
-      this.propertiesOpen = state.propertiesOpen ?? true;
+      // Global Properties toggle defaults to HIDDEN (`false`) when absent.
+      this.propertiesShown = state.propertiesShown ?? false;
       this.editorMode = state.editorMode ?? DEFAULT_EDITOR_MODE;
       // The right Sidebar defaults to COLLAPSED (`false`) when absent — a fresh
       // or older Bundle opens with the right Sidebar hidden.
@@ -274,10 +269,10 @@ class SessionStore {
     this.#scheduleSave();
   }
 
-  /** Record the Properties panel's expanded/collapsed state and schedule a persist. */
-  setPropertiesOpen(open: boolean): void {
-    if (open === this.propertiesOpen) return;
-    this.propertiesOpen = open;
+  /** Record the global Properties show/hide flag and schedule a persist. */
+  setPropertiesShown(shown: boolean): void {
+    if (shown === this.propertiesShown) return;
+    this.propertiesShown = shown;
     this.#scheduleSave();
   }
 
@@ -321,10 +316,6 @@ class SessionStore {
   get backlinksVisible(): boolean {
     return this.backlinksOpen || this.backlinksRevealed;
   }
-  /** Properties panel effectively shown (persisted-open or transiently revealed). */
-  get propertiesVisible(): boolean {
-    return this.propertiesOpen || this.propertiesRevealed;
-  }
 
   /**
    * Transiently reveal whatever collapse currently hides one of a Sidebar's
@@ -345,17 +336,6 @@ class SessionStore {
     if (!this.rightSidebarOpen) this.rightSidebarRevealed = true;
     if (section === 'outline' && !this.outlineOpen) this.outlineRevealed = true;
     if (section === 'backlinks' && !this.backlinksOpen) this.backlinksRevealed = true;
-  }
-
-  /**
-   * Transiently reveal the Properties panel (slice: properties-auto-reveal).
-   * Called by the focus backbone only when directional movement targets a
-   * present-but-collapsed Properties Region, so it can flip unconditionally — the
-   * panel's effective collapse lives in its component, not here. Cleared on focus
-   * leaving the Region via `clearTransientRevealsExcept`.
-   */
-  revealProperties(): void {
-    this.propertiesRevealed = true;
   }
 
   /**
@@ -390,7 +370,7 @@ class SessionStore {
       backlinksOpen: this.backlinksOpen,
       rightSidebarOpen: this.rightSidebarOpen,
       outlineOpen: this.outlineOpen,
-      propertiesOpen: this.propertiesOpen,
+      propertiesShown: this.propertiesShown,
       editorMode: this.editorMode,
       window: this.#window,
     };

@@ -11,7 +11,7 @@ Concept open in multiple tiles edits consistently via the shared Document.
 **Blocked by:** 03 — Tiling, dividers, Split & close. (04 not strictly required —
 the active pane is defined by focus, which a click already sets.)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Outline and Backlinks reflect the active pane's Concept and update when the
       active pane changes (click or keyboard).

@@ -26,6 +26,8 @@ function persisted(page: Page, path: string): Promise<string> {
 test('properties: rename key commits on blur and persists', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
+  // Properties is hidden by default now (global toggle); switch it on.
+  await page.getByTestId('properties-panel-toggle').click();
   await page.locator('[data-path="concepts/codemirror.md"]').click();
   await expect(page.getByTestId('properties')).toBeVisible();
 
@@ -47,6 +49,8 @@ test('properties: rename key commits on blur and persists', async ({ page }) => 
 test('properties: rename reverts on empty and on duplicate', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
+  // Properties is hidden by default now (global toggle); switch it on.
+  await page.getByTestId('properties-panel-toggle').click();
   await page.locator('[data-path="concepts/codemirror.md"]').click();
   await expect(page.getByTestId('properties')).toBeVisible();
 
@@ -70,6 +74,8 @@ test('properties: rename reverts on empty and on duplicate', async ({ page }) =>
 test('properties: delete a property persists the removal', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
+  // Properties is hidden by default now (global toggle); switch it on.
+  await page.getByTestId('properties-panel-toggle').click();
   await page.locator('[data-path="concepts/codemirror.md"]').click();
   await expect(page.getByTestId('properties')).toBeVisible();
 
@@ -91,6 +97,8 @@ test('properties: deleting the last property drops the frontmatter block', async
 }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
+  // Properties is hidden by default now (global toggle); switch it on.
+  await page.getByTestId('properties-panel-toggle').click();
   await page.locator('[data-path="concepts/bundle.md"]').click();
   await expect(page.getByTestId('properties')).toBeVisible();
 
@@ -99,10 +107,9 @@ test('properties: deleting the last property drops the frontmatter block', async
     await page.getByTestId(`delete-${key}`).click();
   }
 
-  // The panel's collapse is now a sticky preference (persist-properties-collapse),
-  // not content-driven: deleting every property leaves it EXPANDED, so the
-  // +Text/+List controls stay available to add the next one.
-  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'true');
+  // The panel is globally shown, so deleting every property leaves it rendered
+  // with the +Text/+List controls still available to add the next one.
+  await expect(page.getByTestId('properties')).toBeVisible();
   await expect(page.getByTestId('add-text')).toBeVisible();
   await expect
     .poll(() => persisted(page, 'concepts/bundle.md'))
@@ -117,6 +124,8 @@ test('properties: renaming a complex/unknown key preserves the value', async ({
 }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
+  // Properties is hidden by default now (global toggle); switch it on.
+  await page.getByTestId('properties-panel-toggle').click();
   await page.locator('[data-path="concepts/complex-frontmatter.md"]').click();
   await expect(page.getByTestId('properties')).toBeVisible();
 

@@ -34,3 +34,4 @@ export const test = CDP_ENDPOINT
   : base;
 
 export { expect };
+export type { Page } from '@playwright/test';

@@ -24,6 +24,9 @@ test('new concept: scaffolds type/title, focuses type, autocompletes types', asy
 
   const tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
+  // Properties is hidden by default (global toggle); switch it on so the
+  // scaffolded stub + focused `type` field render.
+  await page.getByTestId('properties-panel-toggle').click();
 
   // --- Create a new Concept "my-note" under concepts/ ---
   await openRowMenu(page, 'concepts');

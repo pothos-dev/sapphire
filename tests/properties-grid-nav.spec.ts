@@ -63,7 +63,7 @@ async function openCodemirror(page: Page) {
   await page.goto('/');
   const tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'], propertiesShown: true })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
   await page.getByTestId('tree').locator('[data-path="concepts/codemirror.md"]').click();
@@ -255,7 +255,7 @@ test('grid clipboard: Ctrl+C/Ctrl+V in nav mode (whole cell) and edit mode (nati
 test('grid: read-only raw-YAML cells are navigable but not editable', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'], propertiesShown: true })));
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
   await page

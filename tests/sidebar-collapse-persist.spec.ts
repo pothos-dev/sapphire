@@ -87,13 +87,12 @@ test('sidebar + section collapse state persists across reload', async ({ page })
 });
 
 /**
- * Slice: persist-properties-collapse.
+ * Slice: multi-concept-tiling.
  *
- * The Properties panel's collapse is a single sticky preference (like the Sidebar
- * Sections above) persisted in the session store, so minimizing it survives a
- * reload — the regression this slice fixes was that it always reopened expanded.
+ * The GLOBAL Properties show/hide flag (NavBar toggle) is persisted in the
+ * session store, so the choice survives a reload — it defaults to HIDDEN.
  */
-test('properties panel collapse state persists across reload', async ({ page }) => {
+test('global Properties show/hide flag persists across reload', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
 
@@ -103,28 +102,29 @@ test('properties panel collapse state persists across reload', async ({ page }) 
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
 
-  // Open a Concept so the Properties panel renders. It opens EXPANDED by default.
+  // Open a Concept. Properties is HIDDEN by default: no chrome.
   await page.locator('[data-path="concepts/bundle.md"]').click();
-  const toggle = page.getByTestId('properties-toggle');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('properties')).toHaveCount(0);
 
-  // Minimize the panel — a non-default state whose restoration proves persistence.
+  // Turn it ON via the NavBar toggle — a non-default state whose restoration
+  // proves persistence.
+  const toggle = page.getByTestId('properties-panel-toggle');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('properties')).toBeVisible();
 
-  // The debounced save flushes `propertiesOpen: false` to localStorage.
+  // The debounced save flushes `propertiesShown: true` to localStorage.
   await expect
     .poll(() =>
       page.evaluate(() => {
         const raw = window.localStorage.getItem('sapphire:bundleState:/fake/bundle');
         if (!raw) return null;
-        return (JSON.parse(raw) as { propertiesOpen?: boolean }).propertiesOpen ?? null;
+        return (JSON.parse(raw) as { propertiesShown?: boolean }).propertiesShown ?? null;
       }),
     )
-    .toBe(false);
+    .toBe(true);
 
-  // RELOAD: the last Concept reopens and the Properties panel stays MINIMIZED.
+  // RELOAD: the last Concept reopens and the Properties panel stays SHOWN.
   await page.reload();
   await expect(page.getByTestId('tree')).toBeVisible();
-  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('properties')).toBeVisible();
 });

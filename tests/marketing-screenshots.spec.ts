@@ -39,6 +39,10 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(tree).toBeVisible();
     await expect(page.getByTestId('app-root')).toHaveAttribute('data-theme', scheme);
 
+    // Properties is hidden by default (global toggle); switch it on so the
+    // frontmatter panel appears in the marketing shot.
+    await page.getByTestId('properties-panel-toggle').click();
+
     // Expand the right Sidebar (starts collapsed) so Backlinks is on screen.
     const rightToggle = page.getByTestId('right-sidebar-toggle');
     const rightAside = page.getByTestId('right-side-bar');

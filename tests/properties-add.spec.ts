@@ -12,9 +12,9 @@ import { test, expect, type Page } from '@playwright/test';
  *    the duplicate name),
  *  - adding the first property to a frontmatter-less doc synthesizes a valid
  *    `---…---` block,
- *  - a frontmatter-less doc opens with the panel COLLAPSED (no +Text/+List, no
- *    required-`type` warning); toggling the header expands it to reveal the
- *    +Text/+List controls.
+ *  - with Properties globally shown, a frontmatter-less doc renders the
+ *    +Text/+List controls inline (no per-panel collapse) and shows no
+ *    required-`type` warning.
  */
 
 /** Read the persisted raw markdown of a Concept from the fake backend. */
@@ -28,10 +28,12 @@ function persisted(page: Page, path: string): Promise<string> {
   );
 }
 
-/** Open a Concept and wait for the Properties panel to render. */
+/** Open a Concept and wait for the Properties panel to render. Properties is
+ *  hidden by default now (global toggle), so switch it on first. */
 async function open(page: Page, path: string) {
   await page.goto('/');
   await expect(page.getByTestId('tree')).toBeVisible();
+  await page.getByTestId('properties-panel-toggle').click();
   await page.locator(`[data-path="${path}"]`).click();
   await expect(page.getByTestId('properties')).toBeVisible();
 }
@@ -142,9 +144,8 @@ test('properties: adding the first property to a frontmatter-less doc writes a v
   page,
 }) => {
   await open(page, 'concepts/no-frontmatter.md');
-  // The panel opens EXPANDED by default (persist-properties-collapse), so the
-  // +Text/+List controls are visible immediately.
-  await expect(page.getByTestId('properties-toggle')).toHaveAttribute('aria-expanded', 'true');
+  // With Properties globally shown, the panel renders its body inline (no
+  // per-panel collapse chrome), so the +Text/+List controls are available.
   await expect(page.getByTestId('add-text')).toBeVisible();
 
   // Add the first property.
@@ -166,12 +167,10 @@ test('properties: a frontmatter-less file opens expanded and shows no type warni
 }) => {
   await open(page, 'concepts/no-frontmatter.md');
 
-  // Expanded by default (sticky preference, persist-properties-collapse): the
-  // +Text/+List controls show, but a frontmatter-less file gets NO required-`type`
-  // nag (non-OKF files are not pushed toward conformance) and no block is written
-  // to disk — the markers are materialized only when a property is committed.
-  const toggle = page.getByTestId('properties-toggle');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // Shown inline (global toggle on): the +Text/+List controls show, but a
+  // frontmatter-less file gets NO required-`type` nag (non-OKF files are not
+  // pushed toward conformance) and no block is written to disk — the markers are
+  // materialized only when a property is committed.
   await expect(page.getByTestId('add-text')).toBeVisible();
   await expect(page.getByTestId('add-list')).toBeVisible();
   await expect(page.getByTestId('type-missing')).toHaveCount(0);

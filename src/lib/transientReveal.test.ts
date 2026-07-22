@@ -25,11 +25,10 @@ describe('revealFlagsFor', () => {
     ]);
   });
 
-  test('the collapsible Properties panel keeps its own single panel flag', () => {
-    expect(revealFlagsFor('properties')).toEqual(['propertiesRevealed']);
-  });
-
-  test('the never-collapsible Editor keeps no transient flags', () => {
+  test('the never-collapse-hidden Regions (Properties, Editor) keep no flags', () => {
+    // Properties is now gated by the global show/hide toggle (not a collapse),
+    // so it has no transient reveal flag; the Editor never collapses either.
+    expect(revealFlagsFor('properties')).toEqual([]);
     expect(revealFlagsFor('editor')).toEqual([]);
   });
 
@@ -48,12 +47,10 @@ describe('flagsToClearOnEnter', () => {
     expect(new Set(flagsToClearOnEnter('editor'))).toEqual(new Set(ALL_TRANSIENT_FLAGS));
   });
 
-  test('entering the peeked Properties panel preserves its own reveal flag', () => {
-    // Focusing the just-revealed Properties panel fires the very focusin that
-    // triggers the clear; its own flag must survive so it does not re-collapse
-    // under itself. Every OTHER peek is cleared.
+  test('entering the Properties Region clears every peek (it has no flag of its own)', () => {
+    // Properties is gated by the global toggle now, not a transient reveal, so
+    // landing focus there simply snaps back every OTHER peeked Region.
     const cleared = flagsToClearOnEnter('properties');
-    expect(cleared).not.toContain('propertiesRevealed');
     expect(cleared).toContain('leftSidebarRevealed');
     expect(cleared).toContain('rightSidebarRevealed');
   });

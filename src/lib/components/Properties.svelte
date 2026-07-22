@@ -14,11 +14,9 @@
 
   import { renameProperty, type Property } from '$lib/frontmatter';
   import { focus } from '$lib/state/focus.svelte';
-  import { session } from '$lib/state/session.svelte';
   import { propertiesNav, KEY_COL, VALUE_COL, type CellKind } from '$lib/state/propertiesNav.svelte';
   import { moveCell, nextCellTab, type Cell } from '$lib/propertiesGrid';
   import PropertyRow from './PropertyRow.svelte';
-  import PropertiesHeader from './PropertiesHeader.svelte';
   import PropertiesAddRow from './PropertiesAddRow.svelte';
 
   interface Props {
@@ -48,12 +46,17 @@
     /** Called with the new properties after an edit. */
     onchange: (props: Property[]) => void;
     /**
-     * Whether the panel is COLLAPSED (raw collapse state, ignoring any transient
-     * reveal). Bound out so the app shell's Region registration can treat a
-     * collapsed panel as not-visible and transiently reveal it on directional
-     * focus, the same way the Sidebar Sections auto-reveal (properties-auto-reveal).
+     * Whether this panel belongs to the ACTIVE tile (slice: multi-concept-tiling).
+     * When the global Properties toggle is on, EVERY visible tile renders its own
+     * Properties inline, but only the active tile's panel is wired to the single
+     * `properties` Region + the singleton `propertiesNav` grid cursor. A
+     * non-active panel is mouse-editable (its inputs still dispatch through
+     * `onchange`) but takes no part in keyboard grid nav / the spotlight ring, so
+     * the two never fight over the shared cursor. Clicking a non-active panel
+     * activates its tile (Pane's pointer handler), promoting it to the interactive
+     * one.
      */
-    collapsed?: boolean;
+    active?: boolean;
   }
 
   let {
@@ -64,33 +67,8 @@
     tags = [],
     focusType = false,
     onchange,
-    collapsed = $bindable(false),
+    active = true,
   }: Props = $props();
-
-  // The whole panel is collapsible (header chevron). Its collapse is a SINGLE
-  // STICKY PREFERENCE persisted in the session store (persist-properties-collapse):
-  // minimizing the panel survives Concept switches AND restarts, just like the
-  // Sidebar Sections. There is no per-Concept content default anymore — the panel
-  // simply re-shows whatever the user last chose. Expanding a frontmatter-less
-  // Concept reveals the +Text/+List controls directly; the `---…---` block is
-  // materialized on disk only once the first property is committed (the serializer
-  // drops empty frontmatter).
-  //
-  // The raw collapse state (ignoring any transient reveal) is synced out to the
-  // `collapsed` bindable so the app shell can drive the auto-reveal seam.
-  const rawCollapsed = $derived(!session.propertiesOpen);
-  $effect(() => {
-    collapsed = rawCollapsed;
-  });
-
-  // The body renders when the panel is expanded OR transiently revealed. The
-  // transient reveal (properties-auto-reveal) mirrors the Sidebar Sections:
-  // directional focus into a collapsed panel flips `session.propertiesRevealed`,
-  // the body renders so focus can land in the grid, and leaving the Region clears
-  // the flag — snapping the panel back to collapsed. The header (chevron + count
-  // + undo/redo) tracks this EFFECTIVE shown state, so a peeked panel reads as
-  // open while revealed.
-  const bodyShown = $derived(session.propertiesVisible);
 
   // The `type` input element, focused when a new Concept opens so the user
   // lands in `type` (the field they must fill to make the Concept OKF-valid).
@@ -135,9 +113,6 @@
    * at the end of `properties`, so its positional id is the current length.
    */
   function addProperty(prop: Property) {
-    // Adding a property always reveals the body, so a keyboard add (`a`) while
-    // the panel is collapsed can't drop the new row out of sight.
-    session.setPropertiesOpen(true);
     newRowId = properties.length;
     onchange([...properties, prop]);
   }
@@ -291,7 +266,7 @@
   // roving tab target even when focus is elsewhere, but a remembered cursor in
   // an UNFOCUSED Region must not paint a second spotlight (mirrors the
   // `:focus-within`-gated rings in the Explorer / Outline / Backlinks / Tags).
-  const propsActive = $derived(focus.focusedRegion === 'properties');
+  const propsActive = $derived(active && focus.focusedRegion === 'properties');
 
   /** Whether the add button in `col` is the Focused cell (roving tabindex / ring). */
   function addBtnFocused(col: 0 | 1): boolean {
@@ -337,6 +312,9 @@
   // owns nav-mode placement. Leaving the Region resets the mode to nav so a later
   // re-entry (Alt+↑) lands in nav mode on the remembered cell, per the ticket.
   $effect(() => {
+    // Only the active tile's panel drives the singleton cursor into DOM focus;
+    // a non-active panel takes no part in grid nav (see the `active` prop).
+    if (!active) return;
     if (focus.focusedRegion !== 'properties') {
       if (propertiesNav.mode !== 'nav') propertiesNav.mode = 'nav';
       return;
@@ -348,8 +326,10 @@
   });
 
   // Keep the cursor in range as rows are added/deleted or the Concept switches.
+  // Only the active panel clamps: the cursor is shared, and a non-active panel
+  // with a different row count would otherwise churn it.
   $effect(() => {
-    propertiesNav.clamp(properties.length);
+    if (active) propertiesNav.clamp(properties.length);
   });
 
   /** Click a cell wrapper → make it the Focused cell in nav mode. */
@@ -533,7 +513,7 @@
   // the cursor + mode so the focus effect / autofocus land in the key input.
   $effect(() => {
     const id = newRowId;
-    if (id === null) return;
+    if (id === null || !active) return;
     propertiesNav.cell = { row: id, col: KEY_COL };
     propertiesNav.mode = 'edit';
   });
@@ -550,25 +530,10 @@
   onkeydown={onGridKeydown}
   onfocusin={onPanelFocusIn}
 >
-  <!-- Panel header: just the collapse toggle. The onToggle logic (flip the
-       EFFECTIVE shown state, persisting the choice, and drop any transient reveal
-       so a click while peeked doesn't leave the panel fighting the auto-reveal —
-       the explicit toggle takes over as the source of truth) stays here so the
-       header can remain dumb (no `session` import). Undo/redo moved to the
-       PaneHeader (slice: per-tile-header). -->
-  <PropertiesHeader
-    {bodyShown}
-    count={properties.length}
-    onToggle={() => {
-      session.setPropertiesOpen(!bodyShown);
-      session.propertiesRevealed = false;
-    }}
-  />
-
-  <!-- Body: the property grid + add controls. Hidden while the panel is
-       collapsed AND not transiently revealed (the header toggle is then the
-       panel's only affordance). -->
-  {#if bodyShown}
+  <!-- The property grid + add controls. Rendering is gated by the GLOBAL
+       Properties toggle (session.propertiesShown) up in Pane.svelte, so there is
+       no per-panel collapse chrome here: when the panel renders at all, its
+       frontmatter shows inline. -->
     {#each rows as { id, prop } (id)}
     {@const isType = prop.key === 'type'}
     {@const keyFocused = isFocusedRow(id) && propertiesNav.cell.col === KEY_COL}
@@ -582,7 +547,7 @@
         data-testid={`cell-key-${id}`}
         data-cell-row={id}
         data-cell-col={KEY_COL}
-        tabindex={keyFocused && propertiesNav.mode === 'nav' ? 0 : -1}
+        tabindex={active && keyFocused && propertiesNav.mode === 'nav' ? 0 : -1}
         role="gridcell"
         aria-label={`Property name: ${prop.key}`}
         onmousedown={() => onCellMousedown(id, KEY_COL)}
@@ -617,7 +582,7 @@
         data-testid={`cell-value-${id}`}
         data-cell-row={id}
         data-cell-col={VALUE_COL}
-        tabindex={valueFocused && propertiesNav.mode === 'nav' ? 0 : -1}
+        tabindex={active && valueFocused && propertiesNav.mode === 'nav' ? 0 : -1}
         role="gridcell"
         onmousedown={() => onCellMousedown(id, VALUE_COL)}
       >
@@ -655,14 +620,13 @@
 
     <PropertiesAddRow
       {addRowIndex}
-      textFocused={addBtnFocused(KEY_COL)}
+      textFocused={active && addBtnFocused(KEY_COL)}
       textActive={addBtnFocused(KEY_COL) && propsActive}
-      listFocused={addBtnFocused(VALUE_COL)}
+      listFocused={active && addBtnFocused(VALUE_COL)}
       listActive={addBtnFocused(VALUE_COL) && propsActive}
       onAddText={addText}
       onAddList={addList}
     />
-  {/if}
 </section>
 
 <style>

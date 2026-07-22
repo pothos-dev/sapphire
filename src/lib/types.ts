@@ -100,12 +100,13 @@ export type BundleState = {
    */
   outlineOpen?: boolean;
   /**
-   * whether the Properties panel (editor-pane chrome) is expanded
-   * (persist-properties-collapse). A single sticky preference like the Section
-   * flags: defaults to `true` on read, and once the user toggles the header
-   * chevron the choice persists across Concept switches and restarts.
+   * GLOBAL Properties show/hide flag (slice: multi-concept-tiling). When `true`,
+   * every visible tile renders its Concept's frontmatter inline; when `false`
+   * (the default on read) no tile shows any Properties chrome. Persisted so the
+   * choice survives a relaunch. Replaces the old per-panel `propertiesOpen`
+   * collapse flag.
    */
-  propertiesOpen?: boolean;
+  propertiesShown?: boolean;
   /**
    * The editor's tri-state view mode (Source / Live / Reading), restored on
    * relaunch (persist-editor-mode). Optional so older files tolerate its

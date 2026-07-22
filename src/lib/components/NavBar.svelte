@@ -12,14 +12,14 @@
   interface Props {
     leftSidebarOpen: boolean;
     rightSidebarOpen: boolean;
-    /** Whether the global Properties panel is shown (placeholder — see below). */
+    /** Whether the global Properties panel is shown (drives per-tile Properties). */
     propertiesShown: boolean;
     onToggleLeft: () => void;
     onToggleRight: () => void;
     /**
-     * Toggle the global Properties panel. Placeholder for ticket 05 (per-tile
-     * Properties): App wires a placeholder state today; the actual show/hide
-     * behaviour arrives with the per-tile Properties work.
+     * Toggle the global Properties show/hide flag. When on, EVERY visible tile
+     * renders its own Concept's frontmatter inline; when off, no tile shows any
+     * Properties chrome. Persisted in the session store.
      */
     onToggleProperties: () => void;
   }
@@ -71,9 +71,8 @@
     </button>
   </div>
   <div class="nav-right">
-    <!-- Global Properties show/hide toggle. Placeholder until ticket 05 wires the
-         per-tile Properties behaviour; App holds a placeholder state so the
-         control reads/toggles now without changing the current Properties panel. -->
+    <!-- Global Properties show/hide toggle: flips `session.propertiesShown`, which
+         gates the inline Properties panel in every visible tile at once. -->
     <button
       type="button"
       class="nav-btn"

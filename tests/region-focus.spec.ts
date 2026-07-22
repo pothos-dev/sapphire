@@ -41,7 +41,7 @@ test('Region focus: directional movement, sticky landing, Escape→Editor', asyn
 
   // Reset to a deterministic state: concepts/ + concepts/editor/ expanded (concepts/
   // now defaults COLLAPSED as it holds an index.md), everything else at defaults.
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'], propertiesShown: true })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -135,7 +135,7 @@ test('absent Regions are skipped; movement clamps at grid edges', async ({ page 
   await page.goto('/');
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'], propertiesShown: true })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
@@ -159,7 +159,7 @@ test('history is on Ctrl+Alt+arrows; plain Alt+arrows no longer navigates; copy/
   await page.goto('/');
   let tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
-  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'] })));
+  await page.evaluate(() => window.localStorage.setItem('sapphire:bundleState:/fake/bundle', JSON.stringify({ expandedFolders: ['concepts', 'concepts/editor'], propertiesShown: true })));
   await page.reload();
   tree = page.getByTestId('tree');
   await expect(tree).toBeVisible();
