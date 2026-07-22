@@ -181,6 +181,18 @@ same for the primary written path. Update the stale `main.rs` comment. (`FileCha
 batches multiple paths, but `handle_event` filters per-path before assembling the event,
 so batching is already handled.)
 
+> **⚠️ REVISED by [ticket 08](08-web-write-concurrency-ux.md).** This section is
+> **wrong for the web write path.** `watcher.rs` suppresses a self-written path
+> *before the broadcast*, so `note_self_write` drops the SSE event for **every**
+> subscriber, not just the writer — other browsers would never see a web edit, and
+> the destination's "last-write-wins **+ live refresh**" would be dead. The suppression
+> is correct for the **single-user desktop** only. **Web fix (ticket 08 §1): do NOT
+> `note_self_write` on the web write path; instead stamp the broadcast with an
+> `origin: {clientId, author.name}` and let each browser drop the echo of its own
+> `clientId` client-side.** `FileChange` grows an `origin` field; the write route
+> forwards the client's `clientId` and stamps the OIDC identity. The desktop path is
+> unaffected (keeps `note_self_write`).
+
 ### 8. Error taxonomy — separate write classifier
 
 Write routes have different failure semantics than reads (a read miss is `404`; a write's

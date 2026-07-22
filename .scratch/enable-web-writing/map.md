@@ -97,18 +97,28 @@ can implement web writing without further design choices.
   `saveBundleState` **off the surface** (it's *View state*, browser-held — glossary mismatch flagged).
   Write **error classifier** separate from reads: 400 bad-path / 409 exists / 404 missing / 500
   server / 401 from the extractor.
+- [Web write concurrency UX](issues/08-web-write-concurrency-ux.md) — client-side
+  last-write-wins. **Echo suppression revised** (ticket 07's global `note_self_write`
+  drops the SSE event for *all* subscribers, killing multi-user live refresh): web
+  writes **don't** `note_self_write`; instead `FileChange` grows
+  `origin: {clientId, author.name}`, server stamps it, each browser drops its **own**
+  `clientId` echo (clientId per-tab, in-memory) — gains write attribution + realtime hook.
+  Detection = **path-match routing** (active-path change → buffer flow; other paths →
+  refresh tree/backlinks/tags only; `removed` active path → "deleted by X" state, dirty
+  buffer recreatable via Save; remote rename reads as delete). Flow: **clean → silent
+  reload + "Updated by X"** notice; **dirty → blocking modal** ([Discard & reload] /
+  [Keep mine → next Save overwrites], re-raises on repeat, no diff/merge). Leaving a
+  dirty buffer: in-app exits → **three-way Save/Discard/Cancel** modal; tab close →
+  `beforeunload` guard; ticket 06 toggle = **Done when clean / Save when dirty**.
+  Structural-op-while-dirty (rename/move/delete) → **three-way Save & continue / Discard
+  & continue / Cancel** (adds Discard to ticket 05); **create exempt** from the gate.
 
 ## Not yet specified
 
 <!-- in-scope fog; graduates into tickets as the foundational decisions resolve -->
 
-Two fog items graduated into decision tickets when *Server write-route surface* (07)
-resolved:
+One decision ticket remains open (its sibling, *Web write concurrency UX* (08), resolved):
 
-- **[08 — Web write concurrency UX](issues/08-web-write-concurrency-ux.md)** (open,
-  blocked by 06, 07) — client-side last-write-wins: stale-buffer detection over SSE,
-  warn/reload flow (clean vs dirty), navigate-away-with-dirty-buffer, the
-  structural-op-while-dirty confirm dialog UX.
 - **[09 — Web write test strategy](issues/09-web-write-test-strategy.md)** (open, blocked
   by 07) — what `fake.ts` must model (commits?), which gate proves which behaviour, auth
   in tests, and guarding the desktop↔web commit asymmetry in shared specs.
@@ -128,6 +138,15 @@ implementation work spec'd by tickets 07 + 04 + 05):
   (`bundle`/`rewrite` writers + the new `git::commit` primitive under the global lock).
 - **`/api` proxy write-forwarding** — `hooks.server.ts` forwards method+body+`Bearer` JWT
   on writes (ticket 07 §3); reads unchanged.
+- **SSE origin stamping + client echo filter** (ticket 08 §1) — add `origin: {clientId,
+  author.name}` to `FileChange`; web write path **drops** `note_self_write` and stamps the
+  broadcast with the forwarded `clientId` + OIDC identity; client mints a per-tab clientId,
+  forwards it on writes, and filters incoming events whose `clientId` is its own. Desktop
+  path keeps `note_self_write` unchanged.
+- **Concurrency-UX shell wiring** (ticket 08 §2–5) — path-match routing of `onFileChanged`,
+  the clean-silent-reload / dirty-conflict-modal, the leave-dirty three-way modal +
+  `beforeunload` guard, and the structural-op-while-dirty three-way modal, all in ticket
+  06's single-Tile island.
 
 ## Out of scope
 
