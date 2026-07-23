@@ -19,6 +19,13 @@ storage:
 web:
   http: 0.0.0.0:80
 
+# Serve the login UI from the on-disk web theme instead of the templates
+# embedded in the Dex binary, so our overridden `password.html` (which adds the
+# per-user quick-login buttons) takes effect. The image ships the full default
+# theme at /srv/dex/web; the Dockerfile overwrites only that one template.
+frontend:
+  dir: /srv/dex/web
+
 # Dev convenience: no consent screen, password login enabled.
 oauth2:
   skipApprovalScreen: true

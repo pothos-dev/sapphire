@@ -7,3 +7,7 @@
 # step. Build context is ./docker/dex.
 FROM ghcr.io/dexidp/dex:v2.41.1
 COPY config.yaml /etc/dex/config.yaml
+# Override the default login template with one that adds per-user quick-login
+# buttons (dev convenience). Only this one template is replaced; the rest of
+# Dex's baked-in web theme (/srv/dex/web) is used as-is.
+COPY web/templates/password.html /srv/dex/web/templates/password.html
