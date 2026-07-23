@@ -196,6 +196,13 @@ the ADR captures them.
   C); `fuzzy.ts` is fed that set. Executed in the link-family PR. Noted future-but-out-of-scope:
   unifying scaffold into native `create_concept` (a backend refactor, not this effort).
 
+- [17 ADR / final plan assembly](issues/17-adr-assembly.md) — **destination reached.** All 16
+  decisions assembled into [`docs/adr/0006-wasm-shared-core-for-frontend-logic.md`](../../docs/adr/0006-wasm-shared-core-for-frontend-logic.md):
+  motivating constraint → toolchain/packaging/marshalling/ownership/load/DTO/test/size seam →
+  clean-cut-per-PR sequence with per-family disposition + parity/rollback → explicit TS
+  deleted-vs-kept list + 7-step executable checklist. The one artifact this plan-only effort
+  commits. Frontier is now empty.
+
 ## Not yet specified
 
 - The duplication inventory has **landed** (`research/00-twin-inventory.md`) and
