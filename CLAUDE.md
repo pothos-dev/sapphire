@@ -6,6 +6,8 @@ then read the deeper docs:
 
 - **`docs/GLOSSARY.md`** — domain language (Bundle, Concept, Wikilink, Region, …).
   Use these terms; avoid the listed synonyms.
+- **`docs/okf/`** — the OKF spec (`spec.md`) plus how Sunstone handles a
+  [Concept](docs/okf/concept.md) and a [Bundle](docs/okf/bundle.md), incl. spec deviations.
 - **`docs/adr/`** — architecture decisions.
 
 ## Verifying changes

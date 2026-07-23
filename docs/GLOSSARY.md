@@ -15,12 +15,13 @@ Obsidian-style live editing and first-class support for the Open Knowledge Forma
 ## Language
 
 **Bundle**:
-The root folder opened by Sunstone — a directory tree of markdown files, per the OKF spec.
+The root folder opened by Sunstone — a directory tree of markdown files, per the OKF spec. See
+[Bundle](/okf/bundle.md) for how Sunstone roots, indexes, and commits one.
 _Avoid_: vault, workspace, project (these are other tools' terms).
 
 **Concept**:
 A single `.md` file in the Bundle. Carries YAML frontmatter (required `type` field) and a
-free-form markdown body.
+free-form markdown body. See [Concept](/okf/concept.md) for how Sunstone models both.
 _Avoid_: note, document, page (use **Concept** as the canonical term; "document" acceptable casually).
 
 **Wikilink**:
@@ -42,7 +43,8 @@ A file with OKF-defined special meaning: `index.md` (progressive-disclosure list
 **Frontmatter**:
 The leading YAML block (delimited by `---`) on a Concept. Only `type` is required;
 `title`, `description`, `resource`, `tags`, `timestamp` are recommended; unknown keys must
-be preserved.
+be preserved. See [Concept → frontmatter](/okf/concept.md#frontmatter) for Sunstone's
+structured-`Property[]` model.
 
 **Live preview**:
 Obsidian-style hybrid editing — markdown source is the source of truth, but inactive lines

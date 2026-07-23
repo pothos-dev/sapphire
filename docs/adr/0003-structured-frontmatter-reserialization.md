@@ -26,7 +26,7 @@ a lightweight quick-editing editor.
 
 ## How OKF conformance is preserved
 
-Re-serializing the whole block still satisfies OKF v0.1 (see [okf-spec.md](../okf-spec.md), §4.1 and
+Re-serializing the whole block still satisfies OKF v0.1 (see [okf-spec.md](../okf/spec.md), §4.1 and
 §9):
 
 - **Required `type`.** The serializer always emits the `type` key when present. (The Properties panel
