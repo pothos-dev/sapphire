@@ -12,6 +12,7 @@
   import { ordinaryChildren, reservedChildren } from '$lib/treeNav';
   import { RESERVED_FILES, type ReservedKind } from '$lib/reserved';
   import SidebarSection from '$lib/components/SidebarSection.svelte';
+  import WebAppShellIsland from './WebAppShellIsland.svelte';
   import WebTree from './WebTree.svelte';
   import WebSearch from './WebSearch.svelte';
   import WebTags from './WebTags.svelte';
@@ -36,6 +37,13 @@
   }
 
   let { data }: Props = $props();
+
+  // WP0: an AUTHENTICATED user gets the FULL desktop `App.svelte` shell (mounted
+  // via the client-only `WebAppShellIsland`); an anonymous user keeps this SSR
+  // read surface. `showApp` is flipped in `onMount` (NOT a `browser`-derived) so
+  // SSR + the first hydration render the read surface identically, avoiding a
+  // hydration mismatch; it then flips on the client for a signed-in user.
+  let showApp = $state(false);
 
   // --- Editing (ticket 06): viewer stays the SSR default; an Edit toggle swaps
   // the CENTER rendered article for the client-only editor island in place. The
@@ -204,6 +212,10 @@
   });
 
   onMount(() => {
+    // Signed-in users get the full App shell instead of this read surface. Done
+    // in onMount (post-hydration) so SSR + first render stay the read surface.
+    showApp = data.user !== null;
+
     // Restore persisted UI state before tracking the OS scheme.
     const ui = loadUiState();
     if (ui.themeMode) theme.mode = ui.themeMode;
@@ -247,6 +259,10 @@
   <title>{pageTitle}</title>
 </svelte:head>
 
+{#if showApp}
+  <!-- Authenticated: mount the full desktop App shell (client-only island). -->
+  <WebAppShellIsland selected={data.selected} />
+{:else}
 <div class="app" data-testid="web-viewer" bind:this={appRoot}>
   <div class="app-body" style="grid-template-columns: {leftCols} minmax(0, 1fr) {rightCols}">
     <aside
@@ -504,6 +520,7 @@
 </div>
 
 <WebSearch open={searchOpen} onopen={openSearchHit} onclose={() => (searchOpen = false)} />
+{/if}
 
 <style>
   .app {

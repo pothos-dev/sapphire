@@ -40,6 +40,18 @@
   import { nextTile } from '$lib/tileNav';
   import { resolveStoredLayout } from '$lib/state/layoutPersist';
 
+  interface Props {
+    /**
+     * WEB build only: the SSR-selected Concept the web app-shell island mounts
+     * App with. When the persisted session restores NO layout, this Concept is
+     * opened into the single default tile. Defaults to `null`, so the desktop
+     * shell (which never passes it) behaves byte-identically.
+     */
+    initialConcept?: string | null;
+  }
+
+  let { initialConcept = null }: Props = $props();
+
   // The tiling workspace (row of columns of Tiles) behind the editor facade. App
   // renders its layout + drives split/close/resize/active; the facade stays the
   // "active Tile" surface Outline/Backlinks/quick-nav/etc. read from.
@@ -131,6 +143,10 @@
       if (stored) {
         await workspace.restore(stored);
       } else {
+        // Nothing persisted → the default single empty tile. On the WEB build an
+        // `initialConcept` (the SSR-selected Concept) opens into it; desktop
+        // passes no prop, so this is skipped and behaviour is unchanged.
+        if (initialConcept !== null) await editor.open(initialConcept);
         activeTileRef?.setMode(session.editorMode);
       }
 

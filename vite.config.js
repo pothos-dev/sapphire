@@ -12,6 +12,9 @@ const isWeb = process.env.SUNSTONE_TARGET === "web";
 
 const tauriStub = fileURLToPath(new URL("./src/lib/web/tauri-stub.ts", import.meta.url));
 const appStub = fileURLToPath(new URL("./src/lib/web/AppStub.svelte", import.meta.url));
+const desktopShellStub = fileURLToPath(
+  new URL("./src/lib/web/DesktopShellStub.svelte", import.meta.url),
+);
 
 /**
  * WEB build only: keep `@tauri-apps/api` (and the heavy desktop `App.svelte`)
@@ -25,16 +28,27 @@ function sunstoneWebStubs() {
   return {
     name: "sunstone-web-stubs",
     enforce: "pre",
-    resolveId(id, importer) {
+    resolveId(id, importer, options) {
       if (!isWeb) return null;
       // `src/lib/ipc/index.ts` imports `./tauri` — swap it for the stub so the
       // real Tauri backend (and `@tauri-apps/api`) never enter the graph.
       if (importer && importer.replace(/\\/g, "/").includes("/ipc/index") && /(^|\/)tauri$/.test(id)) {
         return tauriStub;
       }
-      // The desktop shell is unused on the web; stub it to an empty component.
-      if (id === "$lib/App.svelte") {
+      // `App.svelte` statically imports CodeMirror/atomic-editor (browser-only),
+      // so it must never enter the SSR graph — stub it on the SSR pass ONLY. The
+      // CLIENT pass resolves the REAL App, which the web app-shell island pulls
+      // in via a dynamic `import()` (a lazy chunk), so it stays out of the
+      // initial client chunk too.
+      if (id === "$lib/App.svelte" && options?.ssr) {
         return appStub;
+      }
+      // `PageShell → DesktopShell → App` is a STATIC chain and DesktopShell is
+      // desktop-only (never rendered on web). Stub it on BOTH web passes so that
+      // static chain (and CodeMirror, transitively) is kept out of the web client
+      // initial chunk entirely; the real App loads only via the island.
+      if (id === "$lib/DesktopShell.svelte") {
+        return desktopShellStub;
       }
       return null;
     },
