@@ -34,11 +34,56 @@ import type {
  * See ARCHITECTURE.md "The IPC seam" and the enable-web-writing effort.
  */
 
-/** Marker for read methods that later slices will implement. */
-const NOT_YET = 'not implemented in slice 2 (web read-only skeleton)';
 /** The web serves ONE fixed Bundle and has no launcher, so folder switching is
  * inapplicable (writing Concepts, by contrast, is now supported — see below). */
 const NO_LAUNCHER = 'the web serves a single fixed Bundle: no folder switching';
+
+/**
+ * `localStorage` key for the web build's per-Bundle View state. The web serves
+ * a single fixed Bundle, so one key suffices (mirrors `web/uiState.ts`'s
+ * `sunstone:webUI` naming convention). NEVER committed into the Bundle — this
+ * is per-user View state (docs/GLOSSARY.md).
+ */
+const BUNDLE_STATE_KEY = 'sunstone:bundleState';
+
+/** Fresh-Bundle default (mirrors the Rust `BundleState::default`). */
+function defaultBundleState(): BundleState {
+  return { lastOpenConcept: null, expandedFolders: [], recentFiles: [] };
+}
+
+/**
+ * Load the web Bundle's View state from `localStorage`. Returns the fresh
+ * default on the server (SSR: no `localStorage`), a missing key, or corrupt
+ * JSON — never rejects. Optional fields pass through untouched (the session
+ * store defaults each on read).
+ */
+function loadWebBundleState(): BundleState {
+  if (typeof localStorage === 'undefined') return defaultBundleState();
+  const raw = localStorage.getItem(BUNDLE_STATE_KEY);
+  if (raw === null) return defaultBundleState();
+  try {
+    const parsed = JSON.parse(raw) as Partial<BundleState>;
+    return {
+      ...parsed,
+      lastOpenConcept: parsed.lastOpenConcept ?? null,
+      expandedFolders: Array.isArray(parsed.expandedFolders) ? parsed.expandedFolders : [],
+      recentFiles: Array.isArray(parsed.recentFiles) ? parsed.recentFiles : [],
+    };
+  } catch {
+    return defaultBundleState();
+  }
+}
+
+/** Persist the web Bundle's View state to `localStorage`. A no-op on the server
+ * or if storage is full/disabled (best-effort — never throws into the UI). */
+function saveWebBundleState(state: BundleState): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(BUNDLE_STATE_KEY, JSON.stringify(state));
+  } catch {
+    /* storage full / disabled — best-effort, never throw */
+  }
+}
 
 /**
  * This tab's write client id (ticket 08): minted once per tab, in-memory, and
@@ -203,8 +248,10 @@ export const httpBackend: Backend = {
 
   // `saveBundleState` is off the server write surface (ticket 07 §6): it is
   // per-user *View state*, never committed into the shared Bundle. On the web it
-  // is a client-side / deferred concern, so persisting it server-side is a no-op.
-  saveBundleState(): Promise<void> {
+  // is a purely client-side concern, so we round-trip it through `localStorage`
+  // (see `loadBundleState` / `saveWebBundleState`), SSR-safe.
+  saveBundleState(state: BundleState): Promise<void> {
+    saveWebBundleState(state);
     return Promise.resolve();
   },
 
@@ -246,16 +293,17 @@ export const httpBackend: Backend = {
     return getJson<string[]>(`/api/concepts-by-tag?tag=${encodeURIComponent(tag)}`);
   },
 
-  // Not needed by the read-only web sidebars (new-concept autocomplete /
-  // Properties key autocomplete are editor-only) — land in a later slice.
+  // New-concept `type` autocomplete + Properties key autocomplete, served by
+  // the core in-memory index over the read-only `/api/types` + `/api/keys`
+  // routes (the OKF recommended keys are merged in client-side).
   allTypes(): Promise<string[]> {
-    return Promise.reject(new Error(NOT_YET));
+    return getJson<string[]>('/api/types');
   },
   allKeys(): Promise<string[]> {
-    return Promise.reject(new Error(NOT_YET));
+    return getJson<string[]>('/api/keys');
   },
   loadBundleState(): Promise<BundleState> {
-    return Promise.reject(new Error(NOT_YET));
+    return Promise.resolve(loadWebBundleState());
   },
 
   // Bundle-wide full-text search over the proxied `/api/search` (backed by the

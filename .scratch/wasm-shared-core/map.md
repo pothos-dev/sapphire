@@ -1,0 +1,138 @@
+# Map — WASM-shared core
+
+## Destination
+
+A locked, hand-off-ready **plan** (an ADR under `docs/adr/` plus resolved decision
+tickets) for:
+
+1. compiling `crates/sunstone-core`'s pure algorithms to **WebAssembly**,
+2. establishing the frontend **build → load → marshalling** seam so the wasm module
+   runs synchronously inside both the Tauri WebView and the SvelteKit web client,
+3. **migrating every duplicated TS/Rust twin** to that single wasm source of truth
+   and **deleting the TS copies**.
+
+Scope is *full migration*, but the deliverable is *plan only* — this effort writes
+**no production code**. The way is clear when every decision below is resolved and
+the ADR captures them.
+
+## Notes
+
+- **Domain**: CLI-launched Tauri 2 + SvelteKit (Svelte 5 runes) + Rust markdown
+  editor with OKF support. See root `CLAUDE.md`, `docs/GLOSSARY.md`, `docs/linking.md`.
+- **Deliverable is plan-only** (wayfinder default). Tickets resolve *decisions*, not
+  code. The one build artifact allowed is the ADR + this map.
+- **Hard constraints** every ticket must respect:
+  - Must NOT regress the native builds: the Tauri desktop backend (`src-tauri`) and
+    the SSR web renderer (`sunstone-server`, `render.rs`) keep using native Rust.
+    Wasm is additive, for the *frontend process only*.
+  - Keep `cargo test` as the behavioural coverage gate (root `CLAUDE.md`).
+  - Honour the IPC seam rule: frontend backend access stays behind `src/lib/ipc/`.
+  - The binding constraint that motivates all of this: CodeMirror decorations run
+    synchronously and cannot `await` IPC (`src/lib/editor/broken-links.ts:19`), and
+    must resolve against the **live unsaved buffer** — so the shared logic must run
+    in-process, synchronously, in the frontend. Wasm is the only way to satisfy that
+    with a single implementation.
+- **Skills to consult**: `/grilling` + `/domain-modeling` (default for decisions),
+  `/research` (AFK external-knowledge tickets), `/prototype` (fidelity on API shape).
+- Research artifacts live under `.scratch/wasm-shared-core/research/` (not a throwaway
+  git branch — the working tree is dirty on `feat/enable-web-writing`).
+
+## Decisions so far
+
+<!-- one line per resolved ticket; zoom the link for detail -->
+
+- [01 WASM build toolchain](issues/01-wasm-build-toolchain.md) — `sunstone-core` whole
+  won't build for wasm32 (`ignore`/`notify`/`grep-*`/`dirs`); add a thin
+  **`crates/sunstone-wasm`** (`cdylib`+`rlib`) over the pure subset. **`wasm-pack build
+  --target web`** + Vite `vite-plugin-wasm`/`top-level-await`; **browser-only** load
+  (SSR stays native Rust); `await init()` once ⇒ sync exports. `pkg/` → gitignored
+  `src/lib/wasm/pkg`; `build:wasm` runs before check/unit/Playwright; cargo gates unaffected.
+- [02 Crate packaging](issues/02-crate-packaging.md) — feature-flag & plain-wrapper both
+  dead (a wrapper on `sunstone-core` still drags `ignore`/`notify`/`grep`/`dirs` into
+  wasm32; pure & IO code share modules so per-fn gating is a trap). **Extract a pure leaf
+  crate**: triad **`sunstone-shared`** (leaf, native+wasm, deps serde/serde_yaml) ←
+  **`sunstone-native`** (renamed from `sunstone-core`, native-only) & **`sunstone-wasm`**
+  (cdylib, depends on `shared` only). `shared` gets wikilink/slug/rewrite/index-frontmatter/
+  index-links + pure `paths`; `render.rs` pure scanners deferred to
+  [13](issues/13-migrate-render-derived-family.md). Call sites updated directly (no re-export shim).
+- [03 Marshalling & exported API shape](issues/03-marshalling-api.md) — boundary is
+  **handle-oriented** (`BundleIndex` held in wasm; per-keystroke `resolveLink` is
+  JS→wasm→JS only, `exists` internal — pass-per-call callback rejected). Mechanism
+  **`serde-wasm-bindgen` + `tsify`** (chosen to auto-generate `.d.ts` from Rust structs
+  → kills DTO-drift, enabling [06](issues/06-dto-type-generation.md); not for speed).
+  camelCase `js_name` convention; internally-tagged enums for `ResolvedLink`. Paper
+  prototype at [`prototypes/03-marshalling/`](prototypes/03-marshalling/README.md);
+  unblocks [04](issues/04-index-ownership.md) (lifecycle) & [06](issues/06-dto-type-generation.md).
+- [04 Index/state ownership & lifecycle](issues/04-index-ownership.md) — **`indexStore`
+  owns one `BundleIndex` handle that IS the resolution engine** (holds the set; exposes
+  `resolveLink` + `resolveWikilink` + `bundleRoot`; `pathList` never crosses — kills the
+  wikilink twin too). Lifecycle reuses today's coarse **wholesale-rebuild + `version`-bump**
+  seam verbatim (triggers: mount / `file-changed` / CRUD — **not** Concept switch); one new
+  rule: **`.free()` the old handle on swap**. Membership = **saved on-disk set only**, buffer
+  stays out (`currentPath` per-call) — behavior-preserving. `resolveLink`'s `internal` variant
+  gains **`exists: boolean`** (folds 03's verdict, no separate crossing). Unblocks
+  [07](issues/07-test-coverage-strategy.md) & [09](issues/09-migration-sequencing.md).
+- [05 Module init & load ordering](issues/05-init-load-ordering.md) — `await init()` lives
+  **inside `indexStore.refresh()`** (the handle owner, 04) via a memoized, `browser`-guarded
+  `ensureWasm()` awaited before the handle is built — **not** in any `+layout`/`load`. Both
+  client entry points (`App.svelte`, dynamic-imported `WebEditorIsland`) already call
+  `refresh()` first ⇒ zero new wiring. SSR-excluded by **dynamic `import()` + `browser`**
+  (SSR renders native Rust; `WebViewer` imports neither store nor `Tile`). Editor mounts
+  eagerly; readers no-op on a null handle and the existing **`version`** rune re-runs
+  decorations once ready (web island also gates CodeMirror on init). Load failure **degrades**
+  (silent styling no-op + dismissible banner + retry), never a dead page. **Purely additive** —
+  confirms 01/03/04, changes nothing; folds into the ADR seam section.
+- [06 Shared DTO / type-generation strategy](issues/06-dto-type-generation.md) — **every**
+  "Matches the Rust" DTO becomes generated (full drift kill), split by boundary: **tsify**
+  emits the ~5 wasm DTOs (`sunstone-shared`), **ts-rs** emits the ~8 IPC-only DTOs
+  (`sunstone-native`). Types crossing both (`RewriteSummary`/`AnchorRename`/`OutlineHeading`/
+  `FrontmatterField`) are **tsify-canonical**; ts-rs *type-imports* them (one definition;
+  erases on SSR). `$lib/types` stays a **re-export barrel** ⇒ zero call-site churn (still
+  hand-defines TS-only shapes like `Frontmatter`). Both outputs gitignored; a **`build:types`**
+  (wasm-pack + `cargo test` ts-rs export) runs before `check`/unit/Playwright. Enum-tag
+  fidelity folded into the deferred 03/08 spike.
+- [07 Test & coverage strategy](issues/07-test-coverage-strategy.md) — **algorithm goldens
+  → `cargo test` wholesale**; delete every pure-algorithm TS twin *and its test* (no TS-side
+  mirroring — that's a test-twin). `bun test src/lib` keeps two jobs: the JS↔wasm **seam**
+  (marshalling contract + `.free()` lifecycle, via a ~3-line Node shim byte-loading the
+  *shipping* `--target web` `pkg/` — tested = shipped) and **TS-only** logic with no Rust
+  source. Playwright: **desktop = primary** wasm behavioural guard (real wasm + fake IPC,
+  live-buffer decorations), **web e2e = secondary** (real wasm + native Rust + SSR); no
+  net-new specs. **No standing parity harness** — equivalence is a throwaway cut-over check
+  owned by migration tickets 10–16. Four gates unchanged. Flags a constraint onto
+  [12](issues/12-migrate-fake-backend-standins.md): fake backend must consume the shared source.
+- [08 Bundle-size & cold-start budget](issues/08-bundle-size-budget.md) — core-minus-render
+  wasm ~150–350 KB (~50–130 KB brotli), single-digit-ms cold start = fine; comrak+regex
+  balloons to ~1.5 MB → **defer render out of wasm v1**, do outline as a pure string
+  scan. Budget: core ≤ 400 KB / ≤ 150 KB brotli. Cited estimates; 1-afternoon spike to confirm.
+- [09 Migration sequencing & rollback](issues/09-migration-sequencing.md) — **clean-cut-per-PR**,
+  no dual-path/feature-flag coexistence: each family lands Rust + wires wasm + **deletes the TS
+  twin & its test in one PR**, merges only on all gates green. **Rollback = `git revert`** the
+  family PR; parity is 07's throwaway cut-over check inside each PR. Order: **Step 0** stands up
+  the pipeline (crate triad + wasm-pack/Vite + build steps + seam) shipping a **dummy export** to
+  isolate toolchain risk; then **[10](issues/10-migrate-link-family.md) link family (seed)** →
+  [11](issues/11-migrate-frontmatter-family.md)/[13](issues/13-migrate-render-derived-family.md)
+  (copy the seed template; 13 hardest) → [12](issues/12-migrate-fake-backend-standins.md) fake
+  (consumer, after 10+11) → [15](issues/15-migrate-path-helpers.md)/[16](issues/16-untwinned-ts-logic.md)
+  parallel/off-path → [17](issues/17-adr-assembly.md) ADR. Edges added: 11,13←10; 12←10,11.
+
+## Not yet specified
+
+- The duplication inventory has **landed** (`research/00-twin-inventory.md`) and
+  fully graduated into tickets 10–16 — no migration fog remains.
+- Residual fog only: the per-file delete list firms up inside the migration tickets
+  (10–16). The exported-fn surface is now largely pinned by 03 (mechanism/convention)
+  and 04 (`BundleIndex::{new, resolveLink, resolveWikilink, bundleRoot}`); remaining
+  signatures live inside the migration tickets, not here.
+
+Inventory: [`research/00-twin-inventory.md`](research/00-twin-inventory.md).
+
+## Out of scope
+
+- Writing/landing the actual wasm code, migrating any module in the real tree,
+  deleting any TS file — this effort is plan-only.
+- The reverse consolidation (drop Rust, keep TS) — ruled out in prior discussion:
+  the backend index, `backlinks` command, and SSR renderer all need native Rust.
+- **Server-side Node** — the wasm seam targets the frontend process only. The JWT
+  twin ([`14 JWT cross-crate`](issues/14-migrate-jwt-crosscrate.md), `server/jwt.ts` ↔
+  `auth.rs`) runs in the SvelteKit `/api` hook (Node) and is out of scope.

@@ -164,7 +164,14 @@
   function onPropertiesChange(props: Property[]) {
     if (!view) return;
     dispatchFrontmatter(view, props);
-    void tile.flush();
+    // WEB (ticket 08 §4): a Properties edit stays IN-MEMORY until the explicit
+    // Save — it must NOT eager-commit here (a commit-per-property-edit would
+    // defeat the explicit-Save model, exactly like the blur-flush at the editor
+    // build below). `dispatchFrontmatter` fires the CM change listener
+    // (→ tile.edit → Document.edit), so the Document is already marked dirty and
+    // the next Save commits body + frontmatter together as ONE commit. Desktop
+    // keeps the eager flush, so its behaviour is byte-identical.
+    if (!__SUNSTONE_WEB__) void tile.flush();
   }
 
   // --- Editor formatting context menu ------------------------------------------
@@ -509,7 +516,13 @@
         initialMode: session.editorMode,
         onChange: (full) => tile.edit(full),
         onFrontmatterChange: (p) => (frontmatterProps = p),
-        onBlur: () => void tile.flush(),
+        // WEB (ticket 08 §4): persistence is EXPLICIT (Save affordance / Cmd+S /
+        // the three-way modal Save path), so the blur auto-flush is suppressed —
+        // a commit-per-blur would defeat the explicit-Save model. Desktop keeps
+        // the Obsidian-style blur flush, so its behaviour is byte-identical.
+        onBlur: () => {
+          if (!__SUNSTONE_WEB__) void tile.flush();
+        },
         onHistory: syncHistoryDepths,
         onLinkClick: handleLinkClick,
         onCommentEdit: openCommentPopup,

@@ -35,6 +35,24 @@ function nextTileId(): string {
 }
 
 /**
+ * WEB-only async gate consulted before a DIRTY active buffer is left — a Concept
+ * switch (`#loadInto`) or a Tile close (ticket 08 §4). The gate resolves the
+ * dirty buffer via the three-way Save/Discard/Cancel modal and returns `true` to
+ * proceed (it has already Saved or Discarded) or `false` to ABORT the navigation.
+ *
+ * `null` on the DESKTOP build (never registered): the outgoing Document is
+ * flushed exactly as before, so desktop navigation/close is byte-identical. Only
+ * `WebAppShellIsland` registers a gate (guarded on `__SUNSTONE_WEB__`).
+ */
+export type DirtyLeaveGate = (doc: Document) => Promise<boolean>;
+let dirtyLeaveGate: DirtyLeaveGate | null = null;
+
+/** Register (or clear) the web dirty-leave gate. See {@link DirtyLeaveGate}. */
+export function setDirtyLeaveGate(gate: DirtyLeaveGate | null): void {
+  dirtyLeaveGate = gate;
+}
+
+/**
  * A Tile is a *view onto* Concepts: it holds the active Concept, this Tile's
  * navigation history, and (later) its scroll/cursor and view-mode. It attaches
  * to a Document — the buffer/autosave layer — via the shared `DocumentRegistry`,
@@ -149,11 +167,26 @@ export class Tile {
   }
 
   /**
-   * Attach the Tile to the Document at `path` and load it from disk. Flushes the
-   * outgoing Document's pending autosave first so navigating never loses edits.
+   * Resolve the OUTGOING active Document before a navigation/close. Desktop (and
+   * web with a clean buffer): flush any pending write, then proceed. Web with a
+   * DIRTY buffer + a registered {@link DirtyLeaveGate}: run the gate (three-way
+   * Save/Discard/Cancel) and honour its verdict — `false` aborts the caller so
+   * navigation/close stays put. Returns whether the caller may proceed.
+   */
+  async requestLeave(): Promise<boolean> {
+    const doc = this.activeDocument;
+    if (dirtyLeaveGate && doc?.dirty) return dirtyLeaveGate(doc);
+    await doc?.flush();
+    return true;
+  }
+
+  /**
+   * Attach the Tile to the Document at `path` and load it from disk. Resolves the
+   * outgoing Document first (flush on desktop; the dirty-leave gate on web) so
+   * navigating never silently loses edits. A web gate CANCEL aborts the load.
    */
   async #loadInto(path: string): Promise<void> {
-    await this.activeDocument?.flush();
+    if (!(await this.requestLeave())) return;
     const doc = this.#registry.get(path);
     await doc.load();
     this.activePath = path;
@@ -167,7 +200,7 @@ export class Tile {
    * "Select a Concept" placeholder.
    */
   async close(): Promise<void> {
-    await this.activeDocument?.flush();
+    if (!(await this.requestLeave())) return;
     this.activePath = null;
   }
 
@@ -329,7 +362,9 @@ export class Workspace {
       await tile.close();
       return;
     }
-    await tile.flush();
+    // Resolve a dirty buffer (web gate; desktop flush) before removing the tile;
+    // a web CANCEL aborts the close.
+    if (!(await tile.requestLeave())) return;
     const { layout, focusId } = layoutCloseTile(this.layout, id);
     this.#tiles.delete(id);
     this.layout = layout;

@@ -1,8 +1,18 @@
 # 06 — Web editor shell: how editing comes to the web
 
 Type: prototype
-Status: resolved
+Status: resolved (superseded 2026-07-23 — see Update at end)
 Blocked by: 03
+
+> **Update 2026-07-23 — decision overridden by user directive.** During build the
+> user chose to **replace the static viewer with the full desktop `App.svelte`
+> shell for authenticated users** (anonymous still gets the SSR viewer) — i.e. the
+> "Full desktop App.svelte" option this ticket originally REJECTED. Rationale: an
+> authed user should get real desktop parity (interactive CRUD tree, tile split,
+> Region nav), not a viewer with a narrow Edit toggle. The ticket-06 island
+> (`WebEditorIsland`) and its narrow Edit-toggle become the anonymous-read path's
+> history; the authed path mounts `App.svelte` as a client-only island (SSR-only
+> vite stub so the client build gets the real shell). See the new build tickets.
 
 ## Question
 

@@ -159,3 +159,73 @@ test('a non-2xx write rejects with the mapped message', async () => {
   stubFetch(new Response('already exists: a.md', { status: 409 }));
   await expect(httpBackend.createConcept('a.md')).rejects.toThrow('Conflict: already exists: a.md');
 });
+
+// --- index read shaping: types + keys --------------------------------------
+
+test('allTypes GETs /api/types and returns the string array', async () => {
+  const get = stubFetch(
+    new Response(JSON.stringify(['concept', 'index']), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  );
+  await expect(httpBackend.allTypes()).resolves.toEqual(['concept', 'index']);
+  expect(get().url).toBe('/api/types');
+});
+
+test('allKeys GETs /api/keys and returns the string array', async () => {
+  const get = stubFetch(
+    new Response(JSON.stringify(['description', 'tags', 'title', 'type']), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  );
+  await expect(httpBackend.allKeys()).resolves.toEqual(['description', 'tags', 'title', 'type']);
+  expect(get().url).toBe('/api/keys');
+});
+
+// --- view-state persistence via localStorage --------------------------------
+
+// The bun test runtime has no DOM `localStorage`; install a minimal in-memory
+// stand-in so the SSR-guarded persistence path (`typeof localStorage`) runs.
+const store = new Map<string, string>();
+globalThis.localStorage = {
+  getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+  setItem: (k: string, v: string) => void store.set(k, String(v)),
+  removeItem: (k: string) => void store.delete(k),
+  clear: () => store.clear(),
+  key: (i: number) => [...store.keys()][i] ?? null,
+  get length() {
+    return store.size;
+  },
+} as Storage;
+
+test('loadBundleState returns the fresh default when nothing is stored', async () => {
+  localStorage.removeItem('sunstone:bundleState');
+  await expect(httpBackend.loadBundleState()).resolves.toEqual({
+    lastOpenConcept: null,
+    expandedFolders: [],
+    recentFiles: [],
+  });
+});
+
+test('saveBundleState → loadBundleState round-trips through localStorage', async () => {
+  const state = {
+    lastOpenConcept: 'a.md',
+    expandedFolders: ['sub'],
+    recentFiles: ['a.md'],
+    leftSidebarOpen: false,
+  };
+  await httpBackend.saveBundleState(state);
+  await expect(httpBackend.loadBundleState()).resolves.toEqual(state);
+});
+
+test('loadBundleState tolerates corrupt JSON by returning the default', async () => {
+  localStorage.setItem('sunstone:bundleState', 'not json{');
+  await expect(httpBackend.loadBundleState()).resolves.toEqual({
+    lastOpenConcept: null,
+    expandedFolders: [],
+    recentFiles: [],
+  });
+  localStorage.removeItem('sunstone:bundleState');
+});
