@@ -19,13 +19,13 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
-  // `web-viewer.spec.ts` drives the read-only Sunstone Web viewer, which is
-  // architecturally bound to the SSR (adapter-node) build + the `sunstone-server`
-  // HTTP backend — NOT the static SPA + in-memory fake this desktop suite serves.
-  // It has its own runner (`playwright.web.config.ts`, whose `testMatch` selects
-  // exactly this file), so exclude it here or the default `playwright test` run
-  // fails on it.
-  testIgnore: /web-viewer\.spec\.ts/,
+  // Every `web-*.spec.ts` drives Sunstone Web, which is architecturally bound to
+  // the SSR (adapter-node) build + the `sunstone-server` HTTP backend — NOT the
+  // static SPA + in-memory fake this desktop suite serves. Those specs have their
+  // own runner (`playwright.web.config.ts`, whose `testMatch` selects the same
+  // `web-*.spec.ts` pattern), so exclude them here or the default `playwright
+  // test` run fails on them. The two suites stay disjoint by this shared pattern.
+  testIgnore: /web-.*\.spec\.ts$/,
   // Serial execution (single worker). The precompiled-serve fix removes the
   // cold-compile contention that previously forced serial-only; serial is kept
   // because it is simple and fast enough for this suite.

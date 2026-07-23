@@ -16,13 +16,27 @@
 // The `tests/fixtures.ts` browser fixture connects over CDP when PW_CDP is set;
 // otherwise it launches `CHROMIUM_BIN` (default /tmp/chromium) with --no-sandbox.
 import { defineConfig, devices } from '@playwright/test';
+import {
+  WEB_BUNDLE_DIR,
+  TEST_JWT_SECRET,
+  TEST_AUTH_SECRET,
+  TEST_AUTH_NAME,
+  TEST_AUTH_EMAIL,
+} from './tests/web-bundle';
 
 const RUST_PORT = 8787;
 const WEB_PORT = 5199;
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: /web-viewer\.spec\.ts/,
+  // The web e2e suite owns every `web-*.spec.ts` (ticket 09): the read-only
+  // `web-viewer` spec plus the forthcoming `web-write` / `web-concurrency`
+  // specs. The desktop runner `testIgnore`s the same pattern, keeping the two
+  // suites disjoint (each spec belongs to exactly one runner).
+  testMatch: /web-.*\.spec\.ts$/,
+  // Build the throwaway seeded git-repo fixture (temp copy) before the servers
+  // boot, so a web Save lands a real commit without polluting the outer repo.
+  globalSetup: './tests/global-setup.web.ts',
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
@@ -39,8 +53,11 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      // The read-only Rust API server over the deterministic fixture Bundle.
-      command: `cargo build -p sunstone-server && SUNSTONE_BUNDLE=tests/fixtures/web-bundle SUNSTONE_API_PORT=${RUST_PORT} ./target/debug/sunstone-server`,
+      // The Rust API server over the seeded git-repo fixture (the temp copy
+      // built by global-setup, NOT the in-repo fixture). `SUNSTONE_JWT_SECRET`
+      // enables the write routes; axum verifies write JWTs against it, so it
+      // MUST match the secret the SvelteKit hook mints with (below).
+      command: `cargo build -p sunstone-server && SUNSTONE_BUNDLE=${WEB_BUNDLE_DIR} SUNSTONE_API_PORT=${RUST_PORT} SUNSTONE_JWT_SECRET=${TEST_JWT_SECRET} ./target/debug/sunstone-server`,
       url: `http://localhost:${RUST_PORT}/api/bundle-root`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,
@@ -50,7 +67,13 @@ export default defineConfig({
       // the Rust server. `reuseExistingServer` lets a pre-started server be
       // reused (needed in sandboxes that protect in-repo build dirs — build to a
       // temp dir and start it by hand, then Playwright reuses it on this port).
-      command: `SUNSTONE_TARGET=web bun run build && PORT=${WEB_PORT} SUNSTONE_API_INTERNAL=http://localhost:${RUST_PORT} node build/index.js`,
+      //
+      // Auth chain (ticket 09): `SUNSTONE_TEST_AUTH=1` enables the env-gated test
+      // Credentials provider (src/auth.ts) yielding the fixed identity below;
+      // `AUTH_SECRET` signs the Auth.js session; `SUNSTONE_JWT_SECRET` (shared
+      // with the Rust server) is what the hook mints the write JWT with. Together
+      // they make the real session → hook → JWT → axum write chain run live.
+      command: `SUNSTONE_TARGET=web bun run build && PORT=${WEB_PORT} SUNSTONE_API_INTERNAL=http://localhost:${RUST_PORT} SUNSTONE_TEST_AUTH=1 SUNSTONE_JWT_SECRET=${TEST_JWT_SECRET} AUTH_SECRET=${TEST_AUTH_SECRET} SUNSTONE_TEST_AUTH_NAME='${TEST_AUTH_NAME}' SUNSTONE_TEST_AUTH_EMAIL='${TEST_AUTH_EMAIL}' node build/index.js`,
       url: `http://localhost:${WEB_PORT}`,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,

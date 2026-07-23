@@ -1,9 +1,15 @@
 import { writeFile, rm } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
 import { test, expect } from './fixtures';
+import { WEB_BUNDLE_DIR } from './web-bundle';
 
-/** A scratch Concept written into the fixture Bundle to trigger live reload. */
-const LIVE_NOTE = resolve('tests/fixtures/web-bundle/live-note.md');
+/**
+ * A scratch Concept written into the SERVED Bundle to trigger live reload. The
+ * web runner serves the throwaway temp copy (a real git repo built by
+ * global-setup), not the in-repo fixture, so this write must target that copy
+ * for the filesystem watcher to see it.
+ */
+const LIVE_NOTE = join(WEB_BUNDLE_DIR, 'live-note.md');
 
 /**
  * The read-only "Sunstone Web" viewer with SERVER-SIDE RENDER
