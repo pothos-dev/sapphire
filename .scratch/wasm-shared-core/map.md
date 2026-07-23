@@ -105,6 +105,16 @@ the ADR captures them.
   wasm ~150–350 KB (~50–130 KB brotli), single-digit-ms cold start = fine; comrak+regex
   balloons to ~1.5 MB → **defer render out of wasm v1**, do outline as a pure string
   scan. Budget: core ≤ 400 KB / ≤ 150 KB brotli. Cited estimates; 1-afternoon spike to confirm.
+- [09 Migration sequencing & rollback](issues/09-migration-sequencing.md) — **clean-cut-per-PR**,
+  no dual-path/feature-flag coexistence: each family lands Rust + wires wasm + **deletes the TS
+  twin & its test in one PR**, merges only on all gates green. **Rollback = `git revert`** the
+  family PR; parity is 07's throwaway cut-over check inside each PR. Order: **Step 0** stands up
+  the pipeline (crate triad + wasm-pack/Vite + build steps + seam) shipping a **dummy export** to
+  isolate toolchain risk; then **[10](issues/10-migrate-link-family.md) link family (seed)** →
+  [11](issues/11-migrate-frontmatter-family.md)/[13](issues/13-migrate-render-derived-family.md)
+  (copy the seed template; 13 hardest) → [12](issues/12-migrate-fake-backend-standins.md) fake
+  (consumer, after 10+11) → [15](issues/15-migrate-path-helpers.md)/[16](issues/16-untwinned-ts-logic.md)
+  parallel/off-path → [17](issues/17-adr-assembly.md) ADR. Edges added: 11,13←10; 12←10,11.
 
 ## Not yet specified
 
