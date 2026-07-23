@@ -17,7 +17,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { cpSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -60,10 +60,23 @@ function git(cwd: string, args: string[]): void {
  * disable commit signing (CI/sandbox has no key), and land one seed commit so
  * `HEAD` exists (the amend-else-fresh write path needs a HEAD to inspect).
  *
+ * The reset is done **in place** — clearing the directory's CONTENTS rather than
+ * `rmSync`-ing the directory itself — so the root inode survives. Playwright can
+ * start the `webServer`s (the Rust server begins watching this path) *before*
+ * `globalSetup` runs, so deleting-and-recreating the directory would orphan the
+ * server's recursive `inotify` watch and silently kill `/api/events` SSE
+ * delivery (breaking every live-reload / concurrency spec while leaving the
+ * write+commit path working). Keeping the root inode keeps the watch live.
+ *
  * Idempotent across runs. Returns the served bundle path.
  */
 export function setupWebBundleRepo(): string {
-  rmSync(WEB_BUNDLE_DIR, { recursive: true, force: true });
+  // Clear contents in place (preserve the root inode — see doc comment) rather
+  // than removing WEB_BUNDLE_DIR itself.
+  mkdirSync(WEB_BUNDLE_DIR, { recursive: true });
+  for (const entry of readdirSync(WEB_BUNDLE_DIR)) {
+    rmSync(join(WEB_BUNDLE_DIR, entry), { recursive: true, force: true });
+  }
   cpSync(FIXTURE_SRC, WEB_BUNDLE_DIR, { recursive: true });
 
   git(WEB_BUNDLE_DIR, ['init', '-q']);
