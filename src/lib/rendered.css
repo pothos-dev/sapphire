@@ -17,6 +17,16 @@
  */
 
 /* Rendered body typography + link styling. */
+
+/* Base prose size. Matches the desktop editor body (`--atomic-editor-body-size`,
+   14px) so a Concept reads at the same size on web as in the desktop editor —
+   without this the web article inherited the 16px root and rendered ~14% larger.
+   The Export-as-PDF print container overrides this with its own inline
+   `font-size` (PrintView), so this only pins the web viewer. */
+.rendered {
+  font-size: 14px;
+}
+
 .rendered h1,
 .rendered h2,
 .rendered h3 {

@@ -207,6 +207,15 @@ body {
   height: 100%;
 }
 
+/* Pin the root font-size so `rem`-based chrome is identical across surfaces.
+   Without this, each webview uses its own default root: a browser at 100% gives
+   16px, but WebKitGTK (the Linux Tauri webview) folds in the system/GTK
+   text-scaling + DPI, so desktop and web would diverge by the monitor's scale
+   factor. Pinning it decouples our UI from that. */
+html {
+  font-size: 16px;
+}
+
 body {
   font-family: var(--font-ui);
   /* Jost reads light at 400; 500 is the comfortable UI baseline. */
