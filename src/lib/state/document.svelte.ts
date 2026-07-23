@@ -13,9 +13,15 @@ export const AUTOSAVE_DEBOUNCE_MS = 300;
  * NOT owned 1:1 by a Tile: this is what lets a future second Tile attach to a
  * Concept that is already open and share its live buffer.
  *
- * Autosave: user edits flow in via `edit()`, which updates `content` and
- * schedules a debounced write (~300ms after typing stops). `flush()` writes
- * immediately (used on blur). There is no save button.
+ * Autosave: user edits flow in via `edit()`, which updates `content` and, on the
+ * DESKTOP build, schedules a debounced write (~300ms after typing stops);
+ * `flush()` writes immediately (used on blur). There is no save button.
+ *
+ * WEB build (`__SUNSTONE_WEB__`): every write is a git commit, so autosave would
+ * be a commit storm — ticket 05 mandates explicit save only. There, `edit()`
+ * merely marks the buffer dirty and NEVER schedules a write; persistence happens
+ * solely through `flush()`, driven by the Edit-toggle's explicit "Save" click.
+ * `#save`/`flush` are otherwise identical across targets.
  *
  * External changes: `reloadExternal()` refreshes the buffer from disk when the
  * file changed on disk by another tool — but never clobbers unsaved local
@@ -75,7 +81,8 @@ export class Document {
     if (content === this.content) return;
     this.content = content;
     this.dirty = true;
-    this.#autosave.schedule();
+    // Desktop autosaves; web persists only on explicit Save (see class docs).
+    if (!__SUNSTONE_WEB__) this.#autosave.schedule();
   }
 
   /** Write the current content to disk immediately (cancels the debounce). */
