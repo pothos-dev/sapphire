@@ -46,7 +46,8 @@ be preserved.
 
 **Live preview**:
 Obsidian-style hybrid editing — markdown source is the source of truth, but inactive lines
-render styled while the cursor line shows raw markup. Implemented via CodeMirror 6 decorations.
+render styled while the cursor line shows raw markup. Implemented via CodeMirror 6 decorations;
+see the [CodeMirror integration](/editor/codemirror.md).
 
 **Diagram**:
 The rendered output of a ` ```mermaid ` fenced code block. In source it is an ordinary fenced

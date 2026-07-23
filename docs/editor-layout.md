@@ -37,6 +37,10 @@ flag, autosave and disk IO (addressable by path via a registry); a view onto it
 owns the active Concept, navigation history and view state and attaches to a
 Document. Two views onto the same path share one live Document.
 
+Each Tile hosts a CodeMirror `EditorView` built by the
+[CodeMirror integration](/editor/codemirror.md); the multi-Tile shared buffer is
+what its minimal-change reload path keeps caret-stable.
+
 ## How the code models a Tile
 
 The code splits a Tile into two 1:1 representations, addressed by a shared id:

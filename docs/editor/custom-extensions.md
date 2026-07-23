@@ -1,0 +1,66 @@
+---
+type: Concept
+title: Sunstone's own CodeMirror extensions
+description: The CodeMirror 6 extensions Sunstone writes itself on top of atomic-editor — mermaid, wikilinks, broken links, citations, CriticMarkup, anchor tracking, frontmatter, find and formatting.
+tags: [editor, codemirror, extensions, decorations, criticmarkup, mermaid]
+timestamp: 2026-07-23
+---
+
+# Sunstone's own CodeMirror extensions
+
+On top of the [atomic-editor](/editor/atomic-editor.md) live-preview base, Sunstone writes its own CodeMirror 6 extensions for OKF-specific concerns. They all live in `src/lib/editor/` and are assembled by the [`cm.ts` builder](/editor/codemirror.md).
+
+They follow one house rule (also the repo-wide convention): **pure logic lives in a plain `.ts` module** so it can be unit-tested over strings, and a **thin CM shell** wires it into `StateField`/`ViewPlugin`/`Decoration`. `criticMarkup.ts` (pure) vs `criticMarkupView.ts` (CM wiring), and `mermaidBlocks.ts` (pure detection) vs `mermaid.ts` (CM widget) are the clearest examples; `textFormat.ts`, `review.ts` and `reviewStepper.ts` are pure and imported by command wiring in `cm.ts`/`App.svelte`.
+
+| Extension | File(s) | CM primitive | Purpose |
+| --- | --- | --- | --- |
+| Mermaid diagrams | `mermaid.ts`, `mermaidBlocks.ts`, `mermaidTheme.ts` | `StateField` + block-replace `WidgetType` | Render ` ```mermaid ` fences as SVG |
+| Wikilinks | `wiki-links.ts` | atomic `wikiLinks` + overlay `ViewPlugin` | `[[name]]` rendering / navigation |
+| Broken links | `broken-links.ts` | `ViewPlugin` + `StateEffect` | Dashed-red styling of unresolved `[](…)` |
+| Citations | `citations.ts` | `ViewPlugin` + `WidgetType` + flash `StateField` | `[n]` superscript → jump to citation row |
+| CriticMarkup | `criticMarkup.ts`, `criticMarkupView.ts` | `StateField` decorations + `gutter` + `hoverTooltip` | Highlights, comments, track-changes |
+| Anchor tracking | `anchor-tracking.ts` | `StateField` + `StateEffect` | Follow heading slugs across edits for rename-rewrite |
+| Frontmatter | `frontmatter-field.ts` | `StateField` + `invertedEffects` | Structured frontmatter in unified undo |
+| Find & replace | `find.ts` | `@codemirror/search` panel | In-Concept find/replace |
+| Formatting | `textFormat.ts` | pure transforms → `cm.ts` commands | Bold/italic/heading/link toggles |
+| Review toggle | `review.ts`, `reviewStepper.ts` | pure decision/index logic | Enable + drive the git-diff review view |
+
+## Mermaid diagrams
+
+`mermaidBlocks(reading, theme)` renders ` ```mermaid ` fences as SVG. `mermaidBlocks.ts` is the pure detection layer: it walks the syntax tree (`ensureSyntaxTree` with a 200ms parse budget) for `FencedCode` nodes whose info string is `mermaid`, returning each fence's body and document range; `selectionTouches` decides the hybrid-mode reveal. `mermaid.ts` is the CM shell: a `StateField<DecorationSet>` providing `Decoration.replace({ block: true })` over each fence, driven by a `MermaidWidget` `WidgetType`. atomic-editor exposes no generic block-renderer seam, so this is a _sibling_ field, not a plugin on top of `imageBlocks`/`tables` ([ADR-0005](/adr/0005-mermaid-block-rendering.md)). Notable techniques: mermaid is lazy-loaded (`import('mermaid')`, `securityLevel: 'strict'`) only when the doc has a diagram; a module-level `source→SVG` cache plus a per-host generation token keep repaints cheap and discard stale async renders; `WidgetType.eq()` is keyed on `(source, theme, reading)`; and theme flips go through a [Compartment reconfigure](/editor/codemirror.md) because CM won't reconcile block-widget DOM in place. `mermaidTheme.ts` is CM-free (shared with the web viewer) and maps app CSS variables to concrete mermaid `themeVariables` — concrete values, because mermaid bakes colours into the SVG. It depends on the [patched](/editor/atomic-editor-patch.md) `treeGrowthEffect` re-export to re-render fences parsed after the initial budget.
+
+## Wikilinks
+
+`wikiLinksExtension(ctx)` (ADR-0004) renders `[[name]]` by wrapping atomic-editor's `wikiLinks` with a Sunstone adapter: a synchronous name-based resolver (upstream expects async, so it's wrapped in `Promise.resolve`), an in-app `onOpen` that navigates and best-effort scrolls to a `#heading`, and broken-link styling. Because the upstream resolve-cache has no invalidation API, the whole extension is wrapped in the wikilink [Compartment](/editor/codemirror.md) and reconfigured on index change. The one genuinely custom piece is an overlay `ViewPlugin`: upstream styles _all_ aliased links `[[target|label]]` as resolved and never runs `resolve()` on them, so a broken `[[missing|x]]` would look valid — the overlay re-checks aliased targets and marks the label range `cm-atomic-wiki-link-missing` when unresolved.
+
+## Broken links
+
+`brokenLinks(ctx)` is a `ViewPlugin` that walks the syntax tree over the visible ranges for `Link` nodes, resolves each internal `[](…)` target against a synchronous `exists()` predicate (backed by the Bundle index's cached path set), and marks unresolved ones `cm-broken-link` (dashed red). Styling only — links stay clickable. A `refreshBrokenLinks` `StateEffect` (dispatched by `refreshBrokenLinkDecorations`) forces a recompute on external events (file-changed watcher, Concept switch) beyond the normal doc/viewport triggers.
+
+## Citations
+
+`citations(reading)` renders an inline `[n]` that follows a word as a clickable superscript that scrolls to the matching `[n] …` citation row lower in the Concept and flashes it (~1.2s). Two-part architecture: a `ViewPlugin` builds the superscript `Decoration.replace({ widget })` (its `CitationWidget` overrides `ignoreEvent() → false` so the click reaches the DOM handler), and a separate `citationFlashField` `StateField` holds the flash `Decoration.line` so it survives viewport recompute and maps through edits. It relies on the [patch](/editor/atomic-editor-patch.md)'s url-less-`Link` fix (so `[n]` arrives as literal text) and is placed after `inlinePreview` so its replace decoration wins over the stray reference-link syntax colour.
+
+## CriticMarkup
+
+`criticMarkup.ts` is the pure, CM-free model: it parses the five CriticMarkup mark types, pairs a comment to its preceding highlight, and authors the highlight+comment insert/edit/remove edits as CM-shaped `{from,to,insert}` change arrays. `criticMarkupView.ts` is the CM shell: highlight content gets an amber background with hidden `{==`/`==}` delimiters, a bound comment is hidden from the text and surfaced as a left-**gutter** speech-bubble `GutterMarker` plus a `hoverTooltip`, and track-change marks render as red/green tints. Clicking the gutter icon calls the host `onCommentEdit` popup. It is deliberately a **`StateField`, not a `ViewPlugin`** — a comment note can contain line breaks, and a `Decoration.replace` spanning a line boundary is only legal from a state field (a ViewPlugin providing one throws and drops all rendering). This is the single most notable CM-API workaround in the editor. `cm.ts` exposes the imperative authoring surface (`annotate`, `addAnnotationWithComment`, `updateAnnotationComment`, `removeAnnotationAt`) used by both the `Mod-Alt-m` keybinding and the reading-mode popup — the latter dispatches programmatically so annotating works even in read-only `view` mode (the preferred way), reading the range from the DOM selection via `posAtDOM` when CM hasn't synced it.
+
+## Anchor tracking
+
+`anchorTracking` is a `StateField<TrackedHeading[]>` that remaps each heading's line-start position through every change set (`tr.changes.mapPos(pos, 1)`, assoc bias `1` so an insertion at a line start stays with the following heading). It distinguishes a heading **rename** (tracked position still on a heading, slug changed) from a **delete** (position no longer on a heading), so the host can rewrite inbound `#slug` anchors on rename while letting deletes break intentionally. `pendingAnchorRenames` diffs surviving headings against a fresh full-document scan (full scan so GitHub-style de-dup counters stay correct); `commitAnchorBaseline` re-snapshots via a `resetAnchorBaseline` `StateEffect` after each rewrite.
+
+## Frontmatter field
+
+`frontmatterField` is a `StateField<Property[]>` holding the open Concept's frontmatter — the source of truth while a doc is open, since the CM document itself holds only the markdown body ([ADR-0003](/adr/0003-structured-frontmatter-reserialization.md)). It is mutated by the `setFrontmatter` `StateEffect` (via `dispatchFrontmatter`, which uses `isolateHistory.of('full')` so a frontmatter edit is its own discrete undo step). The key trick is **unified undo**: `frontmatterUndo` uses `invertedEffects` to register the inverse `setFrontmatter` for any transaction carrying one, so frontmatter changes reverse on the _same_ undo/redo timeline as body text. It must be ordered immediately after `history()` or undo silently breaks.
+
+## Find & replace
+
+`findExtensions()` mounts CodeMirror's built-in `@codemirror/search` panel (`search({ top: true })` + `searchKeymap`) above the editor rather than a hand-rolled Svelte panel, giving case/whole-word/regexp toggles and replace/replace-all for free; replace rides ordinary transactions so it inherits autosave and undo. `Ctrl/Cmd+F` is owned app-wide by `App.svelte`, which calls `openSearch(view)`. Since CM's `SearchPanel` class isn't exported, `openSearch` reaches into `view.dom` after the panel renders and tags its fields with `data-testid` attributes for e2e selection — an idempotent DOM-poke. Scope is the body only (frontmatter lives in the field, not the document).
+
+## Formatting commands
+
+`textFormat.ts` is pure: `toggleInlineWrap` (`**`/`*`/`` ` ``/`~~`), `insertLink`, `linkAt`, and `headingFormatEdit` (ATX levels 1–6 or plain across the touched lines) all return CM-shaped `{changes, selection}` edits. `cm.ts` wraps them in `Command`s bound in the `formattingKeymap` (`Mod-b/i/e`, `Mod-Shift-m`, `Mod-0…6`), placed before the general keymap so they win, and re-exposes them as imperative functions (`toggleBold`, `insertOrEditLink`, …) for the right-click menu. All are read-only-gated and toggle (re-applying removes) for Obsidian parity.
+
+## Review toggle
+
+`review.ts` decides whether the "Review changes" toggle is enabled (only `status: 'ok'` — a HEAD exists to diff) and the disabled-tooltip text per git status; `reviewStepper.ts` computes which two revs to diff at each stepper position (position 0 = working tree ↔ HEAD with the live buffer as the newer side; position k = `HEAD~(k-1)` ↔ `HEAD~k`). Both are pure; `App.svelte` and the [review buffer builder](/editor/codemirror.md) stay thin over them. The rendered diff is [CriticMarkup](#criticmarkup) shown in read-only `view` mode.

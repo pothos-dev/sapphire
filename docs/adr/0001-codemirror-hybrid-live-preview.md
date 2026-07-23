@@ -48,3 +48,9 @@ Reading view requires telling `inlinePreview` to render *every* line regardless 
 position. Upstream atomic-editor hardcodes the "reveal the active line" rule, so we extend our
 existing vendored patch (`patches/@atomic-editor%2Feditor@0.4.3.patch`) with an `alwaysRender`
 config flag on `inlinePreview` that, when set, treats no line as active.
+
+For how the integration is assembled and what each extension does, see the
+[editor concept pages](/editor/index.md): the [CodeMirror integration](/editor/codemirror.md),
+the [atomic-editor dependency](/editor/atomic-editor.md), the
+[vendored patch](/editor/atomic-editor-patch.md), and
+[Sunstone's own extensions](/editor/custom-extensions.md).
