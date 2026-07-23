@@ -117,9 +117,6 @@
     const resolved = theme.resolved;
     if (appRoot) appRoot.setAttribute('data-theme', resolved);
   });
-  function toggleTheme() {
-    theme.mode = theme.resolved === 'dark' ? 'light' : 'dark';
-  }
 
   // --- Search (Ctrl+Shift+F) ---
   let searchOpen = $state(false);
@@ -173,8 +170,6 @@
   // so its toggle can re-expand it). The right Sidebar exists only with a Concept.
   const leftCols = $derived(leftSidebarOpen ? 'minmax(200px, 260px)' : '0px');
   const rightCols = $derived(data.rendered && rightSidebarOpen ? 'minmax(13rem, 16rem)' : '0px');
-
-  const propertyCount = $derived(data.rendered?.frontmatter.length ?? 0);
 
   // --- Outline scroll-to-heading ---
   function scrollToHeading(slug: string) {
@@ -315,12 +310,16 @@
     </aside>
 
     <div class="center">
-      <!-- Toolbar over the centre tile (mirrors the desktop editor toolbar). -->
-      <nav class="toolbar" aria-label="Toolbar">
-        <div class="tb-left">
+      <!-- Concept header: mirrors the desktop TileHeader ("Concept header"). The
+           left group holds the sidebar toggle, per-Concept history, and the
+           Concept title; the right group the per-Concept controls (Properties
+           show/hide, export, right-Sidebar). Theme follows the OS — no manual
+           toggle, matching the desktop shell. -->
+      <header class="tile-header" aria-label="Concept header">
+        <div class="tile-title-group">
           <button
             type="button"
-            class="tb-btn"
+            class="icon-btn"
             data-testid="sidebar-toggle"
             title={leftSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
             aria-label={leftSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -333,36 +332,38 @@
               <rect x="1.5" y="2.5" width="4.5" height="11" rx="1.5" fill="currentColor" opacity={leftSidebarOpen ? 0.5 : 0} stroke="none" />
             </svg>
           </button>
+          <!-- Per-Concept navigation history (matches the desktop TileHeader). -->
+          <div class="btn-group">
+            <button
+              type="button"
+              class="icon-btn"
+              data-testid="nav-back"
+              title="Back"
+              aria-label="Back"
+              onclick={goBack}>←</button
+            >
+            <button
+              type="button"
+              class="icon-btn"
+              data-testid="nav-forward"
+              title="Forward"
+              aria-label="Forward"
+              onclick={goForward}>→</button
+            >
+          </div>
           {#if data.selected}
-            <span class="reader-path" data-testid="reader-path" title={data.selected}>{data.selected}</span>
+            <span class="tile-title" data-testid="tile-title" title={data.selected}>{pageTitle}</span>
           {/if}
         </div>
-        <div class="tb-center">
-          <button
-            type="button"
-            class="tb-btn"
-            data-testid="nav-back"
-            title="Back"
-            aria-label="Back"
-            onclick={goBack}>←</button
-          >
-          <button
-            type="button"
-            class="tb-btn"
-            data-testid="nav-forward"
-            title="Forward"
-            aria-label="Forward"
-            onclick={goForward}>→</button
-          >
-        </div>
-        <div class="tb-right">
+
+        <div class="tile-controls">
           <!-- Sign-in affordance (web only): the anon read surface has no way to
                INITIATE the OIDC flow, so offer a link to the Auth.js sign-in
                page. Shown only on the web build when signed out; desktop-inert
                (dead-code-stripped via the compile-time `__SUNSTONE_WEB__`). -->
           {#if __SUNSTONE_WEB__ && data.user === null}
             <a
-              class="tb-btn sign-in"
+              class="icon-btn text-btn sign-in"
               data-testid="web-sign-in"
               href="/auth/signin"
               data-sveltekit-reload
@@ -376,7 +377,7 @@
           {#if canEdit}
             <button
               type="button"
-              class="tb-btn edit-toggle"
+              class="icon-btn text-btn edit-toggle"
               class:active={editing}
               data-testid="web-edit-toggle"
               title={editing ? 'Return to the rendered view' : 'Edit this Concept'}
@@ -385,6 +386,27 @@
               onclick={onToggleEdit}>{editing ? editToggleLabel(islandDirty) : 'Edit'}</button
             >
           {/if}
+          <!-- Properties show/hide (mirrors the desktop NavBar sliders toggle):
+               flips the read-only Properties panel in the centre. -->
+          <button
+            type="button"
+            class="icon-btn"
+            class:active={propertiesOpen}
+            data-testid="properties-panel-toggle"
+            title={propertiesOpen ? 'Hide Properties' : 'Show Properties'}
+            aria-label={propertiesOpen ? 'Hide Properties' : 'Show Properties'}
+            aria-pressed={propertiesOpen}
+            disabled={!data.rendered}
+            onclick={() => (propertiesOpen = !propertiesOpen)}
+          >
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <!-- sliders glyph: two horizontal rails with knobs (properties). -->
+              <line x1="2.5" y1="5" x2="13.5" y2="5" stroke="currentColor" stroke-width="1.2" />
+              <line x1="2.5" y1="11" x2="13.5" y2="11" stroke="currentColor" stroke-width="1.2" />
+              <circle cx="6" cy="5" r="1.8" fill="var(--bg-elevated)" stroke="currentColor" stroke-width="1.2" />
+              <circle cx="10.5" cy="11" r="1.8" fill="var(--bg-elevated)" stroke="currentColor" stroke-width="1.2" />
+            </svg>
+          </button>
           <!-- Export the open Concept as PDF: open a chrome-free print TAB
                (`/?print=<path>`) that renders just the Concept body and hands
                straight to the browser's native print → Save-as-PDF preview (its
@@ -392,7 +414,7 @@
                so we add none). The tab's <title> pre-fills the PDF file name. -->
           <button
             type="button"
-            class="tb-btn"
+            class="icon-btn"
             data-testid="export-pdf"
             title="Export as PDF"
             aria-label="Export as PDF"
@@ -413,15 +435,7 @@
           </button>
           <button
             type="button"
-            class="tb-btn"
-            data-testid="theme-toggle"
-            title="Toggle light / dark theme"
-            aria-label="Toggle light / dark theme"
-            onclick={toggleTheme}>{theme.resolved === 'dark' ? '☀' : '☾'}</button
-          >
-          <button
-            type="button"
-            class="tb-btn"
+            class="icon-btn"
             data-testid="right-sidebar-toggle"
             title={rightSidebarOpen ? 'Collapse Outline & Backlinks' : 'Expand Outline & Backlinks'}
             aria-label={rightSidebarOpen ? 'Collapse Outline & Backlinks' : 'Expand Outline & Backlinks'}
@@ -436,7 +450,7 @@
             </svg>
           </button>
         </div>
-      </nav>
+      </header>
 
       <main class="reader" class:editing aria-label="Concept">
         {#if editing}
@@ -458,42 +472,23 @@
         {:else if data.rendered === null}
           <p class="status" data-testid="reader-empty">Select a Concept to read it.</p>
         {:else}
-          {#if data.rendered.frontmatter.length > 0}
-            <!-- Read-only Properties panel, collapsible (mirrors desktop). -->
-            <section class="properties-panel">
-              <div class="panel-header" data-testid="properties-header">
-                <button
-                  type="button"
-                  class="panel-toggle"
-                  aria-expanded={propertiesOpen}
-                  aria-label="Properties"
-                  data-testid="properties-toggle"
-                  onclick={() => (propertiesOpen = !propertiesOpen)}
-                >
-                  <span class="chevron" class:open={propertiesOpen} aria-hidden="true">▸</span>
-                  <span class="panel-title">Properties</span>
-                  {#if !propertiesOpen && propertyCount > 0}
-                    <span class="panel-count" data-testid="properties-count">{propertyCount}</span>
+          {#if data.rendered.frontmatter.length > 0 && propertiesOpen}
+            <!-- Read-only Properties (frontmatter); shown/hidden via the Concept
+                 header's Properties toggle (mirrors the desktop global toggle). -->
+            <dl class="properties" data-testid="properties">
+              {#each data.rendered.frontmatter as field (field.key)}
+                <dt>{field.key}</dt>
+                <dd>
+                  {#if field.values.length > 1}
+                    <ul class="prop-list">
+                      {#each field.values as v, i (i)}<li>{v}</li>{/each}
+                    </ul>
+                  {:else}
+                    {field.values[0] ?? ''}
                   {/if}
-                </button>
-              </div>
-              {#if propertiesOpen}
-                <dl class="properties" data-testid="properties">
-                  {#each data.rendered.frontmatter as field (field.key)}
-                    <dt>{field.key}</dt>
-                    <dd>
-                      {#if field.values.length > 1}
-                        <ul class="prop-list">
-                          {#each field.values as v, i (i)}<li>{v}</li>{/each}
-                        </ul>
-                      {:else}
-                        {field.values[0] ?? ''}
-                      {/if}
-                    </dd>
-                  {/each}
-                </dl>
-              {/if}
-            </section>
+                </dd>
+              {/each}
+            </dl>
           {/if}
 
           <!-- Server-rendered body HTML. Links resolve to viewer nav / broken
@@ -613,49 +608,54 @@
     overflow: hidden;
   }
 
-  /* Three-track toolbar (mirrors the desktop NavBar): left toggle, centred
-     back/forward, right theme + right-sidebar toggle. */
-  .toolbar {
+  /* Concept header (mirrors the desktop TileHeader): the title group at the
+     start, the per-Concept controls at the end. */
+  .tile-header {
     flex: none;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    display: flex;
     align-items: center;
-    padding: 0.4rem 0.6rem;
+    justify-content: space-between;
+    gap: 0.5rem 0.4rem;
+    padding: 0.3rem 0.6rem;
     border-bottom: 1px solid var(--border, #e2e2e2);
+    background: var(--bg-elevated, #f9fafc);
   }
 
-  .tb-left {
+  .tile-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .tile-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text, #222);
+  }
+
+  .tile-controls {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    justify-self: stretch;
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .tb-left .tb-btn {
     flex: none;
   }
 
-  .tb-center {
-    display: flex;
-    gap: 0.35rem;
-    justify-self: center;
+  .btn-group {
+    display: inline-flex;
+    gap: 0.2rem;
   }
 
-  .tb-right {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    justify-self: end;
-  }
-
-  .tb-btn {
+  .icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.9rem;
-    height: 1.9rem;
+    width: 1.7rem;
+    height: 1.7rem;
     border: 1px solid var(--border, #ccc);
     border-radius: var(--radius-sm, 6px);
     background: none;
@@ -667,11 +667,17 @@
     transition: background 0.12s ease;
   }
 
-  .tb-btn:hover:not(:disabled) {
+  .icon-btn:hover:not(:disabled) {
     background: var(--hover, rgba(127, 127, 127, 0.15));
   }
 
-  .tb-btn:disabled {
+  .icon-btn.active {
+    background: var(--accent, #d9622b);
+    color: #fff;
+    border-color: var(--accent, #d9622b);
+  }
+
+  .icon-btn:disabled {
     opacity: 0.35;
     cursor: default;
   }
@@ -729,7 +735,9 @@
     position: relative;
   }
 
-  .edit-toggle {
+  /* Text-labelled chrome buttons (Edit / Sign in): widen past the square
+     icon-btn footprint to fit their word label. */
+  .text-btn {
     width: auto;
     padding-inline: 0.6rem;
     font-size: 0.8rem;
@@ -738,10 +746,6 @@
 
   /* Sign-in link, shaped like the edit toggle (anon web chrome). */
   .sign-in {
-    width: auto;
-    padding-inline: 0.6rem;
-    font-size: 0.8rem;
-    font-weight: 600;
     text-decoration: none;
   }
 
@@ -751,76 +755,13 @@
     color: var(--tag-text, inherit);
   }
 
-  /* Concept path label in the toolbar (between the sidebar toggle and the
-     back/forward buttons). Truncates gracefully in the constrained left track. */
-  .reader-path {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-muted, #777);
-    font-family: var(--font-mono, ui-monospace, monospace);
-  }
-
-  /* Properties panel: a collapse header (chevron + PROPERTIES) over a metadata
-     grid, styled like the desktop PropertiesHeader. */
-  .properties-panel {
-    margin: 0 0 1.25rem;
-  }
-
-  .panel-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 0.3rem;
-  }
-
-  .panel-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    border: none;
-    background: none;
-    color: var(--text-muted, #777);
-    font-family: var(--font-ui, system-ui, sans-serif);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    cursor: pointer;
-    padding: 0.15rem 0.25rem;
-    border-radius: var(--radius-sm, 4px);
-    transition: color 0.12s ease;
-  }
-
-  .panel-toggle:hover {
-    color: var(--text, #222);
-  }
-
-  .chevron {
-    display: inline-block;
-    font-size: 0.7rem;
-    transition: transform 0.12s ease;
-  }
-
-  .chevron.open {
-    transform: rotate(90deg);
-  }
-
-  .panel-count {
-    font-variant-numeric: tabular-nums;
-    color: var(--text-muted, #777);
-    opacity: 0.8;
-    text-transform: none;
-    letter-spacing: 0;
-  }
-
+  /* Read-only Properties: a metadata grid (frontmatter key → value), shown/hidden
+     via the Concept header's Properties toggle (desktop parity). */
   .properties {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0.15rem 0.75rem;
-    margin: 0;
+    margin: 0 0 1.25rem;
     padding: 0.6rem 0.8rem;
     border: 1px solid var(--border, #e2e2e2);
     border-radius: var(--radius-sm, 6px);

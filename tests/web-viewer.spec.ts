@@ -243,24 +243,20 @@ test('mermaid diagrams hydrate, and a malformed one degrades gracefully', async 
 });
 
 /**
- * Desktop parity pass (follow-up): dark-by-default theme + toggle, an icon-less
- * collapsible Explorer with implicit index, and collapsible Accordion Sidebars.
- * Saves a DARK-mode screenshot to tests/screenshots/web-parity-shell-dark.png.
+ * Desktop parity pass (follow-up): dark-by-default theme (follows the OS, no
+ * manual toggle — matching the desktop shell), an icon-less collapsible Explorer
+ * with implicit index, and collapsible Accordion Sidebars. Saves a DARK-mode
+ * screenshot to tests/screenshots/web-parity-shell-dark.png.
  */
-test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sidebars', async ({
+test('desktop parity: dark theme, collapsible tree/index, accordion sidebars', async ({
   page,
 }) => {
   // Dark by default: with a dark OS scheme and no stored choice, the app root
-  // gets data-theme="dark" (CSS tokens follow the OS, not a light fallback).
+  // gets data-theme="dark" (CSS tokens follow the OS, not a light fallback). The
+  // theme follows the OS with NO manual toggle — matching the desktop shell.
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   const root = page.getByTestId('web-viewer');
-  await expect(root).toHaveAttribute('data-theme', 'dark');
-
-  // The header toggle flips the theme (and back).
-  await page.getByTestId('theme-toggle').click();
-  await expect(root).toHaveAttribute('data-theme', 'light');
-  await page.getByTestId('theme-toggle').click();
   await expect(root).toHaveAttribute('data-theme', 'dark');
 
   // index.md is NOT an ordinary tree row (reserved, hidden) — at the root and
@@ -298,9 +294,9 @@ test('desktop parity: dark theme + toggle, collapsible tree/index, accordion sid
 });
 
 /**
- * Round-2 polish: the center-tile toolbar (collapse-left / back / forward /
- * theme / collapse-right), collapsible Properties, and localStorage persistence
- * of UI state across reloads. Saves the DARK-mode parity shot to
+ * Round-2 polish: the Concept header (collapse-left / back / forward /
+ * Properties toggle / collapse-right), collapsible Properties, and localStorage
+ * persistence of UI state across reloads. Saves the DARK-mode parity shot to
  * tests/screenshots/web-parity-dark.png.
  */
 test('polish: toolbar collapse/nav, Properties collapse, and persistence', async ({ page }) => {
@@ -325,12 +321,12 @@ test('polish: toolbar collapse/nav, Properties collapse, and persistence', async
 
   // Properties collapses (body removed) and re-expands.
   await expect(page.getByTestId('properties')).toBeVisible();
-  await page.getByTestId('properties-toggle').click();
+  await page.getByTestId('properties-panel-toggle').click();
   await expect(page.getByTestId('properties')).toHaveCount(0);
 
   // Screenshot the DARK parity view (toolbar on centre tile, both Sidebars,
   // thin scrollbars) with Properties re-expanded.
-  await page.getByTestId('properties-toggle').click();
+  await page.getByTestId('properties-panel-toggle').click();
   await expect(page.getByTestId('properties')).toBeVisible();
   await page.screenshot({ path: 'tests/screenshots/web-parity-dark.png', fullPage: true });
 
@@ -354,7 +350,7 @@ test('polish: toolbar collapse/nav, Properties collapse, and persistence', async
   await expect(topic).toBeVisible();
   await page.getByTestId('tags-section-header').click();
   await expect(page.getByTestId('tag-browser')).toHaveCount(0);
-  await page.getByTestId('properties-toggle').click();
+  await page.getByTestId('properties-panel-toggle').click();
   await expect(page.getByTestId('properties')).toHaveCount(0);
 
   await page.reload();
