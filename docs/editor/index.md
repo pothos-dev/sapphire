@@ -11,5 +11,5 @@ How Sunstone's markdown editor is built on CodeMirror 6. Start with the integrat
 
 ## Related
 
-- [Editor layout](/editor-layout.md) - The tiling model that hosts these editor views.
+- [Editor layout](/editor/editor-layout.md) - The tiling model that hosts these editor views.
 - [ADR-0001](/adr/0001-codemirror-hybrid-live-preview.md), [ADR-0004](/adr/0004-wikilinks-optional-secondary-name-based.md), [ADR-0005](/adr/0005-mermaid-block-rendering.md) - The decisions behind the integration.

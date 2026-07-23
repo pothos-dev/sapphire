@@ -17,7 +17,7 @@ page is the mechanics.
 
 A **Region** is an interactive surface that can hold keyboard focus and defines
 its own keyboard semantics. Regions are orthogonal to Pane/Section: a Region may
-*be* a Pane (the **Editor** — see [editor layout](/editor-layout.md)), live *as* a
+*be* a Pane (the **Editor** — see [editor layout](/editor/editor-layout.md)), live *as* a
 Section (**Explorer**, **Tags**, **Outline**, **Backlinks**), or be neither
 (**Properties**, which is chrome inside the Editor pane).
 
@@ -78,5 +78,5 @@ frontmatter is edited here rather than in the document):
 
 - Each **Region** has at most one **Focused item**.
 - The **Editor** Region *is* a Pane and hosts its own inner structure — see
-  [editor layout](/editor-layout.md).
+  [editor layout](/editor/editor-layout.md).
 - Terms are indexed in the [glossary](/GLOSSARY.md).

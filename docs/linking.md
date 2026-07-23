@@ -169,4 +169,4 @@ Deferred per [ADR 0004](/adr/0004-wikilinks-optional-secondary-name-based.md): e
 - [Open Knowledge Format (OKF) Specification](/okf-spec.md) — §5 cross-linking, §8 citations, the format Sunstone's links conform to.
 - [Glossary](/GLOSSARY.md) — the **Wikilink**, **Backlinks**, and **Diagram** (graph sense) terms.
 - [ADR 0004 — Wikilinks as an optional, name-based secondary link format](/adr/0004-wikilinks-optional-secondary-name-based.md).
-- [Editor layout](/editor-layout.md) — links open Concepts into Tiles.
+- [Editor layout](/editor/editor-layout.md) — links open Concepts into Tiles.

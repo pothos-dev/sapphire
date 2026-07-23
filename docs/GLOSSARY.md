@@ -83,18 +83,18 @@ Concept's body (frontmatter and fenced code blocks excluded).
 
 **Editor pane**:
 The central Pane — a grid of **Tiles** arranged in **Columns**. See
-[Editor layout](/editor-layout.md).
+[Editor layout](/editor/editor-layout.md).
 
 **Column**:
 A vertical stack of **Tiles** inside the Editor pane; the Editor pane is a row of
-Columns. See [Editor layout](/editor-layout.md).
+Columns. See [Editor layout](/editor/editor-layout.md).
 _Avoid_: "split" for the noun (a Column is the unit; "Split Right/Down" name the
 actions that create one).
 
 **Tile**:
 One editor cell within the Editor pane, showing a single open **Concept** with its
 own view-mode, scroll and history. Exactly one is the **active Tile**. See
-[Editor layout](/editor-layout.md).
+[Editor layout](/editor/editor-layout.md).
 _Avoid_: "tab" (Tiles are always visible, never behind a tab bar), "split" (a
 Tile is the cell; Split is the action), "editor group" (VSCode's tabbed term),
 "pane" (a Tile is a cell inside the Editor pane, not a Pane itself).
@@ -167,7 +167,7 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
 - The code's workspace layer once named each editor cell a **`Pane`**, colliding with the
   domain **Pane** (a top-level app-shell region). Resolved: the cell is now the **`Tile`**
   class (state) + **`TileSlot`** (geometry); `Pane` is reserved for the domain region. See
-  [Editor layout](/editor-layout.md#how-the-code-models-a-tile).
+  [Editor layout](/editor/editor-layout.md#how-the-code-models-a-tile).
 - The code names per-user UI state (`BundleState`, `saveBundleState`, `loadBundleState`,
   `/api/bundle-state`) after the **Bundle**, but it is **not** part of the Bundle: it is
   last-open Concept, expanded folders, sidebar flags, and window geometry — held per user
