@@ -256,7 +256,7 @@
 
 {#if showApp}
   <!-- Authenticated: mount the full desktop App shell (client-only island). -->
-  <WebAppShellIsland selected={data.selected} />
+  <WebAppShellIsland selected={data.selected} user={data.user} />
 {:else}
 <div class="app" data-testid="web-viewer" bind:this={appRoot}>
   <div class="app-body" style="grid-template-columns: {leftCols} minmax(0, 1fr) {rightCols}">

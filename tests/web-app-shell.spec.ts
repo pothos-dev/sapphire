@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures';
-import { signInAsTestUser } from './web-auth';
+import { signInAsTestUser, signOutTestUser } from './web-auth';
 import { mountShell, cmContent } from './web-shell';
+import { TEST_AUTH_NAME } from './web-bundle';
 
 /**
  * The full-App WEB SHELL gate (branch `feat/enable-web-writing`, WP0).
@@ -70,4 +71,16 @@ test('signing in swaps the read surface for the app shell on the same session', 
   await expect(page.getByTestId('web-app-shell')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('web-app-loading')).toHaveCount(0);
   await expect(page.getByTestId('web-viewer')).toHaveCount(0);
+
+  // The account bar shows the identity + a one-click sign-out button.
+  await expect(page.getByTestId('web-user')).toHaveText(TEST_AUTH_NAME);
+  await expect(page.getByTestId('web-sign-out')).toBeVisible();
+
+  // Signing out clears the session (real /auth/signout — driven via the request
+  // context for the origin reason in web-auth.ts) and re-lands on the anon read
+  // surface after a reload.
+  await signOutTestUser(page);
+  await page.goto('/');
+  await expect(page.getByTestId('web-viewer')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('web-app-shell')).toHaveCount(0);
 });

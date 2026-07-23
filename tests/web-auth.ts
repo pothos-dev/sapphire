@@ -41,3 +41,29 @@ export async function signInAsTestUser(page: Page): Promise<void> {
   };
   expect(session.user?.name).toBe(TEST_AUTH_NAME);
 }
+
+/**
+ * Sign the page OUT through the real Auth.js `POST /auth/signout` — what the
+ * UI's client `signOut()` ultimately hits. Auth.js's own CSRF token is disabled
+ * in this build (`skipCSRFCheck`), so no `/auth/csrf` round-trip is needed; the
+ * SvelteKit Origin check still applies. Driven through the request context (not
+ * the sign-out BUTTON) for the same reason as sign-in: adapter-node defaults its
+ * origin to `https://<host>` here (no `ORIGIN` env), so a browser POST whose
+ * Origin is `http://…` is rejected as cross-site — we send the `https://` origin.
+ * Shares the browser context's cookie jar, so the session cookie is cleared for
+ * the page.
+ */
+export async function signOutTestUser(page: Page): Promise<void> {
+  const origin = `https://${new URL(page.url()).host}`;
+  const request = page.context().request;
+  const res = await request.post('/auth/signout', {
+    headers: { origin },
+    form: { callbackUrl: '/' },
+    maxRedirects: 0,
+  });
+  expect(res.status(), 'sign-out should redirect/succeed').toBeLessThan(400);
+
+  // Logged out, `/auth/session` returns literal `null` (not `{}`).
+  const session = (await (await request.get('/auth/session')).json()) as { user?: unknown } | null;
+  expect(session?.user, 'session cleared after sign-out').toBeFalsy();
+}

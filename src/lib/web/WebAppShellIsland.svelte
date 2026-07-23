@@ -37,9 +37,21 @@
   interface Props {
     /** bundle-relative path of the SSR-selected Concept (forward-slash), or null. */
     selected: string | null;
+    /** The authenticated user (for the account bar / sign-out affordance). */
+    user: { name: string } | null;
   }
 
-  let { selected }: Props = $props();
+  let { selected, user }: Props = $props();
+
+  // Sign out via the Auth.js client helper (does the /auth/csrf round-trip + the
+  // POST /auth/signout, then a full-page redirect that re-lands on the anon read
+  // surface). Lazy-imported so the auth client stays out of the SSR + initial
+  // client graph. A dirty buffer is caught by the `beforeunload` guard below,
+  // exactly like a tab close.
+  async function signOut(): Promise<void> {
+    const { signOut: doSignOut } = await import('@auth/sveltekit/client');
+    await doSignOut({ callbackUrl: '/' });
+  }
 
   // The lazily-loaded desktop App shell, resolved in `onMount` (client only) so
   // nothing here is import-time heavy.
@@ -289,6 +301,21 @@
       >
     </div>
 
+    <!-- Account bar (web only): the signed-in identity + a one-click sign-out.
+         Top-right so it clears the top-centre Save bar and the sidebars. -->
+    <div class="account-bar">
+      {#if user}
+        <span class="account-name" data-testid="web-user" title={user.name}>{user.name}</span>
+      {/if}
+      <button
+        type="button"
+        class="account-btn"
+        data-testid="web-sign-out"
+        title="Sign out"
+        onclick={signOut}>Sign out</button
+      >
+    </div>
+
     <WebConcurrencyModals
       {conceptName}
       {updated}
@@ -361,6 +388,42 @@
   }
 
   .save-btn:not(:disabled):hover {
+    background: var(--hover, rgba(127, 127, 127, 0.15));
+  }
+
+  /* Account bar: signed-in identity + sign-out, pinned top-right. */
+  .account-bar {
+    position: fixed;
+    top: 0.5rem;
+    right: 0.6rem;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .account-name {
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--text-muted, #777);
+  }
+
+  .account-btn {
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--border, #ccc);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-elevated, #f0f2f6);
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+
+  .account-btn:hover {
     background: var(--hover, rgba(127, 127, 127, 0.15));
   }
 </style>
