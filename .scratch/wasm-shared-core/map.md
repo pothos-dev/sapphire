@@ -32,6 +32,12 @@ the ADR captures them.
     must resolve against the **live unsaved buffer** — so the shared logic must run
     in-process, synchronously, in the frontend. Wasm is the only way to satisfy that
     with a single implementation.
+- **Migration criterion** (two-pronged; from [10](issues/10-migrate-link-family.md)):
+  migrate logic into wasm if **(a)** it's a *twin* of Rust logic (drift kill), **or**
+  **(b)** it's frontend-only but *operates over state resident in the wasm handle*
+  (the handle owns the set *and* the ops over it — generalizes 04's "pathList never
+  crosses"). Counterweight: (b) never justifies creating a *new* twin — a util that
+  also serves non-wasm data stays TS and is *fed* the wasm-resident data.
 - **Skills to consult**: `/grilling` + `/domain-modeling` (default for decisions),
   `/research` (AFK external-knowledge tickets), `/prototype` (fidelity on API shape).
 - Research artifacts live under `.scratch/wasm-shared-core/research/` (not a throwaway
@@ -115,6 +121,20 @@ the ADR captures them.
   (copy the seed template; 13 hardest) → [12](issues/12-migrate-fake-backend-standins.md) fake
   (consumer, after 10+11) → [15](issues/15-migrate-path-helpers.md)/[16](issues/16-untwinned-ts-logic.md)
   parallel/off-path → [17](issues/17-adr-assembly.md) ADR. Edges added: 11,13←10; 12←10,11.
+
+- [10 Link family (the seed)](issues/10-migrate-link-family.md) — the end-to-end proof.
+  `BundleIndex` handle exports the single-source link surface: `resolveLink`/`resolveWikilink`
+  (per-call scalar, `exists` internal), `bundleRoot`, plus two migrations beyond the twins:
+  **`rewriteAnchorsIn(sourcePath, body, renames)→{content}`** (Fork A — a real sync
+  *live-buffer* op in `Tile.handleSaved`; body-in/body-out boundary; deletes `anchorRewrite.ts`)
+  and **`conceptPaths()`** (Fork C — single source of the set, retires `backend.listConceptPaths()`
+  + the `suggestions.conceptPaths` IPC copy). Establishes the **two-pronged migration criterion**
+  (twin *or* touches-wasm-state; now in Notes) and 3 boundary shapes (scalar / body / set-list).
+  **Deletes** `links.ts` + `anchorRewrite.ts` (+ tests). **Keeps/defers**: `slug.ts` (until
+  [13](issues/13-migrate-render-derived-family.md) — `outline.ts` still uses it), `path.ts`
+  ([15](issues/15-migrate-path-helpers.md)), `ipc/fake/links.ts` (Fork B →
+  [12](issues/12-migrate-fake-backend-standins.md)), `fuzzy.ts` (stays TS, fed by handle;
+  → [16](issues/16-untwinned-ts-logic.md)).
 
 ## Not yet specified
 
