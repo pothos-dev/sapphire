@@ -509,7 +509,13 @@
         initialMode: session.editorMode,
         onChange: (full) => tile.edit(full),
         onFrontmatterChange: (p) => (frontmatterProps = p),
-        onBlur: () => void tile.flush(),
+        // WEB (ticket 08 §4): persistence is EXPLICIT (Save affordance / Cmd+S /
+        // the three-way modal Save path), so the blur auto-flush is suppressed —
+        // a commit-per-blur would defeat the explicit-Save model. Desktop keeps
+        // the Obsidian-style blur flush, so its behaviour is byte-identical.
+        onBlur: () => {
+          if (!__SUNSTONE_WEB__) void tile.flush();
+        },
         onHistory: syncHistoryDepths,
         onLinkClick: handleLinkClick,
         onCommentEdit: openCommentPopup,

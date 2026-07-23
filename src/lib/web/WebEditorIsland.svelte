@@ -46,15 +46,8 @@
   import { indexStore } from '$lib/state/index.svelte';
   import type { Tile, Workspace } from '$lib/state/workspace.svelte';
   import type { FileChange } from '$lib/types';
-  import {
-    routeFileChange,
-    structuralOpGated,
-    conflictTitle,
-    updatedNoticeText,
-    deletedStateText,
-    leavePromptText,
-    structuralPromptText,
-  } from './concurrency';
+  import { routeFileChange, structuralOpGated } from './concurrency';
+  import WebConcurrencyModals from './WebConcurrencyModals.svelte';
 
   interface Props {
     /** bundle-relative path of the Concept to edit (mount-time; forward-slash). */
@@ -286,26 +279,6 @@
 </script>
 
 <div class="web-editor" data-testid="web-editor">
-  {#if updated}
-    <div class="notice" data-testid="web-updated-notice" role="status">
-      {updatedNoticeText(updated.author)}
-    </div>
-  {/if}
-
-  {#if deleted}
-    <div class="banner deleted" data-testid="web-deleted-state" role="alert">
-      <span class="banner-msg">{deletedStateText(deleted.author)}</span>
-      <span class="banner-actions">
-        <button type="button" data-testid="web-deleted-save" onclick={deletedRecreate}
-          >Save (re-create)</button
-        >
-        <button type="button" data-testid="web-deleted-discard" onclick={deletedDiscard}
-          >Discard</button
-        >
-      </span>
-    </div>
-  {/if}
-
   {#if TileComponent && tile}
     <TileComponent
       {tile}
@@ -322,66 +295,26 @@
   {/if}
 </div>
 
-<!-- Blocking conflict dialog: dirty buffer, active Concept changed remotely. -->
-{#if conflict}
-  <div class="modal-scrim" data-testid="web-conflict-modal" role="dialog" aria-modal="true">
-    <div class="modal">
-      <h2>{conflictTitle(conceptName, conflict.author)}</h2>
-      <p>Your unsaved edits conflict with a newer version on the server.</p>
-      <div class="modal-actions">
-        <button type="button" data-testid="web-conflict-discard" onclick={conflictDiscard}
-          >Discard my changes &amp; reload</button
-        >
-        <button
-          type="button"
-          class="primary"
-          data-testid="web-conflict-keep"
-          onclick={conflictKeep}>Keep my changes</button
-        >
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Three-way leave modal: unsaved edits on an implicit exit. -->
-{#if leave}
-  <div class="modal-scrim" data-testid="web-leave-modal" role="dialog" aria-modal="true">
-    <div class="modal">
-      <h2>{leavePromptText(conceptName)}</h2>
-      <div class="modal-actions">
-        <button type="button" class="primary" data-testid="web-leave-save" onclick={leaveSave}
-          >Save</button
-        >
-        <button type="button" data-testid="web-leave-discard" onclick={leaveDiscard}>Discard</button>
-        <button type="button" data-testid="web-leave-cancel" onclick={leaveCancel}>Cancel</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Three-way structural-op modal: rename/move/delete while dirty. -->
-{#if structural}
-  <div class="modal-scrim" data-testid="web-structural-modal" role="dialog" aria-modal="true">
-    <div class="modal">
-      <h2>{structuralPromptText(structural.op, structural.target, conceptName)}</h2>
-      <p>This action also updates links across the Bundle and can't run with unsaved changes open.</p>
-      <div class="modal-actions">
-        <button
-          type="button"
-          class="primary"
-          data-testid="web-structural-save"
-          onclick={structuralSave}>Save &amp; continue</button
-        >
-        <button type="button" data-testid="web-structural-discard" onclick={structuralDiscard}
-          >Discard &amp; continue</button
-        >
-        <button type="button" data-testid="web-structural-cancel" onclick={structuralCancel}
-          >Cancel</button
-        >
-      </div>
-    </div>
-  </div>
-{/if}
+<!-- Concurrency surfaces (notice / deleted banner / three blocking modals) —
+     shared presentational markup; this island keeps the state + action logic. -->
+<WebConcurrencyModals
+  {conceptName}
+  {updated}
+  {deleted}
+  {conflict}
+  {leave}
+  {structural}
+  onConflictDiscard={conflictDiscard}
+  onConflictKeep={conflictKeep}
+  onDeletedRecreate={deletedRecreate}
+  onDeletedDiscard={deletedDiscard}
+  onLeaveSave={leaveSave}
+  onLeaveDiscard={leaveDiscard}
+  onLeaveCancel={leaveCancel}
+  onStructuralSave={structuralSave}
+  onStructuralDiscard={structuralDiscard}
+  onStructuralCancel={structuralCancel}
+/>
 
 <style>
   .web-editor {
@@ -395,113 +328,5 @@
   .loading {
     padding: 1rem;
     color: var(--text-muted, #777);
-  }
-
-  /* Non-blocking "updated by X" notice — a subtle floating pill. */
-  .notice {
-    position: absolute;
-    top: 0.6rem;
-    right: 0.8rem;
-    z-index: 20;
-    padding: 0.3rem 0.7rem;
-    border-radius: var(--radius-sm, 6px);
-    background: var(--bg-elevated, #f0f2f6);
-    border: 1px solid var(--border, #e2e2e2);
-    color: var(--text-muted, #555);
-    font-size: 0.8rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  }
-
-  /* Deleted-state banner — sits above the (orphaned) editor buffer. */
-  .banner {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex: none;
-    padding: 0.5rem 0.8rem;
-    border-bottom: 1px solid var(--border, #e2e2e2);
-    font-size: 0.85rem;
-  }
-
-  .banner.deleted {
-    background: var(--danger-soft, rgba(192, 57, 43, 0.12));
-    color: var(--danger, #c0392b);
-  }
-
-  .banner-msg {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  .banner-actions {
-    display: flex;
-    gap: 0.4rem;
-    flex: none;
-  }
-
-  /* Blocking modal scrim + card, shared by all three dialogs. */
-  .modal-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.35);
-  }
-
-  .modal {
-    max-width: 26rem;
-    margin: 1rem;
-    padding: 1.1rem 1.25rem;
-    border-radius: var(--radius, 10px);
-    background: var(--bg, #fff);
-    color: var(--text, #222);
-    border: 1px solid var(--border, #e2e2e2);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
-  }
-
-  .modal h2 {
-    margin: 0 0 0.5rem;
-    font-size: 1rem;
-  }
-
-  .modal p {
-    margin: 0 0 0.9rem;
-    color: var(--text-muted, #666);
-    font-size: 0.88rem;
-  }
-
-  .modal-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.5rem;
-  }
-
-  button {
-    padding: 0.4rem 0.75rem;
-    border: 1px solid var(--border, #ccc);
-    border-radius: var(--radius-sm, 6px);
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: background 0.12s ease;
-  }
-
-  button:hover {
-    background: var(--hover, rgba(127, 127, 127, 0.15));
-  }
-
-  button.primary {
-    background: var(--accent, #d9622b);
-    border-color: var(--accent, #d9622b);
-    color: #fff;
-  }
-
-  button.primary:hover {
-    filter: brightness(1.05);
   }
 </style>

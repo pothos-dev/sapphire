@@ -157,11 +157,19 @@
 
     void indexStore.refresh();
 
-    const unsubscribe = backend.onFileChanged((change) => {
-      void bundle.load();
-      void editor.onExternalChange(change.kind, change.paths);
-      void indexStore.refresh();
-    });
+    // Desktop: App owns the file-change subscription (silent reload of the open
+    // buffer + tree/index refresh). WEB (ticket 08): the concurrency coordinator
+    // in `WebAppShellIsland` is the SINGLE `onFileChanged` handler — it routes the
+    // active buffer through the clean/dirty/deleted flow and refreshes the
+    // read-only surfaces itself — so App must NOT also subscribe (it would
+    // double-act, silently reloading a buffer the coordinator is guarding).
+    const unsubscribe = __SUNSTONE_WEB__
+      ? null
+      : backend.onFileChanged((change) => {
+          void bundle.load();
+          void editor.onExternalChange(change.kind, change.paths);
+          void indexStore.refresh();
+        });
 
     const onKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
@@ -285,7 +293,7 @@
     window.addEventListener('mouseup', onMouseUp);
 
     return () => {
-      unsubscribe();
+      unsubscribe?.();
       window.removeEventListener('keydown', onKeydown, true);
       window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);

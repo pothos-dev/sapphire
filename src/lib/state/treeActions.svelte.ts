@@ -28,6 +28,27 @@ class TreeActionsStore {
   error = $state<string | null>(null);
 
   /**
+   * WEB-only async pre-op gate for the structural ops that rewrite links across
+   * the Bundle (rename/move/delete) — ticket 08 §5. `create` is exempt and never
+   * consults it. Given the op + its target path, the gate resolves any dirty
+   * active buffer through the three-way Save & continue / Discard & continue /
+   * Cancel modal and returns `true` to PROCEED (already Saved/Discarded, or the
+   * buffer was clean) or `false` to ABORT the op atomically.
+   *
+   * `null` by default (DESKTOP): every op is a pass-through, so desktop tree CRUD
+   * is byte-identical. Only `WebAppShellIsland` sets it (guarded on
+   * `__SUNSTONE_WEB__`).
+   */
+  beforeStructuralOp:
+    | ((op: 'rename' | 'move' | 'delete', target: string) => Promise<boolean>)
+    | null = null;
+
+  /** Run the web structural-op gate (pass-through when none is registered). */
+  async #gate(op: 'rename' | 'move' | 'delete', target: string): Promise<boolean> {
+    return this.beforeStructuralOp ? this.beforeStructuralOp(op, target) : true;
+  }
+
+  /**
    * A transient notice surfaced after a rename/move that auto-rewrote links
    * (slice: link-auto-rewrite). The UI shows it briefly so the user knows links
    * were updated on files they did not explicitly open. `null` when there is
@@ -110,6 +131,7 @@ class TreeActionsStore {
    * On failure we roll the open path back.
    */
   async renamePath(from: string, to: string): Promise<boolean> {
+    if (!(await this.#gate('rename', from))) return false;
     const before = editor.path;
     this.#followRename(from, to);
     const ok = await this.#run(async () => {
@@ -132,6 +154,7 @@ class TreeActionsStore {
 
   /** Move `from` into the folder `toDir` (keeping its name), following the open Concept. */
   async movePath(from: string, toDir: string): Promise<boolean> {
+    if (!(await this.#gate('move', from))) return false;
     const to = this.resolveMove(from, toDir);
     const before = editor.path;
     this.#followRename(from, to);
@@ -174,6 +197,7 @@ class TreeActionsStore {
 
   /** Delete `path` (file or folder). A deleted open Concept clears the editor. */
   async deletePath(path: string): Promise<boolean> {
+    if (!(await this.#gate('delete', path))) return false;
     return this.#run(() => backend.deletePath(path));
     // The editor clears via App.svelte's `onExternalChange('removed', ...)`
     // wired to the watcher event the fake/real backends both emit on delete.

@@ -125,6 +125,24 @@ class EditorStore {
   onExternalChange(kind: string, paths: string[]): Promise<void> {
     return this.#workspace.onExternalChange(kind, paths);
   }
+
+  /**
+   * WEB concurrency (ticket 08 §3): silently reload the active Concept from disk
+   * after a clean external change. No-op when the buffer is dirty (Document
+   * guards it) or nothing is open.
+   */
+  reloadActiveExternal(): Promise<void> {
+    return this.#tile.activeDocument?.reloadExternal() ?? Promise.resolve();
+  }
+
+  /**
+   * WEB concurrency (ticket 08 §3): drop unsaved edits on the active Concept and
+   * reload the on-disk version ("Discard my changes & reload"). Overrides the
+   * dirty guard; no-op when nothing is open.
+   */
+  discardActiveEdits(): Promise<void> {
+    return this.#tile.activeDocument?.discardLocalEdits() ?? Promise.resolve();
+  }
 }
 
 export const editor = new EditorStore();
