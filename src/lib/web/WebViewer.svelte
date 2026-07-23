@@ -578,6 +578,10 @@
     min-width: 0;
     overflow: hidden;
     background: var(--bg-elevated, #f9fafc);
+    /* Desktop parity: the desktop sidebar steps its base down to 0.9rem
+       (App.svelte `.side-bar-inner`). Without this the web sidebar rode the
+       16px root and rendered larger than the desktop chrome. */
+    font-size: 0.9rem;
     /* Distribute the two Sections top/bottom (desktop parity: space-between). A
        lone Section stays flush to the top. */
     justify-content: space-between;
@@ -714,6 +718,10 @@
 
   .tree {
     padding: 0.25rem 0.35rem;
+    /* Match the desktop explorer tree, which hard-pins 14px (App.svelte
+       `.tree-tile`). Both tree components reset with `font: inherit`, so the
+       row/label size is decided here. */
+    font-size: 14px;
   }
 
   .reader {
