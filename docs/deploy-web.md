@@ -92,6 +92,74 @@ mounted folder in sync while Sunstone serves it read-only), see
 — a `post-receive` hook and a git-checkout sidecar (both live-reload), and a
 git-sync sidecar (does not) — with copy-paste compose files.
 
+## Local dev: writable stack with Dex OIDC
+
+`docker-compose.dex.yml` is a **self-contained local-dev stack** that brings up a
+**writable** Sunstone Web behind an already-running Traefik, authenticated by a
+[Dex](https://dexidp.io/) OIDC provider seeded with two test users. Unlike the
+read-only stack above, a real OIDC login unlocks the full editor and every Save
+lands a git commit. It is **dev-only**: all secrets, passwords and hashes are
+committed fixtures — never use it for a real/public deployment.
+
+```bash
+docker compose -f docker-compose.dex.yml up --build -d   # bring up
+docker compose -f docker-compose.dex.yml down            # tear down
+```
+
+| URL | What |
+| --- | --- |
+| `http://sunstone.docker.localhost` | the app (click **Sign in** → OIDC) |
+| `http://dex.docker.localhost` | the OIDC issuer / login |
+
+Seeded users (Dex `staticPasswords`):
+
+| Email | Password | Name |
+| --- | --- | --- |
+| `alice@sunstone.test` | `alice-password` | Alice Example |
+| `bob@sunstone.test` | `bob-password` | Bob Example |
+
+OIDC client: id `sunstone-web`, secret `sunstone-oidc-secret`, redirect
+`http://sunstone.docker.localhost/auth/callback/oidc`.
+
+### The issuer must resolve identically both ways
+
+The issuer `http://dex.docker.localhost` has to mean the *same* origin from the
+browser (redirect) **and** from the Sunstone SSR container (discovery + token
+exchange):
+
+- Dex listens on plain HTTP `:80` (`web.http: 0.0.0.0:80` in
+  `docker/dex/config.yaml`).
+- The Dex service has a **network alias `dex.docker.localhost` on `traefik-net`**,
+  so Sunstone resolves `http://dex.docker.localhost/...` straight to Dex:80.
+- A Traefik label routes Host `dex.docker.localhost` → Dex:80, so the browser
+  reaches the same issuer via Traefik.
+
+`@auth/core` (via `oauth4webapi`) already allows a plain-HTTP issuer for OIDC
+discovery/token/userinfo — it passes `allowInsecureRequests: true` on those
+calls — so no extra flag is needed for the `http://` dev issuer. `AUTH_TRUST_HOST`
++ `ORIGIN`/`PROTOCOL_HEADER`/`HOST_HEADER` handle host validation behind Traefik.
+
+### Bundle is a container-local git copy (host `docs/` is never written)
+
+The image bakes the repo's `docs/` in at `/bundle-src`, and the entrypoint seed
+step (`SUNSTONE_BUNDLE_SEED_FROM=/bundle-src`) copies it into a **writable,
+container-local git repo** at `/srv/bundle` (a fresh `git init` + seed commit on
+first start). Edits/Saves commit **there** — the author is the logged-in OIDC
+identity (`edit <path> via web`, `Alice Example <alice@sunstone.test>`). The host
+`docs/` is **isolated and never modified**, and the in-container repo is
+ephemeral: `down`/recreate reseeds from the baked-in docs.
+
+> `docs/` is **baked into the image** rather than bind-mounted because this repo's
+> `docs/` lives inside the outer git tree (no standalone `docs/.git`) and, in some
+> dev sandboxes, the Docker daemon does not share the workspace filesystem (a bind
+> mount would resolve to an empty dir). Baking it in keeps
+> `docker compose ... up --build` a single portable step. The seed step in
+> `docker/entrypoint.sh` is **env-gated** on `SUNSTONE_BUNDLE_SEED_FROM`, so the
+> read-only stack above (which never sets it) is unaffected.
+
+The runtime image also installs `git` (the write path shells out to it) — a no-op
+for the read-only stack.
+
 ## Building the image directly (without compose)
 
 ```bash
