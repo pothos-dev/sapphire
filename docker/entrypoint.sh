@@ -4,7 +4,8 @@
 #
 # Runs BOTH processes that make up the web deployment in one container:
 #
-#   1. sunstone-server — the read-only Rust API over the mounted Bundle
+#   1. sunstone-server — the Rust API over the mounted Bundle (read-only here:
+#      no SUNSTONE_JWT_SECRET is set, so its write routes all 401).
 #      (binds 0.0.0.0:${SUNSTONE_API_PORT}, reads ${SUNSTONE_BUNDLE}).
 #   2. node build      — the SvelteKit adapter-node SSR server (binds
 #      ${HOST}:${PORT}); its `/api/*` proxy + SSR loads reach the API at

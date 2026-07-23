@@ -1,11 +1,15 @@
 # Deploying Sunstone Web
 
-Sunstone Web is the server-rendered, read-only viewer for an OKF Bundle. It ships
-as a **single Docker image** that runs two processes side by side:
+Sunstone Web is the server-rendered viewer for an OKF Bundle. Sunstone now has an
+authenticated write path (JWT + Auth.js), but **this Docker deployment runs it
+strictly read-only** — see the security note below. It ships as a **single Docker
+image** that runs two processes side by side:
 
-- **`sunstone-server`** — the read-only Rust API (axum over `sunstone-core`),
-  serving `/api/*` (tree, concept, render, search, backlinks, tags, SSE events)
-  over the mounted Bundle. It **only reads** the Bundle; there is no write path.
+- **`sunstone-server`** — the Rust API (axum over `sunstone-core`), serving
+  `/api/*` (tree, concept, render, search, backlinks, tags, SSE events) over the
+  mounted Bundle. Its write routes require a JWT signed with `SUNSTONE_JWT_SECRET`;
+  this image sets no such secret, so every write returns `401` and the API is
+  effectively read-only.
 - **`node build`** — the SvelteKit **adapter-node** SSR server. It renders pages,
   hydrates in the browser, and proxies `/api/*` to the Rust API (see
   `src/hooks.server.ts`). This is the single public origin.
@@ -18,18 +22,20 @@ The Dockerfile and this guide live at the repo root and in this `docker/` folder
 the compose files (`docker-compose*.yml`) sit at the repo root. Commands below run
 **from the repo root** unless noted.
 
-> ## ⚠️ No authentication — internal networks only
+> ## ⚠️ Unauthenticated reads — internal networks only
 >
-> The container has **no authentication or authorization** of any kind. Anyone
-> who can reach the published port can read the entire Bundle. Until an auth phase
-> lands you **must**:
+> This container serves **reads with no authentication** of any kind. Anyone who
+> can reach the published port can read the entire Bundle. (Sunstone's write path
+> is JWT-authenticated, but this image sets no write secret and wires in no auth
+> provider — see above.) You **must**:
 >
 > - keep it on a trusted internal network / VPN, or behind a private reverse proxy
 >   that enforces access control, and
 > - **never** expose the published port directly to the public internet.
 >
-> The mount is read-only, so exposure is a confidentiality risk (the Bundle can be
-> read), not an integrity one (it cannot be modified through the app).
+> Because the mount is read-only and no write secret is set, exposure is a
+> confidentiality risk (the Bundle can be read), not an integrity one (it cannot
+> be modified through the app).
 
 ## Quick start (docker compose)
 

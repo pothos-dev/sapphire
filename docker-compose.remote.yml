@@ -17,9 +17,9 @@
 #     docker compose -f docker-compose.remote.yml pull && \
 #     docker compose -f docker-compose.remote.yml up -d
 #
-# SECURITY: there is NO authentication. Publish this only on a trusted internal
-# network / behind a private reverse proxy. Do not expose it to the public
-# internet until an auth phase lands.
+# SECURITY: reads are UNAUTHENTICATED (this image wires in no auth provider and
+# enables no writes). Publish this only on a trusted internal network / behind a
+# private reverse proxy. Do not expose it to the public internet.
 
 services:
   sunstone-web:
@@ -32,7 +32,7 @@ services:
       # Public SSR web server (adapter-node reads HOST/PORT).
       HOST: 0.0.0.0
       PORT: 3000
-      # Read-only Rust API (internal to the container).
+      # Rust API (internal to the container; read-only — no write secret set).
       SUNSTONE_API_PORT: 8787
       SUNSTONE_API_INTERNAL: http://localhost:8787
       # The Bundle root inside the container == the mount target below.

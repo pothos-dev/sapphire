@@ -1,7 +1,9 @@
 # Sunstone Web — internal deployment.
 #
-# One container serves the SSR web viewer AND the read-only Rust API over a
-# Bundle mounted read-only from the host. See docker/README.md.
+# One container serves the SSR web viewer AND the Rust API over a Bundle mounted
+# read-only from the host. Sunstone has an authenticated write path, but this
+# deployment stays read-only: :ro mount + no SUNSTONE_JWT_SECRET (writes 401).
+# See docker/README.md.
 #
 #   SUNSTONE_BUNDLE_HOST  host path of the Bundle to serve (default ./examples)
 #   SUNSTONE_WEB_PORT     host port to publish the web viewer on (default 3000)
@@ -9,9 +11,9 @@
 # Example:
 #   SUNSTONE_BUNDLE_HOST=/srv/okf/my-bundle SUNSTONE_WEB_PORT=8080 docker compose up --build
 #
-# SECURITY: there is NO authentication. Publish this only on a trusted internal
-# network / behind a private reverse proxy. Do not expose it to the public
-# internet until an auth phase lands.
+# SECURITY: reads are UNAUTHENTICATED (this image wires in no auth provider and
+# enables no writes). Publish this only on a trusted internal network / behind a
+# private reverse proxy. Do not expose it to the public internet.
 
 services:
   sunstone-web:
@@ -26,7 +28,7 @@ services:
       # Public SSR web server (adapter-node reads HOST/PORT).
       HOST: 0.0.0.0
       PORT: 3000
-      # Read-only Rust API (internal to the container).
+      # Rust API (internal to the container; read-only — no write secret set).
       SUNSTONE_API_PORT: 8787
       SUNSTONE_API_INTERNAL: http://localhost:8787
       # The Bundle root inside the container == the mount target below.
