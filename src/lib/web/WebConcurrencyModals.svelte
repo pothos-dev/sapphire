@@ -184,11 +184,15 @@
     flex: none;
   }
 
-  /* Blocking modal scrim + card, shared by all three dialogs. */
+  /* Blocking modal scrim + card, shared by all three dialogs. Sits ABOVE the
+     Tree CRUD dialog (`.dialog`/`.dialog-backdrop`, z-index 1100/1101 in
+     `TreeCrud.svelte`): a rename/move/delete over a dirty buffer opens that CRUD
+     dialog first, then routes through the structural-op gate — whose modal must
+     be the top-most, interactable layer, not trapped behind the CRUD backdrop. */
   .modal-scrim {
     position: fixed;
     inset: 0;
-    z-index: 50;
+    z-index: 1200;
     display: flex;
     align-items: center;
     justify-content: center;
