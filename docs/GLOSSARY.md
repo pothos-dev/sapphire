@@ -63,19 +63,21 @@ These name the layout, not the domain. Register is conventional editor chrome (V
 deliberately not domain language — section headers are discoverability affordances.
 
 **Pane**:
-Any top-level layout region of the app shell.
+Any top-level layout region of the app shell. See [App shell](/interface/app-shell.md) for
+the three-Pane layout.
 
 **Sidebar**:
 A Pane docked to the left or right edge, holding a vertical stack of **Sections**. Both a left
 and a right Sidebar exist. The left holds **Explorer** and **Tags**; the right holds **Outline**
-and **Backlinks** and starts collapsed.
+and **Backlinks** and starts collapsed. See [Sidebars and Sections](/interface/sidebars.md).
 _Avoid_: "side panel" (use Sidebar).
 
 **Section**:
 One collapsible item in a Sidebar — an always-visible header plus a toggleable body. The current
 Sections are **Explorer** (the Bundle tree), **Tags** (tags across the Bundle), **Outline** (the
 open Concept's headings) and **Backlinks** (Concepts linking to the open Concept). The **Tags**
-Section is hidden entirely when the Bundle carries no tags.
+Section is hidden entirely when the Bundle carries no tags. See
+[Sidebars and Sections](/interface/sidebars.md).
 _Avoid_: "panel" (collides with VSCode's bottom dock).
 
 **Outline**:
@@ -108,13 +110,13 @@ body capped). Names the behaviour, not a single item — one item is a **Section
 **Region**:
 An interactive surface that can hold keyboard focus and defines its own keyboard semantics.
 Orthogonal to Pane/Section; the six Regions form a fixed 3×2 grid and exactly one is active
-at a time. See [Focus model](/focus-model.md).
+at a time. See [Focus model](/interface/focus-model.md).
 _Avoid_: "pane focus", "panel focus" (use "the active Region").
 
 **Focused item**:
 The single navigable item that currently holds focus *within* a Region (the roving-tabindex
 element) — arrow keys move it, Enter activates it. In the **Explorer** it is **distinct from
-the open Concept**. See [Focus model](/focus-model.md).
+the open Concept**. See [Focus model](/interface/focus-model.md).
 _Avoid_: "cursor" (reserved for the CodeMirror text caret), "selection" (ambiguous).
 
 **Search**:
@@ -176,4 +178,5 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
   and never committed. The misnomer is sharper now that the **Bundle** is the git-committed
   content the web write path commits. Resolved term: **View state** — per-user, client-held
   (desktop: OS config dir; web: the browser, e.g. `localStorage`), never written into the
-  Bundle. _Avoid_: "Bundle state". (Code not yet renamed — flagged for a later rename slice.)
+  Bundle. See [View state](/interface/view-state.md). _Avoid_: "Bundle state". (Code not yet
+  renamed — flagged for a later rename slice.)

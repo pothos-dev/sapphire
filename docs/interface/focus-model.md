@@ -79,4 +79,8 @@ frontmatter is edited here rather than in the document):
 - Each **Region** has at most one **Focused item**.
 - The **Editor** Region *is* a Pane and hosts its own inner structure — see
   [editor layout](/editor/editor-layout.md).
+- The Explorer/Tags/Outline/Backlinks Regions live inside the two
+  [Sidebars](/interface/sidebars.md); moving focus into a collapsed one
+  **reveals** it (the transient-reveal flags described there).
+- The Region grid sits inside the [app shell](/interface/app-shell.md).
 - Terms are indexed in the [glossary](/GLOSSARY.md).

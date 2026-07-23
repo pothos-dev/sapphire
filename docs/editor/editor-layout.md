@@ -58,5 +58,5 @@ region), matching the [glossary](/GLOSSARY.md).
 
 - The **Editor pane** hosts a row of **Columns**; each Column stacks **Tiles**.
 - The Editor pane *is* the **Editor** Region — keyboard focus and Region
-  movement are described in the [focus model](/focus-model.md).
+  movement are described in the [focus model](/interface/focus-model.md).
 - Terms are indexed in the [glossary](/GLOSSARY.md).
