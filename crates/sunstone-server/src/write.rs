@@ -55,22 +55,59 @@ impl WriteResult {
     }
 }
 
-/// `PUT /api/concept` — overwrite an existing Concept's body, commit `edit`.
+/// `PUT /api/concept` — overwrite an existing Concept's body.
+///
+/// Normally lands a fresh `edit <path> via web` commit. But the tree-CRUD "create
+/// a new Concept" flow is TWO seam calls — `createConcept` (→ `create <path> via
+/// web`) then an immediate `writeConcept` of the frontmatter scaffold — which
+/// would otherwise be two commits for one user action. So, reusing the ticket 07
+/// §5 amend-else-fresh rule: when HEAD is our OWN `create <path> via web` for
+/// this same path AND the file on disk is still empty (the scaffold has not
+/// landed yet), fold the scaffold write into the create commit via `amend` (it
+/// keeps its `create …` subject, now carrying the scaffolded body) → one commit.
+/// The empty-file guard is what distinguishes the scaffold write from a genuine
+/// later Save of the same new Concept: once the file has content, every Save is
+/// its own `edit` commit. An interleaved write from another client (the global
+/// lock releases between the two requests) also moves HEAD off `create …` and
+/// falls back to a fresh commit.
 pub fn write_concept(
     app: &AppState,
     ident: &CommitIdentity,
     path: &str,
     content: &str,
 ) -> Result<WriteResult, String> {
+    // Decide BEFORE writing — the write is about to overwrite the empty file.
+    let fold_into_create = head_is_ours(app, ident, &format!("create {path} via web"))
+        && file_is_empty(&app.bundle_root.join(path));
     let resolved = bundle::write_concept(&app.bundle_root, path, content)?;
     app.note_self_write(resolved);
-    git::commit(
-        &app.bundle_root,
-        &[path],
-        &format!("edit {path} via web"),
-        ident,
-    )?;
+    if fold_into_create {
+        git::amend(&app.bundle_root, &[path], ident)?;
+    } else {
+        git::commit(
+            &app.bundle_root,
+            &[path],
+            &format!("edit {path} via web"),
+            ident,
+        )?;
+    }
     Ok(WriteResult::change("modified", path.to_string()))
+}
+
+/// Whether HEAD is a commit with exactly `subject`, authored by `ident`. The
+/// amend-else-fresh guard (ticket 07 §5): only ever fold a write into the tip
+/// when it is our own, matching commit; never touch someone else's history.
+fn head_is_ours(app: &AppState, ident: &CommitIdentity, subject: &str) -> bool {
+    git::head_commit(&app.bundle_root).is_some_and(|h| {
+        h.subject == subject && h.author_name == ident.name && h.author_email == ident.email
+    })
+}
+
+/// Whether the file at `p` has no content (empty or whitespace-only) — the state
+/// a just-`createConcept`'d Concept is in before its scaffold is written. A read
+/// failure (missing file) counts as non-empty, so we never amend on a guess.
+fn file_is_empty(p: &std::path::Path) -> bool {
+    std::fs::read_to_string(p).is_ok_and(|s| s.trim().is_empty())
 }
 
 /// `POST /api/concept` — create a new empty Concept, commit `create`.
@@ -194,13 +231,7 @@ pub fn rewrite_anchors(
     // Amend iff HEAD is the matching `edit <target> via web` commit authored by
     // this same user; otherwise a fresh `relink` commit. Either way stage the
     // whole tree (the rewrite touched inbound sources we don't enumerate here).
-    let head = git::head_commit(&app.bundle_root);
-    let amendable = head.is_some_and(|h| {
-        h.subject == format!("edit {target} via web")
-            && h.author_name == ident.name
-            && h.author_email == ident.email
-    });
-    if amendable {
+    if head_is_ours(app, ident, &format!("edit {target} via web")) {
         git::amend(&app.bundle_root, &[], ident)?;
     } else {
         git::commit(
@@ -346,6 +377,57 @@ mod tests {
         assert!(!root.join("n.md").exists());
         assert_eq!(head_subject(&root), "delete n.md via web");
         assert_eq!(removed.changes[0].kind, "removed");
+    }
+
+    #[test]
+    fn create_then_scaffold_write_folds_into_one_commit() {
+        if !git_available() {
+            return;
+        }
+        let root = temp_repo();
+        let app = AppState::new(root.clone());
+
+        // The tree-CRUD new-Concept flow: create the empty file, then write the
+        // frontmatter scaffold. The scaffold write amends the create commit.
+        create_concept(&app, &ident(), "n.md").unwrap();
+        assert_eq!(head_subject(&root), "create n.md via web");
+        let after_create = commit_count(&root);
+
+        write_concept(&app, &ident(), "n.md", "---\ntype:\ntitle: N\n---\n\n").unwrap();
+        // Folded in: HEAD keeps the `create` subject, carrying the scaffold body,
+        // and NO new commit was added.
+        assert_eq!(head_subject(&root), "create n.md via web", "amended, not fresh");
+        assert_eq!(commit_count(&root), after_create, "amend adds no commit");
+        assert!(std::fs::read_to_string(root.join("n.md")).unwrap().contains("title: N"));
+
+        // A subsequent edit (HEAD no longer a bare `create`) → fresh `edit` commit.
+        let before_edit = commit_count(&root);
+        write_concept(&app, &ident(), "n.md", "---\ntype:\ntitle: N\n---\n\nbody\n").unwrap();
+        assert_eq!(head_subject(&root), "edit n.md via web");
+        assert_eq!(commit_count(&root), before_edit + 1, "fresh edit commit");
+    }
+
+    #[test]
+    fn write_does_not_amend_another_users_create() {
+        if !git_available() {
+            return;
+        }
+        let root = temp_repo();
+        let app = AppState::new(root.clone());
+
+        // Someone else created the file.
+        let other = CommitIdentity {
+            name: "Grace Hopper".into(),
+            email: "grace@example.com".into(),
+        };
+        create_concept(&app, &other, "n.md").unwrap();
+        assert_eq!(head_subject(&root), "create n.md via web");
+        let before = commit_count(&root);
+
+        // Our write must NOT amend their commit — a fresh `edit` commit lands.
+        write_concept(&app, &ident(), "n.md", "mine\n").unwrap();
+        assert_eq!(head_subject(&root), "edit n.md via web");
+        assert_eq!(commit_count(&root), before + 1, "did not amend another's commit");
     }
 
     #[test]
