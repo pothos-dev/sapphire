@@ -136,6 +136,42 @@ the ADR captures them.
   [12](issues/12-migrate-fake-backend-standins.md)), `fuzzy.ts` (stays TS, fed by handle;
   → [16](issues/16-untwinned-ts-logic.md)).
 
+- [11 Frontmatter family](issues/11-migrate-frontmatter-family.md) — four-way split by the
+  criterion: **(A)** index-parse twins (fake `parseFrontmatter`/`Fields`/`Keys`, `yamlValues`,
+  `scalarString`) **→ wasm** (twins of `index/frontmatter.rs`+`render.rs`; fake calls shared
+  source); **(B)** `splitFrontmatter` + `frontmatterLineCount` **→ wasm** as a *pure free export*
+  (verbatim slices ⇒ byte-preservation holds; foundational for 12/13; not per-keystroke); **(C)**
+  the ADR-0003 **property model** (parse/serialize/rename/scaffold round-trip) **stays TS** — the
+  fuzzy.ts analogue: fails both prongs, byte-preservation rides on the `yaml` CST tokens
+  (`serde_yaml` has no spans), and `serializeFrontmatter`/`joinConcept` run per-keystroke in `cm.ts`;
+  **(D)** `stripTagsFromFrontmatter` stays TS (test-only, no twin) → deferred to
+  [12](issues/12-migrate-fake-backend-standins.md).
+
+- [13 Render-derived family + CM-decoration seam](issues/13-migrate-render-derived-family.md) —
+  pure kernels (outline scan incl. the 3rd `fake/render.ts` copy; CriticMarkup parse/group;
+  citation parse; `conceptToUrl`) → **`sunstone-shared` + wasm**, delete TS. **Maximalist
+  single-source:** native `render.rs` (SSR) is **rewritten to consume the same shared fns** —
+  critic/citation sentinels build from the shared parse, and outline uses one pure ATX
+  `scan_headings` everywhere (⇒ `inject_heading_ids` re-aligns to the scan list; **setext
+  headings dropped**, ATX-only). `urlToConcept` → wasm handle method (retires
+  `collectFilePaths`); `conceptTitle`/`nameFromPath` stay TS. **Seam** = wasm returns
+  **offset-span structs**; TS view/authoring layers (`criticMarkupView`, `changeMarkDecorations`,
+  `insertHighlightComment`, citation widget) stay TS, thin over them. **Deletes `slug.ts`**
+  (completes ticket 10's deferral). Only family that edits native `render.rs` → HTML goldens
+  are the regression guard.
+
+- [12 Fake backend stand-ins](issues/12-migrate-fake-backend-standins.md) — the cut runs by
+  **layer, not module**: **Layer 1** pure kernels (link/rewrite/frontmatter-index twins) →
+  **consume the wasm barrel, delete the TS re-impl** (a divergent fake is exactly 07's banned
+  test-twin); **Layer 2** backend-command orchestration (`search`, `backlinks`, `allTags`,
+  `conceptsByTag`, `renderConcept` HTML assembly, tree CRUD, git seam) → **stays hand-rolled
+  TS** because it twins the *native* backend commands (kept native by design), freely walking
+  the in-memory corpus over the Layer-1 kernels. Exempt-stays-TS confirmed: `stripTags`
+  (test-only), `search` (fs ripgrep), `render` (comrak deferred/08), `tree` (IO), `store`
+  `FILES` (fixture source that *feeds* the handle). **12 writes no PR** — each family PR
+  (10/11/13) flips the fake's imports as part of its clean cut; 12's table is a column the
+  ADR folds in, which is why it blocks only [17](issues/17-adr-assembly.md).
+
 ## Not yet specified
 
 - The duplication inventory has **landed** (`research/00-twin-inventory.md`) and
