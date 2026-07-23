@@ -55,7 +55,7 @@ The link/backlink logic is implemented **twice** — pure Rust and pure TS — k
 
 ### The Bundle is git-committed content
 
-Sunstone leans into the spec's "git repository (recommended)" distribution: the Bundle _is_ the tracked working tree, and the **web write path commits edits straight back into it**. `crates/sunstone-core/src/git.rs` stages bundle-relative paths and either creates a fresh `edit … via web` commit (`commit`) or folds an anchor-relink write into the preceding one (`amend`, `--no-edit`, preserving author + author-date). Author == committer, set via `GIT_*` env so the commit is independent of any repo-level `user.name`. See [Testing](/testing.md) for the write flow and its test strategy, and `docker/README.md` at the repo root for the read-only web deployment.
+Sunstone leans into the spec's "git repository (recommended)" distribution: the Bundle _is_ the tracked working tree, and the **web write path commits edits straight back into it**. `crates/sunstone-core/src/git.rs` stages bundle-relative paths and either creates a fresh `edit … via web` commit (`commit`) or folds an anchor-relink write into the preceding one (`amend`, `--no-edit`, preserving author + author-date). Author == committer, set via `GIT_*` env so the commit is independent of any repo-level `user.name`. See [Testing](/architecture/testing.md) for the write flow and its test strategy, and `docker/README.md` at the repo root for the read-only web deployment.
 
 ### What is _not_ part of the Bundle
 
@@ -77,4 +77,5 @@ Per-user UI state — last-open Concept, expanded folders, sidebar flags, window
 - [OKF Specification](/okf/spec.md) — the vendored spec, §2–§3, §6–§7, §9.
 - [Linking](/okf/linking.md) — bundle root detection, the name/path resolution seam, backlinks, rewrite-on-move.
 - [Glossary](/GLOSSARY.md) — **Bundle**, **Reserved file**, **View state**.
-- [Testing](/testing.md) — the git-write path over a Bundle and its test strategy.
+- [Testing](/architecture/testing.md) — the git-write path over a Bundle and its test strategy.
+- [Architecture](/architecture/index.md) — the packages (core/server/desktop/web) that implement this Bundle handling.
