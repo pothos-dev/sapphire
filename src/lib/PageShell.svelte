@@ -29,6 +29,7 @@
       selected: data.selected,
       rendered: data.rendered,
       renderError: data.renderError,
+      user: data.user,
     }}
   />
 {:else}

@@ -123,6 +123,19 @@ export class Document {
       this.error = errMessage(e);
     }
   }
+
+  /**
+   * Drop unsaved local edits and reload the on-disk version (web conflict UX,
+   * ticket 08 §3 "Discard my changes & reload"). Unlike `reloadExternal` this
+   * OVERRIDES the dirty guard: it is the user's explicit choice to abandon local
+   * edits in favour of the newer committed version. Clearing `dirty` first also
+   * disarms the web `beforeunload` guard immediately.
+   */
+  async discardLocalEdits(): Promise<void> {
+    this.#autosave.cancel();
+    this.dirty = false;
+    await this.load();
+  }
 }
 
 /**

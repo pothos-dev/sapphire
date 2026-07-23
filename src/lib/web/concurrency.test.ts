@@ -4,6 +4,11 @@ import {
   routeFileChange,
   editToggleLabel,
   structuralOpGated,
+  conflictTitle,
+  updatedNoticeText,
+  deletedStateText,
+  leavePromptText,
+  structuralPromptText,
 } from './concurrency';
 import type { FileChange } from '$lib/types';
 
@@ -96,4 +101,31 @@ test('structural gate: create exempt; rename/move/delete gate only when dirty', 
   for (const op of ['create', 'rename', 'move', 'delete'] as const) {
     expect(structuralOpGated(op, false)).toBe(false);
   }
+});
+
+// --- user-facing copy (ticket 08 §3-5) -------------------------------------
+
+test('conflictTitle attributes the writer, or falls back to "on disk"', () => {
+  expect(conflictTitle('mistral-ai', 'Bob')).toBe('mistral-ai was changed by Bob.');
+  expect(conflictTitle('mistral-ai', null)).toBe('mistral-ai was changed on disk.');
+});
+
+test('updatedNoticeText names the author, or "Updated on disk"', () => {
+  expect(updatedNoticeText('Bob')).toBe('Updated by Bob');
+  expect(updatedNoticeText(null)).toBe('Updated on disk');
+});
+
+test('deletedStateText names the deleter when known', () => {
+  expect(deletedStateText('Bob')).toBe('This Concept was deleted (by Bob).');
+  expect(deletedStateText(null)).toBe('This Concept was deleted.');
+});
+
+test('leavePromptText asks to save the named Concept', () => {
+  expect(leavePromptText('mistral-ai')).toBe('Save changes to mistral-ai?');
+});
+
+test('structuralPromptText spells out the gated op verb', () => {
+  expect(structuralPromptText('rename', 'B', 'A')).toBe('Save A before renaming B?');
+  expect(structuralPromptText('move', 'B', 'A')).toBe('Save A before moving B?');
+  expect(structuralPromptText('delete', 'B', 'A')).toBe('Save A before deleting B?');
 });

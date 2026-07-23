@@ -76,6 +76,9 @@ export function editToggleLabel(dirty: boolean): 'Save' | 'Done' {
 /** A structural tree operation that may need the clean-buffer gate. */
 export type StructuralOp = 'create' | 'rename' | 'move' | 'delete';
 
+/** A gated structural op (create is exempt — see {@link structuralOpGated}). */
+export type GatedStructuralOp = Exclude<StructuralOp, 'create'>;
+
 /**
  * Whether a structural op must gate on a clean active buffer (ticket 08 §5).
  * Create is exempt — it rewrites no existing file and cannot stale the active
@@ -84,4 +87,45 @@ export type StructuralOp = 'create' | 'rename' | 'move' | 'delete';
  */
 export function structuralOpGated(op: StructuralOp, dirty: boolean): boolean {
   return dirty && op !== 'create';
+}
+
+// --- User-facing copy for the concurrency surfaces (ticket 08 §3-5) ---------
+// Kept here (pure, unit-tested) so the `.svelte` glue never inlines message
+// strings; each takes the attributed writer name or `null` (external/desktop
+// edit) and returns the exact wording the modal / notice renders.
+
+/** Blocking conflict-dialog heading (ticket 08 §3): who changed the Concept. */
+export function conflictTitle(concept: string, author: string | null): string {
+  return author
+    ? `${concept} was changed by ${author}.`
+    : `${concept} was changed on disk.`;
+}
+
+/** Non-blocking clean-reload notice (ticket 08 §3): "Updated by <author>". */
+export function updatedNoticeText(author: string | null): string {
+  return author ? `Updated by ${author}` : 'Updated on disk';
+}
+
+/** Deleted-state message (ticket 08 §2): the active Concept was removed. */
+export function deletedStateText(author: string | null): string {
+  return author ? `This Concept was deleted (by ${author}).` : 'This Concept was deleted.';
+}
+
+/** Three-way leave-prompt heading (ticket 08 §4): unsaved edits on exit. */
+export function leavePromptText(concept: string): string {
+  return `Save changes to ${concept}?`;
+}
+
+/**
+ * Three-way structural-op prompt heading (ticket 08 §5): the active buffer
+ * `active` is dirty and a rename/move/delete of `target` needs the clean-buffer
+ * gate first.
+ */
+export function structuralPromptText(
+  op: GatedStructuralOp,
+  target: string,
+  active: string,
+): string {
+  const verb = op === 'rename' ? 'renaming' : op === 'move' ? 'moving' : 'deleting';
+  return `Save ${active} before ${verb} ${target}?`;
 }

@@ -10,6 +10,31 @@ export interface WebPageData {
   selected: string | null;
   rendered: RenderPayload | null;
   renderError: string | null;
+  /**
+   * The authenticated user (Auth.js session), or `null` when signed out. Read
+   * from the Auth.js `/auth/session` endpoint through the same relative `fetch`
+   * (SSR or client), so the viewer can show the Edit affordance ONLY to a
+   * signed-in user (ticket 06). Only the display `name` is carried.
+   */
+  user: { name: string } | null;
+}
+
+/** The subset of the Auth.js session JSON the viewer needs. */
+interface SessionResponse {
+  user?: { name?: string | null } | null;
+}
+
+/** Fetch the current user from Auth.js, or `null` when signed out / on error. */
+async function loadUser(fetchFn: typeof fetch): Promise<{ name: string } | null> {
+  try {
+    const res = await fetchFn('/auth/session');
+    if (!res.ok) return null;
+    const session = (await res.json()) as SessionResponse | null;
+    const name = session?.user?.name;
+    return name ? { name } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -24,9 +49,10 @@ export interface WebPageData {
  * against the tree's file set (`urlToConcept`); an unknown path renders empty.
  */
 export async function loadConcept(fetchFn: typeof fetch, urlPath: string): Promise<WebPageData> {
-  const [bundleRoot, tree] = await Promise.all([
+  const [bundleRoot, tree, user] = await Promise.all([
     fetchFn('/api/bundle-root').then((r) => r.json() as Promise<string>),
     fetchFn('/api/tree').then((r) => r.json() as Promise<TreeNode>),
+    loadUser(fetchFn),
   ]);
 
   const selected = urlToConcept(urlPath, collectFilePaths(tree));
@@ -42,5 +68,5 @@ export async function loadConcept(fetchFn: typeof fetch, urlPath: string): Promi
     }
   }
 
-  return { web: true, bundleRoot, tree, selected, rendered, renderError };
+  return { web: true, bundleRoot, tree, selected, rendered, renderError, user };
 }

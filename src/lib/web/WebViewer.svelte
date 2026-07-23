@@ -1,9 +1,13 @@
 <script lang="ts">
   import type { TreeNode, TagCount } from '$lib/types';
   import type { RenderPayload } from './render';
+  import type { Component } from 'svelte';
   import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import { goto, invalidateAll } from '$app/navigation';
   import { backend } from '$lib/ipc';
+  import { editToggleLabel } from './concurrency';
+  import type { WebEditorApi } from './WebEditorIsland.svelte';
   import { theme } from '$lib/state/theme.svelte';
   import { ordinaryChildren, reservedChildren } from '$lib/treeNav';
   import { RESERVED_FILES, type ReservedKind } from '$lib/reserved';
@@ -25,10 +29,45 @@
       selected: string | null;
       rendered: RenderPayload | null;
       renderError: string | null;
+      /** Authenticated user (Auth.js session), or null when signed out. The
+       *  Edit affordance is shown ONLY when this is present (ticket 06). */
+      user: { name: string } | null;
     };
   }
 
   let { data }: Props = $props();
+
+  // --- Editing (ticket 06): viewer stays the SSR default; an Edit toggle swaps
+  // the CENTER rendered article for the client-only editor island in place. The
+  // island (and, transitively, CodeMirror) is NEVER statically imported here —
+  // it is pulled in via dynamic `import()` on first Edit, keeping it out of the
+  // SSR graph. Done/Save returns to the rendered view (reusing invalidateAll).
+  let editing = $state(false);
+  let IslandComponent = $state<Component | null>(null);
+  let islandApi = $state<WebEditorApi | null>(null);
+  let islandDirty = $state(false);
+  const canEdit = $derived(browser && data.user !== null && data.selected !== null);
+
+  async function startEdit() {
+    if (!IslandComponent) {
+      IslandComponent = (await import('./WebEditorIsland.svelte')).default as unknown as Component;
+    }
+    editing = true;
+  }
+
+  /** Leave edit mode. `reRender` re-fetches the Concept for the rendered view
+   *  (Done/Save on the SAME Concept); a Concept switch skips it (goto reloads). */
+  function endEdit(reRender: boolean) {
+    editing = false;
+    islandApi = null;
+    islandDirty = false;
+    if (reRender) void invalidateAll();
+  }
+
+  function onToggleEdit() {
+    if (!editing) void startEdit();
+    else islandApi?.requestDone();
+  }
 
   // The read-only "Sunstone Web" viewer, shaped like the desktop shell: a
   // toolbar over the CENTER tile (sidebar toggles + back/forward + theme), left
@@ -39,7 +78,17 @@
   // A Concept is addressed by its path in the URL (`/research/providers/mistral-ai`),
   // not a `?path=` query — `conceptToUrl` drops `.md` and a trailing `/index`.
   function open(path: string) {
-    void goto(conceptToUrl(path), { keepFocus: true });
+    const nav = () => void goto(conceptToUrl(path), { keepFocus: true });
+    // Switching Concept while editing is an implicit exit (ticket 08 §4): route
+    // it through the island's dirty gate (three-way leave modal) first.
+    if (editing && islandApi) {
+      islandApi.tryLeave(() => {
+        endEdit(false);
+        nav();
+      });
+      return;
+    }
+    nav();
   }
 
   // The document title is the open Concept's name (frontmatter title / H1 / path).
@@ -291,6 +340,21 @@
           >
         </div>
         <div class="tb-right">
+          <!-- Edit toggle (ticket 06): shown ONLY to an authenticated user with
+               a Concept open. "Edit" enters the island; while editing the label
+               is Save (dirty) / Done (clean) and its click flushes-then-exits. -->
+          {#if canEdit}
+            <button
+              type="button"
+              class="tb-btn edit-toggle"
+              class:active={editing}
+              data-testid="web-edit-toggle"
+              title={editing ? 'Return to the rendered view' : 'Edit this Concept'}
+              aria-label={editing ? 'Finish editing' : 'Edit this Concept'}
+              aria-pressed={editing}
+              onclick={onToggleEdit}>{editing ? editToggleLabel(islandDirty) : 'Edit'}</button
+            >
+          {/if}
           <!-- Export the open Concept as PDF: open a chrome-free print TAB
                (`/?print=<path>`) that renders just the Concept body and hands
                straight to the browser's native print → Save-as-PDF preview (its
@@ -344,8 +408,20 @@
         </div>
       </nav>
 
-      <main class="reader" aria-label="Concept">
-        {#if data.renderError}
+      <main class="reader" class:editing aria-label="Concept">
+        {#if editing}
+          <!-- CENTER swapped in place for the client-only editor island. -->
+          {#if IslandComponent && data.selected}
+            <IslandComponent
+              path={data.selected}
+              onExit={() => endEdit(true)}
+              onDirty={(d: boolean) => (islandDirty = d)}
+              onReady={(a: WebEditorApi) => (islandApi = a)}
+            />
+          {:else}
+            <p class="status" data-testid="reader-empty">Loading editor…</p>
+          {/if}
+        {:else if data.renderError}
           <p class="status error" data-testid="reader-error">
             Cannot render {data.selected}: {data.renderError}
           </p>
@@ -609,6 +685,30 @@
     padding: 1rem 1.5rem 4rem;
     min-width: 0;
     min-height: 0;
+  }
+
+  /* While editing, the editor island fills the centre: drop the reader padding
+     + scroll (the island/CodeMirror own their own), and anchor the island's
+     floating "updated" notice. */
+  .reader.editing {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+    position: relative;
+  }
+
+  .edit-toggle {
+    width: auto;
+    padding-inline: 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .edit-toggle.active {
+    background: var(--accent-soft, rgba(217, 98, 43, 0.2));
+    border-color: var(--accent, #d9622b);
+    color: var(--tag-text, inherit);
   }
 
   /* Concept path label in the toolbar (between the sidebar toggle and the
