@@ -93,7 +93,25 @@
     // Firefox only initiates a drag once `setData` is called; the path also
     // rides along as a courtesy for anything reading the dropped payload.
     e.dataTransfer?.setData('text/plain', node.path);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    if (!e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = 'move';
+    // WebKitGTK (Tauri's Linux webview) builds the *default* drag ghost from a
+    // device-pixel snapshot but paints it back at CSS size, so on a HiDPI
+    // display the ghost comes out at 2× the row. Handing it an explicit drag
+    // image — a clone pinned to the row's CSS width — bypasses that faulty
+    // snapshot path and renders at the true size everywhere.
+    const row = e.currentTarget as HTMLElement;
+    const rect = row.getBoundingClientRect();
+    const ghost = row.cloneNode(true) as HTMLElement;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.position = 'fixed';
+    ghost.style.top = '-9999px';
+    ghost.style.left = '0';
+    ghost.style.pointerEvents = 'none';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, e.clientX - rect.left, e.clientY - rect.top);
+    // The clone only has to survive the synchronous snapshot; drop it next tick.
+    setTimeout(() => ghost.remove(), 0);
   }
 
   // Hovering a collapsed folder mid-drag springs it open after a beat, so a
