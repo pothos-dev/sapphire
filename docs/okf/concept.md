@@ -54,8 +54,8 @@ The body is where Sunstone's viewer/editor adds the most beyond plain markdown �
 - **Live preview** — Obsidian-style hybrid editing (source is truth; inactive lines render styled, the cursor line shows raw markup) via CodeMirror 6 decorations. See [ADR 0001](/adr/0001-codemirror-hybrid-live-preview.md) and the [editor docs](/editor/index.md).
 - **Outline** — the open Concept's headings in document order, derived live from the body (**frontmatter and fenced code excluded**). Powers the **Outline** [Section](/GLOSSARY.md).
 - **Diagrams** — ` ```mermaid ` fenced blocks are **rendered** as diagrams. To the spec these are just fenced code ([§4.2](/okf/spec.md#42-body)); Sunstone renders them via its own block-replace CodeMirror field (`securityLevel: 'strict'`, lazy-loaded). See [ADR 0005](/adr/0005-mermaid-block-rendering.md).
-- **Citations** — Sunstone honours OKF's `# Citations` convention ([§8](/okf/spec.md#8-citations)) _and_ adds inline **citation-reference superscripts**: a `[n]` token following a word renders as a clickable superscript that jumps to the matching `[n]` row. This is a Sunstone affordance beyond the spec. See [Linking → Citations](/linking.md#citations).
-- **Wikilinks** — `[[name]]` links resolve by filename, a Sunstone-only secondary link form (OKF uses path-based markdown links only). See [Linking](/linking.md) and [ADR 0004](/adr/0004-wikilinks-optional-secondary-name-based.md).
+- **Citations** — Sunstone honours OKF's `# Citations` convention ([§8](/okf/spec.md#8-citations)) _and_ adds inline **citation-reference superscripts**: a `[n]` token following a word renders as a clickable superscript that jumps to the matching `[n]` row. This is a Sunstone affordance beyond the spec. See [Linking → Citations](/okf/linking.md#citations).
+- **Wikilinks** — `[[name]]` links resolve by filename, a Sunstone-only secondary link form (OKF uses path-based markdown links only). See [Linking](/okf/linking.md) and [ADR 0004](/adr/0004-wikilinks-optional-secondary-name-based.md).
 - **CriticMarkup** and other custom extensions round out the [editor's own extensions](/editor/custom-extensions.md).
 
 The `# Schema` / `# Examples` conventional headings ([§4.2](/okf/spec.md#42-body)) get no special treatment — they are plain headings that flow into the Outline like any other.
@@ -77,5 +77,5 @@ The `# Schema` / `# Examples` conventional headings ([§4.2](/okf/spec.md#42-bod
 - [OKF Specification](/okf/spec.md) — the vendored spec, §4 (concepts), §8 (citations), §9 (conformance).
 - [ADR 0002](/adr/0002-flat-frontmatter-model.md) · [ADR 0003](/adr/0003-structured-frontmatter-reserialization.md) — the frontmatter model.
 - [ADR 0005](/adr/0005-mermaid-block-rendering.md) — mermaid rendering.
-- [Linking](/linking.md) — wikilinks, citations, anchors, backlinks.
+- [Linking](/okf/linking.md) — wikilinks, citations, anchors, backlinks.
 - [Editor](/editor/index.md) — the CodeMirror integration hosting the body.

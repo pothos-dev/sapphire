@@ -10,6 +10,6 @@ The format Sunstone reads and writes, plus how Sunstone's handling of it differs
 
 ## Related
 
-- [Linking](/linking.md) - The link model (markdown + wikilink, anchors, citations, backlinks, rewrite) over a Bundle.
+- [Linking](/okf/linking.md) - The link model (markdown + wikilink, anchors, citations, backlinks, rewrite) over a Bundle.
 - [Glossary](/GLOSSARY.md) - The **Bundle**, **Concept**, **Reserved file**, and **Frontmatter** terms.
 - [ADR-0002](/adr/0002-flat-frontmatter-model.md), [ADR-0003](/adr/0003-structured-frontmatter-reserialization.md), [ADR-0004](/adr/0004-wikilinks-optional-secondary-name-based.md), [ADR-0005](/adr/0005-mermaid-block-rendering.md) - The decisions behind Sunstone's OKF handling.

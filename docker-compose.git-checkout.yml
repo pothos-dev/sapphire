@@ -22,7 +22,7 @@
 # post-receive hook (docker/post-receive.example) — same clean checkout, same
 # live reload. See docker/README.md.
 #
-# ⚠️ NO AUTH — internal networks only. See docs/deploy-web.md.
+# ⚠️ NO AUTH — internal networks only. See docker/README.md.
 
 services:
   git-checkout:

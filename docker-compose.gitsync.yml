@@ -26,7 +26,7 @@
 # There is NO live push to connected browsers. If you want live reload, use the
 # post-receive-hook or checkout-sidecar approach instead (docker/README.md).
 #
-# ⚠️ NO AUTH — internal networks only. See docs/deploy-web.md.
+# ⚠️ NO AUTH — internal networks only. See docker/README.md.
 
 services:
   git-sync:

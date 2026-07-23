@@ -31,7 +31,7 @@ to — never replacing — standard markdown links, which remain the primary/can
 matches the frontmatter `title`. Duplicate filenames resolve to the shortest bundle path, then
 alphabetically (silent — ambiguity is not flagged broken), matching Obsidian. Partial paths
 (`[[folder/name]]`) match by path **suffix**. Wikilinks are a Sunstone compatibility affordance
-for content authored in Obsidian; OKF itself does not use them. See [Linking](/linking.md) for
+for content authored in Obsidian; OKF itself does not use them. See [Linking](/okf/linking.md) for
 the full resolution model and the layered wikilink fallback.
 _Avoid_: "internal link" (ambiguous — could mean any in-Bundle link; say **Wikilink** or
 **markdown link** specifically).
@@ -135,7 +135,7 @@ _Avoid_: calling this "search" (reserved for the cross-Bundle **Search**).
 - A **Concept** has one **Frontmatter** block and one markdown body.
 - A **Concept** links to other **Concepts** primarily via standard markdown links: bundle-absolute
   (`[x](/path.md)`) or relative (`[x](./path.md)`), and optionally via **Wikilinks** (`[[name]]`,
-  resolved by filename). Links are tolerated even when broken. See [Linking](/linking.md) for the
+  resolved by filename). Links are tolerated even when broken. See [Linking](/okf/linking.md) for the
   complete link model — path vs name resolution, anchors/slugs, citations, backlinks and
   rename-rewrite.
 - A **Sidebar** contains many **Sections**; each Section shows a view onto the Bundle or the

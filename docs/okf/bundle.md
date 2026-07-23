@@ -34,7 +34,7 @@ The spec assumes you already know the bundle root; Sunstone often does **not**, 
 2. Otherwise, the shallowest directory carrying an `index.md`; on a depth tie prefer the canonical `docs/`, else only commit when a single candidate is shallowest.
 3. No `index.md` anywhere ⇒ the sole shared top-level segment if every Concept has one, else `''` (don't guess).
 
-`applyBundleRoot` then prepends that root to a bundle-absolute target **only when the rewritten path actually exists**, so a mis-identified root can never mis-navigate a link that would otherwise have worked. This is the one bundle-level rule Sunstone _adds_ to the spec — see [Linking → Nested bundle root](/linking.md#nested-bundle-root).
+`applyBundleRoot` then prepends that root to a bundle-absolute target **only when the rewritten path actually exists**, so a mis-identified root can never mis-navigate a link that would otherwise have worked. This is the one bundle-level rule Sunstone _adds_ to the spec — see [Linking → Nested bundle root](/okf/linking.md#nested-bundle-root).
 
 ### Indexes Sunstone synthesizes
 
@@ -47,7 +47,7 @@ Per [§6](/okf/spec.md#6-index-files), a consumer may synthesize views the Bundl
 | Backlinks | the **Backlinks** [Section](/GLOSSARY.md) | `backlinks(path)` in `src-tauri/src/lib.rs`, from `index/links.rs` + `wikilink.rs` |
 | Tags | the **Tags** [Section](/GLOSSARY.md) (hidden when the Bundle has none) | server/backend frontmatter scan |
 
-The link/backlink logic is implemented **twice** — pure Rust and pure TS — kept byte-for-byte identical so the desktop backend, web renderer, and Playwright fake all agree. See [Linking → the pure-logic seam](/linking.md#the-pure-logic-seam).
+The link/backlink logic is implemented **twice** — pure Rust and pure TS — kept byte-for-byte identical so the desktop backend, web renderer, and Playwright fake all agree. See [Linking → the pure-logic seam](/okf/linking.md#the-pure-logic-seam).
 
 ### Reserved files
 
@@ -55,7 +55,7 @@ The link/backlink logic is implemented **twice** — pure Rust and pure TS — k
 
 ### The Bundle is git-committed content
 
-Sunstone leans into the spec's "git repository (recommended)" distribution: the Bundle _is_ the tracked working tree, and the **web write path commits edits straight back into it**. `crates/sunstone-core/src/git.rs` stages bundle-relative paths and either creates a fresh `edit … via web` commit (`commit`) or folds an anchor-relink write into the preceding one (`amend`, `--no-edit`, preserving author + author-date). Author == committer, set via `GIT_*` env so the commit is independent of any repo-level `user.name`. See [Deploying the web build](/deploy-web.md) and [Testing](/testing.md) for the write flow and its test strategy.
+Sunstone leans into the spec's "git repository (recommended)" distribution: the Bundle _is_ the tracked working tree, and the **web write path commits edits straight back into it**. `crates/sunstone-core/src/git.rs` stages bundle-relative paths and either creates a fresh `edit … via web` commit (`commit`) or folds an anchor-relink write into the preceding one (`amend`, `--no-edit`, preserving author + author-date). Author == committer, set via `GIT_*` env so the commit is independent of any repo-level `user.name`. See [Testing](/testing.md) for the write flow and its test strategy, and `docker/README.md` at the repo root for the read-only web deployment.
 
 ### What is _not_ part of the Bundle
 
@@ -65,7 +65,7 @@ Per-user UI state — last-open Concept, expanded folders, sidebar flags, window
 
 | Topic | Pure OKF | Sunstone |
 | --- | --- | --- |
-| Bundle root | Known a priori; absolute links resolve from it | **Inferred** via `findBundleRoot`, with a safe existence-gated fallback ([Linking](/linking.md#nested-bundle-root)) |
+| Bundle root | Known a priori; absolute links resolve from it | **Inferred** via `findBundleRoot`, with a safe existence-gated fallback ([Linking](/okf/linking.md#nested-bundle-root)) |
 | Link forms | Standard markdown links only ([§5](/okf/spec.md#5-cross-linking)) | Adds name-based **[Wikilinks](/GLOSSARY.md)** as an optional secondary form ([ADR 0004](/adr/0004-wikilinks-optional-secondary-name-based.md)) |
 | Indexes | Consumer _may_ synthesize | Always synthesizes path/name/backlink/tag indexes, kept live under the watcher |
 | Distribution | git is _recommended_ | git is **operationalised** — the web editor commits into the Bundle repo (`git.rs`) |
@@ -75,6 +75,6 @@ Per-user UI state — last-open Concept, expanded folders, sidebar flags, window
 
 - [Concept](/okf/concept.md) — the per-file unit inside a Bundle, and how Sunstone edits one.
 - [OKF Specification](/okf/spec.md) — the vendored spec, §2–§3, §6–§7, §9.
-- [Linking](/linking.md) — bundle root detection, the name/path resolution seam, backlinks, rewrite-on-move.
+- [Linking](/okf/linking.md) — bundle root detection, the name/path resolution seam, backlinks, rewrite-on-move.
 - [Glossary](/GLOSSARY.md) — **Bundle**, **Reserved file**, **View state**.
-- [Deploying the web build](/deploy-web.md) · [Testing](/testing.md) — the git-write path over a Bundle.
+- [Testing](/testing.md) — the git-write path over a Bundle and its test strategy.

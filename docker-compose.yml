@@ -1,7 +1,7 @@
 # Sunstone Web — internal deployment.
 #
 # One container serves the SSR web viewer AND the read-only Rust API over a
-# Bundle mounted read-only from the host. See docs/deploy-web.md.
+# Bundle mounted read-only from the host. See docker/README.md.
 #
 #   SUNSTONE_BUNDLE_HOST  host path of the Bundle to serve (default ./examples)
 #   SUNSTONE_WEB_PORT     host port to publish the web viewer on (default 3000)
