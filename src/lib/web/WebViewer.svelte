@@ -356,6 +356,20 @@
           >
         </div>
         <div class="tb-right">
+          <!-- Sign-in affordance (web only): the anon read surface has no way to
+               INITIATE the OIDC flow, so offer a link to the Auth.js sign-in
+               page. Shown only on the web build when signed out; desktop-inert
+               (dead-code-stripped via the compile-time `__SUNSTONE_WEB__`). -->
+          {#if __SUNSTONE_WEB__ && data.user === null}
+            <a
+              class="tb-btn sign-in"
+              data-testid="web-sign-in"
+              href="/auth/signin"
+              data-sveltekit-reload
+              title="Sign in to edit"
+              aria-label="Sign in">Sign in</a
+            >
+          {/if}
           <!-- Edit toggle (ticket 06): shown ONLY to an authenticated user with
                a Concept open. "Edit" enters the island; while editing the label
                is Save (dirty) / Done (clean) and its click flushes-then-exits. -->
@@ -720,6 +734,15 @@
     padding-inline: 0.6rem;
     font-size: 0.8rem;
     font-weight: 600;
+  }
+
+  /* Sign-in link, shaped like the edit toggle (anon web chrome). */
+  .sign-in {
+    width: auto;
+    padding-inline: 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
   }
 
   .edit-toggle.active {

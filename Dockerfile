@@ -83,6 +83,13 @@ ENV NODE_ENV=production \
     SUNSTONE_API_INTERNAL=http://localhost:8787 \
     SUNSTONE_BUNDLE=/bundle
 
+# git is the backend of the write path (sunstone-server commits via the system
+# `git` binary) and of the optional bundle-seed step in entrypoint.sh. The slim
+# base omits it, so install it. Harmless for the read-only deployment.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 # Rust API binary + the adapter-node build + its production node_modules.
 COPY --from=rust-build /usr/local/bin/sunstone-server /usr/local/bin/sunstone-server
 COPY --from=web-build /app/build ./build
@@ -91,6 +98,14 @@ COPY --from=web-build /app/package.json ./package.json
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Bake the repo's docs/ in as an OPTIONAL bundle seed source. Unused by the
+# default (read-only) deployment — it sets SUNSTONE_BUNDLE elsewhere and never
+# reads /bundle-src. The Dex dev stack (docker-compose.dex.yml) sets
+# SUNSTONE_BUNDLE_SEED_FROM=/bundle-src so the entrypoint seeds a container-local,
+# writable git copy from here. Baked in (not bind-mounted) because this sandbox's
+# Docker daemon does not share the host filesystem.
+COPY docs /bundle-src
 
 # Public SSR web port (the Rust API on 8787 stays internal to the container).
 EXPOSE 3000

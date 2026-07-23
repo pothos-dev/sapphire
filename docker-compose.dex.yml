@@ -1,0 +1,96 @@
+# Sunstone Web — LOCAL DEV stack with a real OIDC provider (Dex).
+#
+# A self-contained, WRITABLE deployment for local development, fronted by the
+# already-running Traefik on the external `traefik-net` network. It brings up:
+#
+#   - dex          : an in-memory OIDC provider seeded with two test users.
+#   - sunstone-web : the SSR web app + Rust API (built from ./Dockerfile),
+#                    serving a container-local git copy of ./docs, writable via
+#                    a real OIDC login → edit → git commit.
+#
+# This is separate from the read-only `docker-compose.yml` and does NOT replace
+# it. Everything here (secrets, passwords, hashes) is a committed DEV fixture —
+# NOT for any real/public deployment.
+#
+# Bring up:   docker compose -f docker-compose.dex.yml up --build -d
+# Tear down:  docker compose -f docker-compose.dex.yml down
+#
+# URLs (via Traefik on :80, Host-routed):
+#   http://sunstone.docker.localhost   — the app
+#   http://dex.docker.localhost        — the OIDC issuer / login
+#
+# Log in with:  alice@sunstone.test / alice-password   (Alice Example)
+#               bob@sunstone.test   / bob-password     (Bob Example)
+
+services:
+  dex:
+    # Built (not bind-mounted config) because this sandbox's Docker daemon does
+    # not share the host filesystem — the config is baked into the image. See
+    # docker/dex/Dockerfile + docker/dex/config.yaml.
+    build:
+      context: ./docker/dex
+      dockerfile: Dockerfile
+    image: sunstone-dex:latest
+    restart: unless-stopped
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    networks:
+      traefik-net:
+        # The Sunstone container resolves the issuer host straight to Dex:80 via
+        # this alias, so `http://dex.docker.localhost/...` works IN-network
+        # (discovery + token exchange) exactly as it does from the browser.
+        aliases:
+          - dex.docker.localhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.dex.entrypoints=web"
+      - "traefik.http.routers.dex.rule=Host(`dex.docker.localhost`)"
+      - "traefik.http.services.dex.loadbalancer.server.port=80"
+
+  sunstone-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sunstone-web:latest
+    # Reap zombies + forward signals cleanly to the entrypoint (PID 1).
+    init: true
+    restart: unless-stopped
+    depends_on:
+      - dex
+    environment:
+      # --- SSR web server (adapter-node) ---
+      HOST: 0.0.0.0
+      PORT: 3000
+      # adapter-node CSRF/redirect origin behind the reverse proxy.
+      ORIGIN: http://sunstone.docker.localhost
+      PROTOCOL_HEADER: x-forwarded-proto
+      HOST_HEADER: x-forwarded-host
+      # --- Rust API (internal to the container) ---
+      SUNSTONE_API_PORT: 8787
+      SUNSTONE_API_INTERNAL: http://localhost:8787
+      SUNSTONE_BUNDLE: /srv/bundle
+      # Seed a container-local, writable git copy from the docs/ baked into the
+      # image at /bundle-src (see Dockerfile). Edits/Saves commit HERE, in an
+      # isolated in-container repo — never back to the host docs/.
+      SUNSTONE_BUNDLE_SEED_FROM: /bundle-src
+      # --- OIDC (generic provider in src/auth.ts) ---
+      SUNSTONE_OIDC_ISSUER: http://dex.docker.localhost
+      SUNSTONE_OIDC_CLIENT_ID: sunstone-web
+      SUNSTONE_OIDC_CLIENT_SECRET: sunstone-oidc-secret
+      SUNSTONE_OIDC_NAME: Sunstone SSO
+      # --- Auth.js + write-JWT secrets (DEV-ONLY fixed randoms) ---
+      AUTH_SECRET: dev-only-auth-secret-3f9c1a7e6b2d4c8f0a1b2c3d4e5f6071
+      AUTH_TRUST_HOST: "true"
+      SUNSTONE_JWT_SECRET: dev-only-jwt-secret-8a1b2c3d4e5f60718293a4b5c6d7e8f9
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.sunstone.entrypoints=web"
+      - "traefik.http.routers.sunstone.rule=Host(`sunstone.docker.localhost`)"
+      - "traefik.http.services.sunstone.loadbalancer.server.port=3000"
+
+networks:
+  traefik-net:
+    external: true

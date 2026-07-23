@@ -26,6 +26,32 @@ export SUNSTONE_API_INTERNAL="${SUNSTONE_API_INTERNAL:-http://localhost:${API_PO
 export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-3000}"
 
+# --- OPTIONAL bundle seed (env-gated; unset → skip, existing deploys unaffected).
+#
+# When SUNSTONE_BUNDLE_SEED_FROM is set, copy that path into $SUNSTONE_BUNDLE and,
+# if it is not already a git repo, `git init` it with a seed commit. This gives a
+# container-LOCAL, writable git copy of a bundle whose source (e.g. a read-only
+# bind mount of the host's docs/) must NOT be written back or git-init'd in place.
+# Edits/Saves then commit into this isolated in-container repo — the host source
+# is never modified.
+if [ -n "${SUNSTONE_BUNDLE_SEED_FROM:-}" ]; then
+  dest="${SUNSTONE_BUNDLE:?SUNSTONE_BUNDLE must be set to seed a bundle}"
+  echo "sunstone-web: seeding bundle ${dest} from ${SUNSTONE_BUNDLE_SEED_FROM}"
+  mkdir -p "${dest}"
+  # Copy contents (including dotfiles) of the source into the destination.
+  cp -a "${SUNSTONE_BUNDLE_SEED_FROM}/." "${dest}/"
+  if [ ! -d "${dest}/.git" ]; then
+    echo "sunstone-web: initialising git repo in ${dest}"
+    git config --global --add safe.directory "${dest}"
+    git -C "${dest}" init -q
+    git -C "${dest}" config user.name "${SUNSTONE_SEED_COMMIT_NAME:-Sunstone Seed}"
+    git -C "${dest}" config user.email "${SUNSTONE_SEED_COMMIT_EMAIL:-seed@sunstone.local}"
+    git -C "${dest}" config commit.gpgsign false
+    git -C "${dest}" add -A
+    git -C "${dest}" commit -q -m "seed bundle" || echo "sunstone-web: nothing to seed-commit"
+  fi
+fi
+
 pids=()
 
 term() {

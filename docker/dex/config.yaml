@@ -1,0 +1,45 @@
+# Dex OIDC provider — LOCAL DEV ONLY (docker-compose.dex.yml).
+#
+# Seeds an in-memory identity provider with two static test users so a browser
+# can complete a real OIDC login against Sunstone Web. Nothing here is a secret:
+# the passwords, client secret and hashes are all committed dev fixtures.
+#
+# The issuer MUST resolve identically from the browser (via Traefik) and from
+# the Sunstone SSR container (via a `dex.docker.localhost` network alias on
+# traefik-net → Dex:80). So Dex listens on plain HTTP :80 and the issuer is a
+# host, not localhost. See docs/deploy-web.md § "Local dev with Dex OIDC".
+
+issuer: http://dex.docker.localhost
+
+storage:
+  type: memory
+
+# Plain HTTP on :80 so a direct in-network hit (Sunstone → dex.docker.localhost)
+# and the Traefik-routed browser hit reach the SAME issuer origin.
+web:
+  http: 0.0.0.0:80
+
+# Dev convenience: no consent screen, password login enabled.
+oauth2:
+  skipApprovalScreen: true
+
+enablePasswordDB: true
+
+staticClients:
+  - id: sunstone-web
+    secret: sunstone-oidc-secret
+    name: Sunstone
+    redirectURIs:
+      - http://sunstone.docker.localhost/auth/callback/oidc
+
+# Two seeded users. Passwords: alice-password / bob-password.
+# Hashes are bcrypt (cost 10) of those passwords.
+staticPasswords:
+  - email: alice@sunstone.test
+    hash: "$2b$10$TH2PH1m.iwG7opi4/2eufOnuqrHzbX87sOUl9azcSycHhiumhNAxy"
+    username: Alice Example
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
+  - email: bob@sunstone.test
+    hash: "$2b$10$nphSLR7ypG2.X4n1JuJMmeYZjtNsH1JcdaxypqwRoYzorb1At8CIy"
+    username: Bob Example
+    userID: "41331323-6f44-45e6-b3b9-2c4b60c02be5"

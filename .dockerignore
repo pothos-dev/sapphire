@@ -35,6 +35,11 @@ playwright*.config.ts
 docs/
 *.md
 !README.md
+# ...except docs/, re-included AFTER the excludes above so the runtime stage can
+# bake it in as the optional bundle seed source (/bundle-src) for the Dex dev
+# stack. `!docs/**` overrides the `*.md` exclude for docs' own markdown files.
+!docs
+!docs/**
 
 # Env files
 .env
