@@ -27,3 +27,6 @@ vite.config.ts.timestamp-*
 
 # Local editor workspace file (machine-specific)
 /.workspace
+
+# Wayfinder planning scratch (local-only; the plan's deliverable is the ADR)
+/.scratch
