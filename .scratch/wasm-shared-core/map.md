@@ -172,6 +172,18 @@ the ADR captures them.
   (10/11/13) flips the fake's imports as part of its clean cut; 12's table is a column the
   ADR folds in, which is why it blocks only [17](issues/17-adr-assembly.md).
 
+- [15 Path helpers disposition](issues/15-migrate-path-helpers.md) — **`path.ts` stays
+  entirely TS; zero helpers migrate** (refutes the ticket's predicted `remapPath`/
+  `moveDestination` migration). Two families, both fail the criterion: trivial synchronous UI
+  string ops (`basename`/`dirname`/`stripMd`/`isMarkdownName`/`ensureMd`/`joinPath`/`splitPath`
+  — `dirname`'s echo `dir_of` is now a private helper *inside* wasm's `resolve_internal`, no
+  twin left), and subtree-prefix remaps over **frontend-only session state** (`remapPath`/
+  `remapPaths`/`moveDestination` keep expanded-folders/recents/nav-history/open-docs/drag-drop
+  valid — never cross the handle). The only Rust echo of remap is `build_move_map`'s
+  `strip_prefix`, which lives in the *native* rename/move command ([12](issues/12-migrate-fake-backend-standins.md)).
+  `path.ts` is the map's "fed the wasm data, stays TS" counterweight case. Recorded in the ADR
+  under "what stays TS."
+
 ## Not yet specified
 
 - The duplication inventory has **landed** (`research/00-twin-inventory.md`) and
