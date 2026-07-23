@@ -12,6 +12,8 @@
 //! - `GET /api/backlinks?path=<rel>` → source Concept paths linking to it
 //! - `GET /api/tags`                 → `TagCount[]` (tags + counts)
 //! - `GET /api/concepts-by-tag?tag=` → Concept paths carrying the tag
+//! - `GET /api/types`                → distinct frontmatter `type` values
+//! - `GET /api/keys`                 → distinct frontmatter keys used
 //! - `GET /api/concept-paths`        → every Concept path in the index
 //! - `GET /api/concept-exists?path=` → whether a Concept exists (bool)
 //! - `GET /api/events`               → SSE stream of filesystem `FileChange`s
@@ -165,6 +167,8 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/api/backlinks", get(backlinks_handler))
         .route("/api/tags", get(tags_handler))
         .route("/api/concepts-by-tag", get(concepts_by_tag_handler))
+        .route("/api/types", get(types_handler))
+        .route("/api/keys", get(keys_handler))
         .route("/api/concept-paths", get(concept_paths_handler))
         .route("/api/concept-exists", get(concept_exists_handler))
         .route("/api/events", get(events_handler))
@@ -261,6 +265,24 @@ async fn concepts_by_tag_handler(
 ) -> Result<Json<Vec<String>>, ApiError> {
     let index = read_index(&state)?;
     Ok(Json(index.concepts_by_tag(&q.tag)))
+}
+
+/// Distinct frontmatter `type` values across the Bundle (sorted). Feeds the
+/// new-concept `type` autocomplete in the full editor shell.
+async fn types_handler(
+    State(state): State<Arc<ServerState>>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let index = read_index(&state)?;
+    Ok(Json(index.all_types()))
+}
+
+/// Distinct top-level frontmatter keys used across the Bundle (sorted). Feeds
+/// the Properties panel's key-name autocomplete (OKF keys merged client-side).
+async fn keys_handler(
+    State(state): State<Arc<ServerState>>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let index = read_index(&state)?;
+    Ok(Json(index.all_keys()))
 }
 
 async fn concept_paths_handler(
@@ -759,5 +781,30 @@ mod tests {
         assert!(index.concept_paths().contains(&"note.md".to_string()));
         assert!(index.concept_exists("note.md"));
         assert!(!index.concept_exists("nope.md"));
+    }
+
+    #[test]
+    fn index_routes_serve_types_and_keys() {
+        let root = temp_bundle(); // has note.md + sub/deep.md
+        // Two Concepts with frontmatter: distinct `type` values + keys.
+        std::fs::write(
+            root.join("a.md"),
+            "---\ntype: concept\ntitle: A\ntags: [x]\n---\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("b.md"),
+            "---\ntype: index\ndescription: B\n---\nbody\n",
+        )
+        .unwrap();
+        let index = sunstone_core::index::Index::build(&root);
+
+        // `/api/types` → distinct, sorted frontmatter `type` values.
+        assert_eq!(index.all_types(), vec!["concept", "index"]);
+        // `/api/keys` → distinct, sorted top-level frontmatter keys.
+        assert_eq!(
+            index.all_keys(),
+            vec!["description", "tags", "title", "type"]
+        );
     }
 }

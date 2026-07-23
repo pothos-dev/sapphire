@@ -24,20 +24,38 @@ class SuggestionsStore {
   /** Distinct tag values across the Bundle (no OKF tag vocabulary exists). */
   tags = $state<string[]>([]);
 
-  /** Re-fetch every index-derived suggestion list from the backend. */
+  /**
+   * Re-fetch every index-derived suggestion list from the backend. Each call is
+   * guarded so a backend that does not serve a given query (or a transient
+   * fetch failure) leaves that list untouched rather than surfacing an
+   * unhandled promise rejection — the OKF recommended keys still seed key
+   * autocomplete even when the bundle-sourced keys fail to load.
+   */
   refresh(): void {
-    void backend.listConceptPaths().then((p) => {
-      this.conceptPaths = p;
-    });
-    void backend.allTypes().then((t) => {
-      this.types = t;
-    });
-    void backend.allKeys().then((k) => {
-      this.keys = [...new Set([...OKF_KEYS, ...k])];
-    });
-    void backend.allTags().then((counts) => {
-      this.tags = counts.map((c) => c.tag);
-    });
+    void backend
+      .listConceptPaths()
+      .then((p) => {
+        this.conceptPaths = p;
+      })
+      .catch(() => {});
+    void backend
+      .allTypes()
+      .then((t) => {
+        this.types = t;
+      })
+      .catch(() => {});
+    void backend
+      .allKeys()
+      .then((k) => {
+        this.keys = [...new Set([...OKF_KEYS, ...k])];
+      })
+      .catch(() => {});
+    void backend
+      .allTags()
+      .then((counts) => {
+        this.tags = counts.map((c) => c.tag);
+      })
+      .catch(() => {});
   }
 }
 
