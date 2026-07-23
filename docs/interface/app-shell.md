@@ -8,7 +8,7 @@ timestamp: 2026-07-23
 
 # App shell
 
-The **app shell** is the top-level arrangement of [Panes](/GLOSSARY.md) inside the Sunstone window. `App.svelte` lays out three horizontal Panes with the [NavBar](/GLOSSARY.md) toolbar spanning the central one:
+The **app shell** is the top-level arrangement of [Panes](/GLOSSARY.md) inside the Sunstone window. `App.svelte` lays out three horizontal Panes with the [nav bar](/interface/nav-bar.md) — the global-controls header — spanning the central one:
 
 ```mermaid
 flowchart LR
@@ -20,7 +20,7 @@ flowchart LR
 - The central **[Editor pane](/editor/editor-layout.md)** is a row of Columns, each a stack of Tiles — the app's primary surface. It is never hidden.
 - The **right Sidebar** holds the **Outline** and **Backlinks** Sections and starts collapsed on a fresh Bundle.
 
-Either Sidebar collapses entirely, letting the Editor pane take the full width. The `NavBar` renders the two Sidebar toggles (mirroring `leftSidebarOpen` / `rightSidebarOpen`) plus the editor view-mode and Properties controls.
+Either Sidebar collapses entirely, letting the Editor pane take the full width. The [nav bar](/interface/nav-bar.md) renders the two Sidebar toggles (mirroring `leftSidebarOpen` / `rightSidebarOpen`) plus the editor view-mode and Properties controls.
 
 ## What lives where
 
@@ -34,7 +34,7 @@ Either Sidebar collapses entirely, letting the Editor pane take the full width. 
 
 ## Relationships
 
-- The shell hosts the two [Sidebars](/interface/sidebars.md) and the central [Editor pane](/editor/editor-layout.md).
+- The shell hosts the two [Sidebars](/interface/sidebars.md) and the central [Editor pane](/editor/editor-layout.md), with the [nav bar](/interface/nav-bar.md) as its global header.
 - Which surface owns the keyboard — and how `Alt`+arrows move between these Panes — is the [focus model](/interface/focus-model.md).
 - Every collapse flag and the last-open layout survive relaunch via [view state](/interface/view-state.md).
 - Terms are indexed in the [glossary](/GLOSSARY.md).
