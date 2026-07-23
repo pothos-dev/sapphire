@@ -184,6 +184,18 @@ the ADR captures them.
   `path.ts` is the map's "fed the wasm data, stays TS" counterweight case. Recorded in the ADR
   under "what stays TS."
 
+- [16 Un-twinned pure TS](issues/16-untwinned-ts-logic.md) — **end-state: every un-twinned
+  module stays TS; nothing ports.** None is a twin (a) or touches wasm-handle state (b), so a
+  port would *manufacture* a twin the counterweight forbids. `fuzzy.ts` (ranks tags too, not
+  in the handle), `highlight.ts`/`textFormat.ts`/`mermaid*`, `reserved.ts` (basename `Set` —
+  absurd to cross for it), `diffToCriticMarkup.ts` (no twin; only *consumes* 13's shared
+  parser), and `scaffoldConcept`/`titleFromFilename` (no Rust twin — `create_concept` writes
+  an empty file, frontend authors the stub; same family as 11 Fork C) all **keep TS**. One
+  active consequence, a **rewire not a port**: `suggestions.svelte.ts`/`QuickNav` drop the
+  `listConceptPaths()` IPC + its `$state` copy and read the handle's `conceptPaths()` (10 Fork
+  C); `fuzzy.ts` is fed that set. Executed in the link-family PR. Noted future-but-out-of-scope:
+  unifying scaffold into native `create_concept` (a backend refactor, not this effort).
+
 ## Not yet specified
 
 - The duplication inventory has **landed** (`research/00-twin-inventory.md`) and
